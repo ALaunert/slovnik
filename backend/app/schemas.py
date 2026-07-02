@@ -18,3 +18,26 @@ class ProfileRead(BaseModel):
     ui_language: str
 
     model_config = {"from_attributes": True}
+
+
+class VocabularyCreate(BaseModel):
+    serbian_cyrillic: str = Field(min_length=1, max_length=160)
+    serbian_latin: str = Field(min_length=1, max_length=160)
+    russian_translation: str = Field(min_length=1, max_length=240)
+    cefr_level: str
+    theme: str
+    usage_register: str | None = None
+    stress_marker: str | None = None
+    meaning_notes: str | None = None
+    example_sentences: str | None = None
+    example_translations: str | None = None
+
+
+class VocabularyUpdate(VocabularyCreate):
+    pass
+
+
+class VocabularyRead(VocabularyCreate):
+    id: int
+
+    model_config = {"from_attributes": True}
