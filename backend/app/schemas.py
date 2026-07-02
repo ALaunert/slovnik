@@ -65,3 +65,40 @@ class LearningWordsRead(BaseModel):
 
 class LearningProgressRead(BaseModel):
     progress: list[UserWordProgressRead]
+
+
+class QuizStartPayload(BaseModel):
+    quiz_type: str = "daily"
+
+
+class QuizQuestionRead(BaseModel):
+    word_id: int
+    question_type: str
+    prompt: str
+    answer: str | None = None
+    choices: list[str] = []
+
+
+class QuizStartRead(BaseModel):
+    attempt_id: int
+    quiz_type: str
+    questions: list[QuizQuestionRead]
+
+
+class QuizAnswerPayload(BaseModel):
+    word_id: int
+    question_type: str
+    answer: str
+
+
+class QuizAnswerRead(BaseModel):
+    is_correct: bool
+    repeat_word: bool
+    is_weak: bool
+
+
+class QuizCompleteRead(BaseModel):
+    score: int
+    total_questions: int
+    weak_word_ids: list[int]
+    mistakes: list[dict]

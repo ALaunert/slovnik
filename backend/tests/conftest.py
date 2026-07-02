@@ -93,3 +93,17 @@ def seen_today_progress(db_session, seeded_words):
     db_session.commit()
     db_session.refresh(progress)
     return progress
+
+
+@pytest.fixture()
+def completed_learning(client, seeded_words):
+    word_ids = [word.id for word in seeded_words[:5]]
+    client.post("/api/learning/learner-1/new-words/complete", json={"word_ids": word_ids})
+    return seeded_words[:5]
+
+
+@pytest.fixture()
+def started_quiz(client, completed_learning):
+    response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
+    assert response.status_code == 200
+    return response.json()

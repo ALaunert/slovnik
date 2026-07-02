@@ -120,3 +120,44 @@ export async function completeReview(userId: string, wordIds: number[]) {
   if (!response.ok) throw new Error("Failed to complete review");
   return response.json();
 }
+
+
+export type QuizQuestion = {
+  word_id: number;
+  question_type: "sr_to_ru_choice" | "ru_to_sr_typing" | "remembered_forgot_self_check";
+  prompt: string;
+  answer?: string | null;
+  choices: string[];
+};
+
+export type QuizStart = { attempt_id: number; quiz_type: string; questions: QuizQuestion[] };
+export type QuizCompletion = { score: number; total_questions: number; weak_word_ids: number[]; mistakes: Record<string, unknown>[] };
+
+export async function startQuiz(userId: string, quizType: "daily" | "weekly" = "daily"): Promise<QuizStart> {
+  const response = await fetch(`${API_BASE_URL}/api/quizzes/${encodeURIComponent(userId)}/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quiz_type: quizType }),
+  });
+  if (!response.ok) throw new Error("Failed to start quiz");
+  return response.json();
+}
+
+export async function submitQuizAnswer(
+  attemptId: number,
+  payload: { word_id: number; question_type: string; answer: string },
+): Promise<{ is_correct: boolean; repeat_word: boolean; is_weak: boolean }> {
+  const response = await fetch(`${API_BASE_URL}/api/quizzes/${attemptId}/answers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("Failed to submit answer");
+  return response.json();
+}
+
+export async function completeQuiz(attemptId: number): Promise<QuizCompletion> {
+  const response = await fetch(`${API_BASE_URL}/api/quizzes/${attemptId}/complete`, { method: "POST" });
+  if (!response.ok) throw new Error("Failed to complete quiz");
+  return response.json();
+}

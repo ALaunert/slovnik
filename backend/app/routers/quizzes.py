@@ -1,0 +1,29 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.db import get_db
+from app.schemas import QuizAnswerPayload, QuizAnswerRead, QuizCompleteRead, QuizStartPayload, QuizStartRead
+from app.services.quiz_service import complete_quiz, start_quiz, submit_answer
+
+router = APIRouter(prefix="/api/quizzes", tags=["quizzes"])
+
+
+@router.post("/{user_id}/start", response_model=QuizStartRead)
+def start(user_id: str, payload: QuizStartPayload, db: Session = Depends(get_db)):
+    return start_quiz(db, user_id, payload.quiz_type)
+
+
+@router.post("/{attempt_id}/answers", response_model=QuizAnswerRead)
+def answer(attempt_id: int, payload: QuizAnswerPayload, db: Session = Depends(get_db)):
+    try:
+        return submit_answer(db, attempt_id, payload.word_id, payload.question_type, payload.answer)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/{attempt_id}/complete", response_model=QuizCompleteRead)
+def complete(attempt_id: int, db: Session = Depends(get_db)):
+    try:
+        return complete_quiz(db, attempt_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
