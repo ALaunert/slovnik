@@ -1,0 +1,26 @@
+export const messages = {
+  ru: {
+    appTitle: "Сербский словарь",
+    dashboard: "Сегодня",
+    newWords: "Новые слова",
+    review: "Повторение",
+    dailyQuiz: "Ежедневный тест",
+    weeklyQuiz: "Недельный тест",
+    vocabulary: "Словарь",
+    editor: "Редактор",
+    emptyVocabulary: "Пока нет слов. Добавьте первое слово в редакторе.",
+    emptyReview: "На сегодня слов для повторения нет.",
+  },
+  sr: {
+    appTitle: "Srpski rečnik",
+    dashboard: "Danas",
+    newWords: "Nove reči",
+    review: "Ponavljanje",
+    dailyQuiz: "Dnevni kviz",
+    weeklyQuiz: "Nedeljni kviz",
+    vocabulary: "Rečnik",
+    editor: "Urednik",
+    emptyVocabulary: "Još nema reči.",
+    emptyReview: "Danas nema reči za ponavljanje.",
+  },
+} as const;

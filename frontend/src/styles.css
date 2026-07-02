@@ -64,3 +64,11 @@ label { display: grid; gap: 6px; color: #334247; font-weight: 600; }
 .result-grid div { display: grid; gap: 4px; border: 1px solid #d8dfdc; border-radius: 8px; padding: 14px; }
 .result-grid strong { font-size: 2rem; }
 @media (max-width: 760px) { .choice-grid, .result-grid { grid-template-columns: 1fr; } }
+
+.app-layout { min-height: 100vh; }
+.app-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 24px; border-bottom: 1px solid #d8dfdc; background: rgba(246, 247, 244, 0.96); backdrop-filter: blur(8px); }
+.brand { color: #173b42; font-weight: 800; text-decoration: none; white-space: nowrap; }
+.app-header nav { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.app-header nav a { min-height: 36px; display: inline-flex; align-items: center; border-radius: 8px; padding: 6px 10px; text-decoration: none; color: #315056; }
+.app-header nav a.router-link-active { background: #dce9e7; color: #173b42; }
+@media (max-width: 760px) { .app-header { align-items: flex-start; flex-direction: column; padding: 10px 16px; } .app-header nav { justify-content: flex-start; } }
