@@ -5,6 +5,7 @@ import UserAccessView from "./views/UserAccessView.vue";
 import VocabularyListView from "./views/VocabularyListView.vue";
 import WordEditorView from "./views/WordEditorView.vue";
 import NewWordsView from "./views/NewWordsView.vue";
+import ReviewView from "./views/ReviewView.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -13,6 +14,7 @@ export const router = createRouter({
     { path: "/dashboard", component: DashboardView },
     { path: "/vocabulary", component: VocabularyListView },
     { path: "/new-words", component: NewWordsView },
+    { path: "/review", component: ReviewView },
     { path: "/editor", component: WordEditorView },
     { path: "/editor/:id", component: WordEditorView },
   ],

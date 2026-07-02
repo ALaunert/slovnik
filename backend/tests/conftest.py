@@ -52,3 +52,44 @@ def seeded_words(db_session):
     for word in words:
         db_session.refresh(word)
     return words
+
+
+@pytest.fixture()
+def weak_progress(db_session, seeded_words):
+    from datetime import datetime, timedelta, timezone
+    from app.models import UserProfile, UserWordProgress
+
+    db_session.add(UserProfile(user_id="learner-1"))
+    progress = UserWordProgress(
+        user_id="learner-1",
+        word_id=seeded_words[0].id,
+        status="reviewing",
+        first_seen_at=datetime.now(timezone.utc) - timedelta(days=2),
+        last_seen_at=datetime.now(timezone.utc),
+        incorrect_count=1,
+        is_weak=True,
+        weak_since=datetime.now(timezone.utc),
+    )
+    db_session.add(progress)
+    db_session.commit()
+    db_session.refresh(progress)
+    return progress
+
+
+@pytest.fixture()
+def seen_today_progress(db_session, seeded_words):
+    from datetime import datetime, timezone
+    from app.models import UserProfile, UserWordProgress
+
+    db_session.add(UserProfile(user_id="learner-1"))
+    progress = UserWordProgress(
+        user_id="learner-1",
+        word_id=seeded_words[1].id,
+        status="seen",
+        first_seen_at=datetime.now(timezone.utc),
+        last_seen_at=datetime.now(timezone.utc),
+    )
+    db_session.add(progress)
+    db_session.commit()
+    db_session.refresh(progress)
+    return progress
