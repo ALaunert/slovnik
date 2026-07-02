@@ -41,3 +41,27 @@ class VocabularyRead(VocabularyCreate):
     id: int
 
     model_config = {"from_attributes": True}
+
+
+class WordIdsPayload(BaseModel):
+    word_ids: list[int]
+
+
+class UserWordProgressRead(BaseModel):
+    id: int
+    user_id: str
+    word_id: int
+    status: str
+    correct_count: int
+    incorrect_count: int
+    is_weak: bool
+
+    model_config = {"from_attributes": True}
+
+
+class LearningWordsRead(BaseModel):
+    words: list[VocabularyRead]
+
+
+class LearningProgressRead(BaseModel):
+    progress: list[UserWordProgressRead]

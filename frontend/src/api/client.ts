@@ -86,3 +86,20 @@ export async function updateVocabularyWord(
   if (!response.ok) throw new Error("Failed to update word");
   return response.json();
 }
+
+
+export async function getNewWords(userId: string): Promise<{ words: VocabularyWord[] }> {
+  const response = await fetch(`${API_BASE_URL}/api/learning/${encodeURIComponent(userId)}/new-words`);
+  if (!response.ok) throw new Error("Failed to load new words");
+  return response.json();
+}
+
+export async function completeNewWords(userId: string, wordIds: number[]) {
+  const response = await fetch(`${API_BASE_URL}/api/learning/${encodeURIComponent(userId)}/new-words/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ word_ids: wordIds }),
+  });
+  if (!response.ok) throw new Error("Failed to complete new words");
+  return response.json();
+}
