@@ -62,6 +62,7 @@ async function saveSettings() {
       <RouterLink class="action-card" to="/new-words">Новые слова</RouterLink>
       <RouterLink class="action-card" to="/review">Повторение</RouterLink>
       <RouterLink class="action-card" to="/quiz?type=daily">Ежедневный тест</RouterLink>
+      <RouterLink class="action-card" to="/quiz?type=weekly">Недельный тест</RouterLink>
       <RouterLink class="action-card" to="/vocabulary">Словарь</RouterLink>
     </nav>
 

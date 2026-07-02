@@ -9,7 +9,7 @@ const results = computed(() => raw ? JSON.parse(raw) : { score: 0, total_questio
 <template>
   <main class="page">
     <header class="page-header">
-      <h1>Результаты</h1>
+      <h1>{{ results.quizType === "weekly" ? "Итоги недели" : "Результаты" }}</h1>
       <RouterLink to="/dashboard">Сегодня</RouterLink>
     </header>
     <section class="panel result-grid">

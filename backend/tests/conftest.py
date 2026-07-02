@@ -107,3 +107,44 @@ def started_quiz(client, completed_learning):
     response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
     assert response.status_code == 200
     return response.json()
+
+
+@pytest.fixture()
+def weekly_progress(db_session, seeded_words):
+    from datetime import datetime, timedelta, timezone
+    from app.models import UserProfile, UserWordProgress
+
+    db_session.add(UserProfile(user_id="learner-1"))
+    this_week = UserWordProgress(
+        user_id="learner-1",
+        word_id=seeded_words[0].id,
+        status="reviewing",
+        first_seen_at=datetime.now(timezone.utc) - timedelta(days=2),
+        last_seen_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    weak = UserWordProgress(
+        user_id="learner-1",
+        word_id=seeded_words[1].id,
+        status="reviewing",
+        first_seen_at=datetime.now(timezone.utc) - timedelta(days=20),
+        last_seen_at=datetime.now(timezone.utc) - timedelta(days=10),
+        incorrect_count=2,
+        is_weak=True,
+        weak_since=datetime.now(timezone.utc) - timedelta(days=3),
+    )
+    db_session.add_all([this_week, weak])
+    db_session.commit()
+    return {"this_week_word_id": seeded_words[0].id, "weak_word_id": seeded_words[1].id}
+
+
+@pytest.fixture()
+def weak_word(db_session, weekly_progress):
+    from app.models import VocabularyItem
+    return db_session.get(VocabularyItem, weekly_progress["weak_word_id"])
+
+
+@pytest.fixture()
+def started_weekly_quiz(client, weekly_progress):
+    response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "weekly"})
+    assert response.status_code == 200
+    return response.json()
