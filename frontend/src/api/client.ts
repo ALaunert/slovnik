@@ -43,6 +43,8 @@ export type VocabularyWord = {
   meaning_notes?: string | null;
   example_sentences?: string | null;
   example_translations?: string | null;
+  incorrect_count?: number;
+  is_weak?: boolean;
 };
 
 export type VocabularyPayload = Omit<VocabularyWord, "id">;
@@ -54,6 +56,12 @@ export async function listVocabulary(filters: { cefr_level?: string; theme?: str
   const suffix = params.toString() ? `?${params.toString()}` : "";
   const response = await fetch(`${API_BASE_URL}/api/vocabulary${suffix}`);
   if (!response.ok) throw new Error("Failed to load vocabulary");
+  return response.json();
+}
+
+export async function getVocabularyWord(wordId: number): Promise<VocabularyWord> {
+  const response = await fetch(`${API_BASE_URL}/api/vocabulary/${wordId}`);
+  if (!response.ok) throw new Error("Failed to load word");
   return response.json();
 }
 

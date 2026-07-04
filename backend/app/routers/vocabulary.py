@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.schemas import VocabularyCreate, VocabularyRead, VocabularyUpdate
-from app.services.vocabulary_service import create_word, list_themes, list_words, update_word
+from app.services.vocabulary_service import create_word, get_word, list_themes, list_words, update_word
 
 router = APIRouter(prefix="/api/vocabulary", tags=["vocabulary"])
 
@@ -48,3 +48,11 @@ def get_words(
 @router.get("/themes", response_model=list[str])
 def get_themes(db: Session = Depends(get_db)):
     return list_themes(db)
+
+
+@router.get("/{word_id}", response_model=VocabularyRead)
+def get_word_route(word_id: int, db: Session = Depends(get_db)):
+    word = get_word(db, word_id)
+    if word is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Word not found")
+    return word

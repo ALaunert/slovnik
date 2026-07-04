@@ -1,9 +1,20 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
-import { RouterLink } from "vue-router";
+import { computed, onMounted, reactive, ref } from "vue";
+import { RouterLink, useRoute } from "vue-router";
 
-import { createVocabularyWord, type VocabularyPayload } from "../api/client";
+import {
+  createVocabularyWord,
+  getVocabularyWord,
+  updateVocabularyWord,
+  type VocabularyPayload,
+} from "../api/client";
 
+const route = useRoute();
+const wordId = computed(() => {
+  const raw = route.params.id;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value ? Number(value) : null;
+});
 const editorPassword = ref("");
 const status = ref("");
 const error = ref("");
@@ -20,6 +31,28 @@ const form = reactive<VocabularyPayload>({
   example_translations: "",
 });
 
+function applyWord(word: VocabularyPayload) {
+  form.serbian_cyrillic = word.serbian_cyrillic;
+  form.serbian_latin = word.serbian_latin;
+  form.russian_translation = word.russian_translation;
+  form.cefr_level = word.cefr_level;
+  form.theme = word.theme;
+  form.usage_register = word.usage_register ?? "";
+  form.stress_marker = word.stress_marker ?? "";
+  form.meaning_notes = word.meaning_notes ?? "";
+  form.example_sentences = word.example_sentences ?? "";
+  form.example_translations = word.example_translations ?? "";
+}
+
+onMounted(async () => {
+  if (!wordId.value) return;
+  try {
+    applyWord(await getVocabularyWord(wordId.value));
+  } catch {
+    error.value = "Не удалось загрузить слово";
+  }
+});
+
 async function saveWord() {
   status.value = "";
   error.value = "";
@@ -28,7 +61,11 @@ async function saveWord() {
     return;
   }
   try {
-    await createVocabularyWord(form, editorPassword.value);
+    if (wordId.value) {
+      await updateVocabularyWord(wordId.value, form, editorPassword.value);
+    } else {
+      await createVocabularyWord(form, editorPassword.value);
+    }
     status.value = "Слово сохранено";
   } catch {
     error.value = "Не удалось сохранить слово";
@@ -43,17 +80,17 @@ async function saveWord() {
       <RouterLink to="/vocabulary">Словарь</RouterLink>
     </header>
     <form class="panel form-grid" @submit.prevent="saveWord">
-      <label>Пароль редактора<input v-model="editorPassword" type="password" /></label>
-      <label>Сербский кириллица<input v-model="form.serbian_cyrillic" required /></label>
-      <label>Сербский латиница<input v-model="form.serbian_latin" required /></label>
-      <label>Русский перевод<input v-model="form.russian_translation" required /></label>
-      <label>Уровень<select v-model="form.cefr_level"><option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option></select></label>
-      <label>Тема<input v-model="form.theme" required /></label>
-      <label>Регистр<input v-model="form.usage_register" /></label>
-      <label>Ударение<input v-model="form.stress_marker" /></label>
-      <label class="wide">Заметки<textarea v-model="form.meaning_notes" rows="3" /></label>
-      <label class="wide">Примеры<textarea v-model="form.example_sentences" rows="3" /></label>
-      <label class="wide">Переводы примеров<textarea v-model="form.example_translations" rows="3" /></label>
+      <label>Пароль редактора<input v-model="editorPassword" name="editor_password" type="password" /></label>
+      <label>Сербский кириллица<input v-model="form.serbian_cyrillic" name="serbian_cyrillic" required /></label>
+      <label>Сербский латиница<input v-model="form.serbian_latin" name="serbian_latin" required /></label>
+      <label>Русский перевод<input v-model="form.russian_translation" name="russian_translation" required /></label>
+      <label>Уровень<select v-model="form.cefr_level" name="cefr_level"><option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option></select></label>
+      <label>Тема<input v-model="form.theme" name="theme" required /></label>
+      <label>Регистр<input v-model="form.usage_register" name="usage_register" /></label>
+      <label>Ударение<input v-model="form.stress_marker" name="stress_marker" /></label>
+      <label class="wide">Заметки<textarea v-model="form.meaning_notes" name="meaning_notes" rows="3" /></label>
+      <label class="wide">Примеры<textarea v-model="form.example_sentences" name="example_sentences" rows="3" /></label>
+      <label class="wide">Переводы примеров<textarea v-model="form.example_translations" name="example_translations" rows="3" /></label>
       <button type="submit">Сохранить</button>
       <p v-if="status" class="success">{{ status }}</p>
       <p v-if="error" class="error">{{ error }}</p>

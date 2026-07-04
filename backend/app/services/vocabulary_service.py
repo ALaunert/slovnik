@@ -35,3 +35,7 @@ def list_words(db: Session, cefr_level: str | None = None, theme: str | None = N
 
 def list_themes(db: Session) -> list[str]:
     return list(db.scalars(select(VocabularyItem.theme).distinct().order_by(VocabularyItem.theme)))
+
+
+def get_word(db: Session, word_id: int) -> VocabularyItem | None:
+    return db.get(VocabularyItem, word_id)

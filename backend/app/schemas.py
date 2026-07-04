@@ -63,6 +63,15 @@ class LearningWordsRead(BaseModel):
     words: list[VocabularyRead]
 
 
+class ReviewVocabularyRead(VocabularyRead):
+    incorrect_count: int
+    is_weak: bool
+
+
+class ReviewWordsRead(BaseModel):
+    words: list[ReviewVocabularyRead]
+
+
 class LearningProgressRead(BaseModel):
     progress: list[UserWordProgressRead]
 

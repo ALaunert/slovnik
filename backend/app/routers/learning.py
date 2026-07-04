@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas import LearningProgressRead, LearningWordsRead, WordIdsPayload
+from app.schemas import LearningProgressRead, LearningWordsRead, ReviewWordsRead, WordIdsPayload
 from app.services.learning_service import (
     complete_new_words,
     complete_review,
@@ -23,7 +23,7 @@ def complete_new_words_route(user_id: str, payload: WordIdsPayload, db: Session 
     return {"progress": complete_new_words(db, user_id, payload.word_ids)}
 
 
-@router.get("/{user_id}/review", response_model=LearningWordsRead)
+@router.get("/{user_id}/review", response_model=ReviewWordsRead)
 def review_words(user_id: str, db: Session = Depends(get_db)):
     return {"words": get_review_words(db, user_id)}
 

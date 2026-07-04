@@ -59,3 +59,20 @@ def test_list_themes_returns_distinct_sorted_values(client, db_session):
 
     assert response.status_code == 200
     assert response.json() == ["a", "z"]
+
+
+def test_get_word_by_id(client, db_session):
+    word = VocabularyItem(
+        serbian_cyrillic="здраво",
+        serbian_latin="zdravo",
+        russian_translation="привет",
+        cefr_level="A1",
+        theme="greetings",
+    )
+    db_session.add(word)
+    db_session.commit()
+
+    response = client.get(f"/api/vocabulary/{word.id}")
+
+    assert response.status_code == 200
+    assert response.json()["serbian_latin"] == "zdravo"

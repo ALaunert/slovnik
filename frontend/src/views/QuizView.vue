@@ -16,6 +16,8 @@ const index = ref(0);
 const answer = ref("");
 const feedback = ref<{ correct: boolean; repeat: boolean } | null>(null);
 const error = ref("");
+const repeatedWordIds = ref(new Set<number>());
+const isSelfCheckRevealed = ref(false);
 const quizType = computed(() => (route.query.type === "weekly" ? "weekly" : "daily"));
 const currentQuestion = computed(() => questions.value[index.value]);
 
@@ -35,18 +37,23 @@ onMounted(async () => {
 
 async function submit(value?: string) {
   if (!currentQuestion.value) return;
+  const question = currentQuestion.value;
   const response = await submitQuizAnswer(attemptId.value, {
-    word_id: currentQuestion.value.word_id,
-    question_type: currentQuestion.value.question_type,
+    word_id: question.word_id,
+    question_type: question.question_type,
     answer: value ?? answer.value,
   });
   feedback.value = { correct: response.is_correct, repeat: response.repeat_word };
-  if (response.repeat_word) questions.value.push(currentQuestion.value);
+  if (response.repeat_word && !repeatedWordIds.value.has(question.word_id)) {
+    repeatedWordIds.value.add(question.word_id);
+    questions.value.push(question);
+  }
 }
 
 async function next() {
   feedback.value = null;
   answer.value = "";
+  isSelfCheckRevealed.value = false;
   if (index.value < questions.value.length - 1) {
     index.value += 1;
     return;
@@ -77,11 +84,14 @@ async function next() {
           <button type="submit" :disabled="Boolean(feedback)">Проверить</button>
         </form>
         <div v-else class="stack">
-          <p v-if="currentQuestion.answer" class="translation">{{ currentQuestion.answer }}</p>
-          <div class="control-row">
-            <button type="button" :disabled="Boolean(feedback)" @click="submit('remembered')">Помню</button>
-            <button type="button" :disabled="Boolean(feedback)" @click="submit('forgot')">Забыл</button>
-          </div>
+          <button v-if="!isSelfCheckRevealed" type="button" @click="isSelfCheckRevealed = true">Показать перевод</button>
+          <template v-else>
+            <p v-if="currentQuestion.answer" class="translation">{{ currentQuestion.answer }}</p>
+            <div class="control-row">
+              <button type="button" :disabled="Boolean(feedback)" @click="submit('remembered')">Помню</button>
+              <button type="button" :disabled="Boolean(feedback)" @click="submit('forgot')">Забыл</button>
+            </div>
+          </template>
         </div>
         <FeedbackPanel v-if="feedback" :correct="feedback.correct" :repeat="feedback.repeat" />
         <button v-if="feedback" type="button" @click="next">Дальше</button>

@@ -53,7 +53,8 @@ async function complete() {
       <EmptyState v-else-if="words.length === 0" title="На сегодня слов для повторения нет." />
       <template v-else>
         <SessionProgress :current="index" :total="words.length" />
-        <WordCard :word="currentWord" />
+        <WordCard :word="currentWord" :weak="Boolean(currentWord.is_weak)" />
+        <p v-if="currentWord.incorrect_count && currentWord.incorrect_count > 0" class="muted">Раньше были ошибки: {{ currentWord.incorrect_count }}</p>
         <p class="muted">Если слово раньше давалось трудно, оно остается в повторении до недельного теста.</p>
         <div class="control-row">
           <button type="button" :disabled="index === 0" @click="previous">Назад</button>

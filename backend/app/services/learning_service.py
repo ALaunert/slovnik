@@ -67,7 +67,34 @@ def get_review_words(db: Session, user_id: str) -> list[VocabularyItem]:
             break
     if not selected:
         return []
-    return list(db.scalars(select(VocabularyItem).where(VocabularyItem.id.in_(selected))))
+    words_by_id = {
+        word.id: word for word in db.scalars(select(VocabularyItem).where(VocabularyItem.id.in_(selected)))
+    }
+    progress_by_word_id = {progress.word_id: progress for progress in rows}
+    result = []
+    for word_id in selected:
+        word = words_by_id.get(word_id)
+        progress = progress_by_word_id.get(word_id)
+        if word is None or progress is None:
+            continue
+        result.append(
+            {
+                "id": word.id,
+                "serbian_cyrillic": word.serbian_cyrillic,
+                "serbian_latin": word.serbian_latin,
+                "russian_translation": word.russian_translation,
+                "cefr_level": word.cefr_level,
+                "theme": word.theme,
+                "usage_register": word.usage_register,
+                "stress_marker": word.stress_marker,
+                "meaning_notes": word.meaning_notes,
+                "example_sentences": word.example_sentences,
+                "example_translations": word.example_translations,
+                "incorrect_count": progress.incorrect_count,
+                "is_weak": progress.is_weak,
+            }
+        )
+    return result
 
 
 def complete_review(db: Session, user_id: str, word_ids: list[int]) -> list[UserWordProgress]:

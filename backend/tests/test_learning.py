@@ -32,3 +32,12 @@ def test_complete_review_marks_reviewing(client, seeded_words):
 
     assert response.status_code == 200
     assert response.json()["progress"][0]["status"] == "reviewing"
+
+
+def test_review_returns_progress_metadata(client, weak_progress):
+    response = client.get("/api/learning/learner-1/review")
+
+    assert response.status_code == 200
+    word = next(item for item in response.json()["words"] if item["id"] == weak_progress.word_id)
+    assert word["is_weak"] is True
+    assert word["incorrect_count"] == 1
