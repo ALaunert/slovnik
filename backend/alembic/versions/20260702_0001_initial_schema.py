@@ -72,6 +72,7 @@ def upgrade() -> None:
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("score", sa.Integer(), nullable=False),
         sa.Column("total_questions", sa.Integer(), nullable=False),
+        sa.Column("question_plan", sa.Text(), nullable=False, server_default="[]"),
     )
     op.create_index("ix_quiz_attempts_user_id", "quiz_attempts", ["user_id"])
 

@@ -21,8 +21,18 @@ def get_daily_new_words(db: Session, user_id: str) -> list[VocabularyItem]:
     )
 
 
+def _ensure_words_exist(db: Session, word_ids: list[int]) -> None:
+    if not word_ids:
+        return
+    existing_ids = set(db.scalars(select(VocabularyItem.id).where(VocabularyItem.id.in_(word_ids))))
+    missing_ids = sorted(set(word_ids) - existing_ids)
+    if missing_ids:
+        raise ValueError(f"Unknown word ids: {missing_ids}")
+
+
 def complete_new_words(db: Session, user_id: str, word_ids: list[int]) -> list[UserWordProgress]:
     get_or_create_profile(db, user_id)
+    _ensure_words_exist(db, word_ids)
     now = datetime.now(timezone.utc)
     progress_rows: list[UserWordProgress] = []
     for word_id in word_ids:
@@ -99,6 +109,7 @@ def get_review_words(db: Session, user_id: str) -> list[VocabularyItem]:
 
 def complete_review(db: Session, user_id: str, word_ids: list[int]) -> list[UserWordProgress]:
     get_or_create_profile(db, user_id)
+    _ensure_words_exist(db, word_ids)
     now = datetime.now(timezone.utc)
     progress_rows: list[UserWordProgress] = []
     for word_id in word_ids:

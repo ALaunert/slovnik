@@ -19,6 +19,7 @@ function applyProfile(profile: Profile) {
   settings.preferred_level = profile.preferred_level;
   settings.daily_new_word_count = profile.daily_new_word_count;
   settings.ui_language = profile.ui_language;
+  sessionStore.setUiLanguage(profile.ui_language);
 }
 
 onMounted(async () => {

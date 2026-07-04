@@ -1,15 +1,28 @@
 import { ref } from "vue";
 
 const USER_ID_KEY = "slovnik.userId";
+const UI_LANGUAGE_KEY = "slovnik.uiLanguage";
 
+export type UiLanguage = "ru" | "sr";
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+function normalizeUiLanguage(value: string | null): UiLanguage {
+  return value === "sr" ? "sr" : "ru";
+}
 
 export function createSessionStore(storage: StorageLike) {
   const userId = ref(storage.getItem(USER_ID_KEY) ?? "");
+  const uiLanguage = ref<UiLanguage>(normalizeUiLanguage(storage.getItem(UI_LANGUAGE_KEY)));
 
   function setUserId(nextUserId: string) {
     userId.value = nextUserId;
     storage.setItem(USER_ID_KEY, nextUserId);
+  }
+
+  function setUiLanguage(nextLanguage: string) {
+    const normalized = normalizeUiLanguage(nextLanguage);
+    uiLanguage.value = normalized;
+    storage.setItem(UI_LANGUAGE_KEY, normalized);
   }
 
   function clearUserId() {
@@ -17,7 +30,7 @@ export function createSessionStore(storage: StorageLike) {
     storage.removeItem(USER_ID_KEY);
   }
 
-  return { userId, setUserId, clearUserId };
+  return { userId, uiLanguage, setUserId, setUiLanguage, clearUserId };
 }
 
 const memoryStorage = new Map<string, string>();

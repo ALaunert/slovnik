@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -6,16 +8,16 @@ class ProfileCreate(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    preferred_level: str | None = None
+    preferred_level: Literal["A1", "A2", "B1", "B2", "C1", "C2"] | None = None
     daily_new_word_count: int | None = Field(default=None, ge=1, le=50)
-    ui_language: str | None = None
+    ui_language: Literal["ru", "sr"] | None = None
 
 
 class ProfileRead(BaseModel):
     user_id: str
-    preferred_level: str
+    preferred_level: Literal["A1", "A2", "B1", "B2", "C1", "C2"]
     daily_new_word_count: int
-    ui_language: str
+    ui_language: Literal["ru", "sr"]
 
     model_config = {"from_attributes": True}
 
@@ -24,7 +26,7 @@ class VocabularyCreate(BaseModel):
     serbian_cyrillic: str = Field(min_length=1, max_length=160)
     serbian_latin: str = Field(min_length=1, max_length=160)
     russian_translation: str = Field(min_length=1, max_length=240)
-    cefr_level: str
+    cefr_level: Literal["A1", "A2", "B1", "B2", "C1", "C2"]
     theme: str
     usage_register: str | None = None
     stress_marker: str | None = None
@@ -77,12 +79,12 @@ class LearningProgressRead(BaseModel):
 
 
 class QuizStartPayload(BaseModel):
-    quiz_type: str = "daily"
+    quiz_type: Literal["daily", "weekly"] = "daily"
 
 
 class QuizQuestionRead(BaseModel):
     word_id: int
-    question_type: str
+    question_type: Literal["sr_to_ru_choice", "ru_to_sr_typing", "remembered_forgot_self_check"]
     prompt: str
     answer: str | None = None
     choices: list[str] = []
@@ -96,7 +98,7 @@ class QuizStartRead(BaseModel):
 
 class QuizAnswerPayload(BaseModel):
     word_id: int
-    question_type: str
+    question_type: Literal["sr_to_ru_choice", "ru_to_sr_typing", "remembered_forgot_self_check"]
     answer: str
 
 

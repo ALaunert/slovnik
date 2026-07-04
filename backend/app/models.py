@@ -68,6 +68,7 @@ class QuizAttempt(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     score: Mapped[int] = mapped_column(Integer, default=0)
     total_questions: Mapped[int] = mapped_column(Integer, default=0)
+    question_plan: Mapped[str] = mapped_column(Text, default="[]")
 
 
 class QuizAnswer(Base):

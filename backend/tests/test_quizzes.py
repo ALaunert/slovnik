@@ -63,3 +63,35 @@ def test_correct_weekly_answer_removes_weak_status(client, started_weekly_quiz, 
     assert response.status_code == 200
     assert response.json()["is_correct"] is True
     assert response.json()["is_weak"] is False
+
+
+def test_quiz_rejects_word_that_is_not_in_attempt(client, started_quiz, seeded_words):
+    out_of_roster_word = seeded_words[-1]
+
+    response = client.post(
+        f"/api/quizzes/{started_quiz['attempt_id']}/answers",
+        json={"word_id": out_of_roster_word.id, "question_type": "sr_to_ru_choice", "answer": "wrong"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_backend_repeats_incorrect_answer_only_once(client, started_quiz):
+    question = started_quiz["questions"][0]
+    payload = {"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"}
+
+    first = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/answers", json=payload)
+    second = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/answers", json=payload)
+
+    assert first.status_code == 200
+    assert first.json()["repeat_word"] is True
+    assert second.status_code == 200
+    assert second.json()["repeat_word"] is False
+
+
+def test_multiple_choice_does_not_always_put_correct_answer_first(client, completed_learning):
+    response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
+
+    question = next(item for item in response.json()["questions"] if item["question_type"] == "sr_to_ru_choice")
+    learned_word = next(word for word in completed_learning if word.id == question["word_id"])
+    assert question["choices"][0] != learned_word.russian_translation

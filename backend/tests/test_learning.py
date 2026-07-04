@@ -41,3 +41,15 @@ def test_review_returns_progress_metadata(client, weak_progress):
     word = next(item for item in response.json()["words"] if item["id"] == weak_progress.word_id)
     assert word["is_weak"] is True
     assert word["incorrect_count"] == 1
+
+
+def test_complete_new_words_rejects_unknown_word_id(client):
+    response = client.post("/api/learning/learner-1/new-words/complete", json={"word_ids": [999]})
+
+    assert response.status_code == 400
+
+
+def test_complete_review_rejects_unknown_word_id(client):
+    response = client.post("/api/learning/learner-1/review/complete", json={"word_ids": [999]})
+
+    assert response.status_code == 400

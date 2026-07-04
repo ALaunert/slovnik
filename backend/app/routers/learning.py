@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -20,7 +20,10 @@ def new_words(user_id: str, db: Session = Depends(get_db)):
 
 @router.post("/{user_id}/new-words/complete", response_model=LearningProgressRead)
 def complete_new_words_route(user_id: str, payload: WordIdsPayload, db: Session = Depends(get_db)):
-    return {"progress": complete_new_words(db, user_id, payload.word_ids)}
+    try:
+        return {"progress": complete_new_words(db, user_id, payload.word_ids)}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/{user_id}/review", response_model=ReviewWordsRead)
@@ -30,4 +33,7 @@ def review_words(user_id: str, db: Session = Depends(get_db)):
 
 @router.post("/{user_id}/review/complete", response_model=LearningProgressRead)
 def complete_review_route(user_id: str, payload: WordIdsPayload, db: Session = Depends(get_db)):
-    return {"progress": complete_review(db, user_id, payload.word_ids)}
+    try:
+        return {"progress": complete_review(db, user_id, payload.word_ids)}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
