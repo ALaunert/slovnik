@@ -90,3 +90,19 @@ def test_editor_password_verify_rejects_wrong_password(client):
     response = client.post("/api/vocabulary/editor/verify", headers={"X-Editor-Password": "bad"})
 
     assert response.status_code == 403
+
+
+def test_create_word_rejects_overlong_bounded_fields(client):
+    payload = {
+        "serbian_cyrillic": "добар дан",
+        "serbian_latin": "dobar dan",
+        "russian_translation": "добрый день",
+        "cefr_level": "A1",
+        "theme": "x" * 81,
+        "usage_register": "x" * 81,
+        "stress_marker": "x" * 161,
+    }
+
+    response = client.post("/api/vocabulary", headers={"X-Editor-Password": settings.editor_password}, json=payload)
+
+    assert response.status_code == 422

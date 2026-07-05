@@ -160,6 +160,19 @@ export async function startQuiz(userId: string, quizType: "daily" | "weekly" = "
   return response.json();
 }
 
+export async function revealQuizAnswer(
+  userId: string,
+  attemptId: number,
+  wordId: number,
+  questionType: string,
+): Promise<{ answer: string }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/quizzes/${encodeURIComponent(userId)}/${attemptId}/questions/${wordId}/${questionType}/answer`,
+  );
+  if (!response.ok) throw new Error("Failed to reveal answer");
+  return response.json();
+}
+
 export async function submitQuizAnswer(
   userId: string,
   attemptId: number,

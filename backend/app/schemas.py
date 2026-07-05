@@ -27,9 +27,9 @@ class VocabularyCreate(BaseModel):
     serbian_latin: str = Field(min_length=1, max_length=160)
     russian_translation: str = Field(min_length=1, max_length=240)
     cefr_level: Literal["A1", "A2", "B1", "B2", "C1", "C2"]
-    theme: str
-    usage_register: str | None = None
-    stress_marker: str | None = None
+    theme: str = Field(min_length=1, max_length=80)
+    usage_register: str | None = Field(default=None, max_length=80)
+    stress_marker: str | None = Field(default=None, max_length=160)
     meaning_notes: str | None = None
     example_sentences: str | None = None
     example_translations: str | None = None
@@ -86,7 +86,6 @@ class QuizQuestionRead(BaseModel):
     word_id: int
     question_type: Literal["sr_to_ru_choice", "ru_to_sr_typing", "remembered_forgot_self_check"]
     prompt: str
-    answer: str | None = None
     choices: list[str] = []
 
 
@@ -106,6 +105,10 @@ class QuizAnswerRead(BaseModel):
     is_correct: bool
     repeat_word: bool
     is_weak: bool
+
+
+class QuizRevealAnswerRead(BaseModel):
+    answer: str
 
 
 class QuizCompleteRead(BaseModel):

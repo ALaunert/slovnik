@@ -252,3 +252,41 @@ def test_complete_quiz_rejects_skipped_required_repeats(client, started_quiz):
     response = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete")
 
     assert response.status_code == 400
+
+
+def test_start_quiz_does_not_expose_self_check_answer(client, completed_learning):
+    response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
+
+    assert response.status_code == 200
+    question = next(
+        item for item in response.json()["questions"] if item["question_type"] == "remembered_forgot_self_check"
+    )
+    assert "answer" not in question
+
+
+def test_reveal_self_check_answer_returns_translation(client, started_quiz, db_session):
+    from app.models import VocabularyItem
+
+    question = next(
+        item for item in started_quiz["questions"] if item["question_type"] == "remembered_forgot_self_check"
+    )
+    word = db_session.get(VocabularyItem, question["word_id"])
+
+    response = client.get(
+        f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/questions/"
+        f"{question['word_id']}/{question['question_type']}/answer"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == word.russian_translation
+
+
+def test_reveal_answer_rejects_non_self_check_question(client, started_quiz):
+    question = next(item for item in started_quiz["questions"] if item["question_type"] != "remembered_forgot_self_check")
+
+    response = client.get(
+        f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/questions/"
+        f"{question['word_id']}/{question['question_type']}/answer"
+    )
+
+    assert response.status_code == 400

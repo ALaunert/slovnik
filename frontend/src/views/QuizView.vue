@@ -2,7 +2,14 @@
 import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 
-import { completeQuiz, startQuiz, submitQuizAnswer, type QuizCompletion, type QuizQuestion } from "../api/client";
+import {
+  completeQuiz,
+  revealQuizAnswer,
+  startQuiz,
+  submitQuizAnswer,
+  type QuizCompletion,
+  type QuizQuestion,
+} from "../api/client";
 import EmptyState from "../components/EmptyState.vue";
 import FeedbackPanel from "../components/FeedbackPanel.vue";
 import { messages } from "../i18n/messages";
@@ -58,6 +65,19 @@ async function submit(value?: string) {
   }
 }
 
+async function revealSelfCheckAnswer() {
+  if (!currentQuestion.value) return;
+  const question = currentQuestion.value;
+  const result = await revealQuizAnswer(
+    sessionStore.userId.value,
+    attemptId.value,
+    question.word_id,
+    question.question_type,
+  );
+  questions.value[index.value] = { ...question, answer: result.answer };
+  isSelfCheckRevealed.value = true;
+}
+
 async function next() {
   feedback.value = null;
   answer.value = "";
@@ -92,7 +112,7 @@ async function next() {
           <button type="submit" :disabled="Boolean(feedback)">{{ copy.check }}</button>
         </form>
         <div v-else class="stack">
-          <button v-if="!isSelfCheckRevealed" type="button" @click="isSelfCheckRevealed = true">{{ copy.showTranslation }}</button>
+          <button v-if="!isSelfCheckRevealed" type="button" @click="revealSelfCheckAnswer">{{ copy.showTranslation }}</button>
           <template v-else>
             <p v-if="currentQuestion.answer" class="translation">{{ currentQuestion.answer }}</p>
             <div class="control-row">

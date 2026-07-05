@@ -12,13 +12,14 @@ vi.mock("vue-router", () => ({
 
 const apiMocks = vi.hoisted(() => ({
   startQuiz: vi.fn(),
+  revealQuizAnswer: vi.fn(),
   submitQuizAnswer: vi.fn(),
   completeQuiz: vi.fn().mockResolvedValue({ score: 0, total_questions: 2, weak_word_ids: [1], mistakes: [] }),
 }));
 
 vi.mock("../../src/api/client", () => apiMocks);
 
-import { completeQuiz, startQuiz, submitQuizAnswer } from "../../src/api/client";
+import { completeQuiz, revealQuizAnswer, startQuiz, submitQuizAnswer } from "../../src/api/client";
 import { sessionStore } from "../../src/stores/session";
 import QuizView from "../../src/views/QuizView.vue";
 
@@ -115,16 +116,24 @@ describe("QuizView", () => {
         word_id: 2,
         question_type: "remembered_forgot_self_check",
         prompt: "река / reka",
-        answer: "вода",
         choices: [],
       }],
     });
+    vi.mocked(revealQuizAnswer).mockResolvedValueOnce({ answer: "вода" });
 
     const wrapper = mount(QuizView);
     await flushPromises();
 
     expect(wrapper.text()).not.toContain("вода");
     await buttonByText(wrapper, "Показать перевод").trigger("click");
+    await flushPromises();
+
+    expect(revealQuizAnswer).toHaveBeenCalledWith(
+      "learner-1",
+      13,
+      2,
+      "remembered_forgot_self_check",
+    );
     expect(wrapper.text()).toContain("вода");
   });
 });

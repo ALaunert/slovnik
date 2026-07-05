@@ -160,6 +160,16 @@ def start_quiz(db: Session, user_id: str, quiz_type: str) -> dict:
     return {"attempt_id": attempt.id, "quiz_type": quiz_type, "questions": questions}
 
 
+def reveal_question_answer(db: Session, user_id: str, attempt_id: int, word_id: int, question_type: str) -> dict:
+    attempt = _get_user_attempt(db, user_id, attempt_id)
+    question = _matching_question(attempt, word_id, question_type)
+    if question is None:
+        raise InvalidQuizSubmission("Question does not match this quiz attempt")
+    if question_type != "remembered_forgot_self_check" or not question.get("answer"):
+        raise InvalidQuizSubmission("Question answer cannot be revealed")
+    return {"answer": str(question["answer"])}
+
+
 def _is_correct(word: VocabularyItem, question_type: str, answer: str) -> bool:
     normalized = answer.strip().casefold()
     if question_type == "sr_to_ru_choice":
