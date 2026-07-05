@@ -76,6 +76,9 @@ export const messages = {
     loadProfileError: "Не удалось загрузить профиль",
     loading: "Загрузка",
     start: "Начать",
+    userIdLabel: "User ID",
+    learnerFallback: "ученик",
+    vocabularyEyebrow: "Rečnik",
   },
   sr: {
     appTitle: "Srpski rečnik",
@@ -154,5 +157,8 @@ export const messages = {
     loadProfileError: "Profil nije učitan",
     loading: "Učitavanje",
     start: "Počni",
+    userIdLabel: "User ID",
+    learnerFallback: "učenik",
+    vocabularyEyebrow: "Rečnik",
   },
 } as const;

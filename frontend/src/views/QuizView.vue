@@ -45,7 +45,7 @@ onMounted(async () => {
 async function submit(value?: string) {
   if (!currentQuestion.value) return;
   const question = currentQuestion.value;
-  const response = await submitQuizAnswer(attemptId.value, {
+  const response = await submitQuizAnswer(sessionStore.userId.value, attemptId.value, {
     word_id: question.word_id,
     question_type: question.question_type,
     answer: value ?? answer.value,
@@ -66,7 +66,7 @@ async function next() {
     index.value += 1;
     return;
   }
-  const completion: QuizCompletion = await completeQuiz(attemptId.value);
+  const completion: QuizCompletion = await completeQuiz(sessionStore.userId.value, attemptId.value);
   sessionStorage.setItem("slovnik.quizResults", JSON.stringify({ ...completion, quizType: quizType.value }));
   await router.push("/results");
 }

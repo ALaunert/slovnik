@@ -56,7 +56,7 @@ onMounted(loadWords);
   <main class="page">
     <header class="page-header">
       <div>
-        <p class="eyebrow">Rečnik</p>
+        <p class="eyebrow">{{ copy.vocabularyEyebrow }}</p>
         <h1>{{ copy.vocabulary }}</h1>
       </div>
       <RouterLink to="/dashboard">{{ copy.backToDashboard }}</RouterLink>

@@ -11,9 +11,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8", extra="ignore")
 
     @model_validator(mode="after")
-    def reject_default_editor_password_in_production(self) -> "Settings":
-        if self.environment == "production" and self.editor_password == "dev-editor-password":
-            raise ValueError("EDITOR_PASSWORD must be set in production")
+    def reject_placeholder_editor_password_in_production(self) -> "Settings":
+        placeholder_passwords = {"", "change-me", "changeme", "dev-editor-password"}
+        if self.environment == "production" and self.editor_password.strip().casefold() in placeholder_passwords:
+            raise ValueError("EDITOR_PASSWORD must be set to a non-placeholder value in production")
         return self
 
 

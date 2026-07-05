@@ -5,8 +5,9 @@ from app.config import Settings
 
 
 def test_production_rejects_default_editor_password():
-    with pytest.raises(ValidationError):
-        Settings(environment="production", editor_password="dev-editor-password")
+    for placeholder in ["", "change-me", "dev-editor-password"]:
+        with pytest.raises(ValidationError):
+            Settings(environment="production", editor_password=placeholder)
 
 
 def test_development_allows_default_editor_password():

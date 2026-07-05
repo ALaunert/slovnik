@@ -161,10 +161,11 @@ export async function startQuiz(userId: string, quizType: "daily" | "weekly" = "
 }
 
 export async function submitQuizAnswer(
+  userId: string,
   attemptId: number,
   payload: { word_id: number; question_type: string; answer: string },
 ): Promise<{ is_correct: boolean; repeat_word: boolean; is_weak: boolean }> {
-  const response = await fetch(`${API_BASE_URL}/api/quizzes/${attemptId}/answers`, {
+  const response = await fetch(`${API_BASE_URL}/api/quizzes/${encodeURIComponent(userId)}/${attemptId}/answers`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -173,8 +174,8 @@ export async function submitQuizAnswer(
   return response.json();
 }
 
-export async function completeQuiz(attemptId: number): Promise<QuizCompletion> {
-  const response = await fetch(`${API_BASE_URL}/api/quizzes/${attemptId}/complete`, { method: "POST" });
+export async function completeQuiz(userId: string, attemptId: number): Promise<QuizCompletion> {
+  const response = await fetch(`${API_BASE_URL}/api/quizzes/${encodeURIComponent(userId)}/${attemptId}/complete`, { method: "POST" });
   if (!response.ok) throw new Error("Failed to complete quiz");
   return response.json();
 }

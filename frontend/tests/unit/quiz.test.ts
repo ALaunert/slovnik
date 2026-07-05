@@ -63,7 +63,7 @@ describe("QuizView", () => {
     await flushPromises();
 
     expect(submitQuizAnswer).toHaveBeenCalledTimes(2);
-    expect(completeQuiz).toHaveBeenCalledWith(12);
+    expect(completeQuiz).toHaveBeenCalledWith("learner-1", 12);
     expect(routerPush).toHaveBeenCalledWith("/results");
   });
 
@@ -104,7 +104,7 @@ describe("QuizView", () => {
     await flushPromises();
 
     expect(submitQuizAnswer).toHaveBeenCalledTimes(4);
-    expect(completeQuiz).toHaveBeenCalledWith(14);
+    expect(completeQuiz).toHaveBeenCalledWith("learner-1", 14);
   });
 
   it("does not reveal self-check answers until the learner asks", async () => {

@@ -39,7 +39,7 @@ async function start() {
       <h1>{{ copy.appTitle }}</h1>
       <form class="stack" @submit.prevent="start">
         <label>
-          User ID
+          {{ copy.userIdLabel }}
           <input v-model="userId" name="user_id" autocomplete="username" />
         </label>
         <button type="submit" :disabled="isLoading">{{ isLoading ? copy.loading : copy.start }}</button>

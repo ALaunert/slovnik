@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+
 def test_start_daily_quiz_returns_supported_question_types(client, completed_learning):
     response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
 
@@ -13,7 +14,7 @@ def test_start_daily_quiz_returns_supported_question_types(client, completed_lea
 def test_submit_incorrect_answer_marks_word_weak(client, started_quiz):
     question = started_quiz["questions"][0]
     response = client.post(
-        f"/api/quizzes/{started_quiz['attempt_id']}/answers",
+        f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers",
         json={"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"},
     )
 
@@ -23,17 +24,18 @@ def test_submit_incorrect_answer_marks_word_weak(client, started_quiz):
 
 
 def test_complete_daily_quiz_returns_score(client, started_quiz):
-    question = started_quiz["questions"][0]
-    client.post(
-        f"/api/quizzes/{started_quiz['attempt_id']}/answers",
-        json={"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"},
-    )
+    for question in started_quiz["questions"]:
+        client.post(
+            f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers",
+            json={"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"},
+        )
 
-    response = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/complete")
+    response = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete")
 
     assert response.status_code == 200
-    assert response.json()["total_questions"] == 1
-    assert response.json()["weak_word_ids"] == [question["word_id"]]
+    assert response.json()["total_questions"] == len(started_quiz["questions"])
+    assert response.json()["score"] == 0
+    assert started_quiz["questions"][0]["word_id"] in response.json()["weak_word_ids"]
 
 
 def test_weekly_quiz_includes_this_weeks_words_and_weak_words(client, weekly_progress):
@@ -54,7 +56,7 @@ def test_correct_weekly_answer_removes_weak_status(client, started_weekly_quiz, 
     )
 
     response = client.post(
-        f"/api/quizzes/{started_weekly_quiz['attempt_id']}/answers",
+        f"/api/quizzes/learner-1/{started_weekly_quiz['attempt_id']}/answers",
         json={
             "word_id": weak_word.id,
             "question_type": question["question_type"],
@@ -71,7 +73,7 @@ def test_quiz_rejects_word_that_is_not_in_attempt(client, started_quiz, seeded_w
     out_of_roster_word = seeded_words[-1]
 
     response = client.post(
-        f"/api/quizzes/{started_quiz['attempt_id']}/answers",
+        f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers",
         json={"word_id": out_of_roster_word.id, "question_type": "sr_to_ru_choice", "answer": "wrong"},
     )
 
@@ -82,8 +84,8 @@ def test_backend_repeats_incorrect_answer_only_once(client, started_quiz):
     question = started_quiz["questions"][0]
     payload = {"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"}
 
-    first = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/answers", json=payload)
-    second = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/answers", json=payload)
+    first = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
+    second = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
 
     assert first.status_code == 200
     assert first.json()["repeat_word"] is True
@@ -206,10 +208,33 @@ def test_quiz_rejects_submissions_after_repeat_limit(client, started_quiz):
     question = started_quiz["questions"][0]
     payload = {"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"}
 
-    first = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/answers", json=payload)
-    second = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/answers", json=payload)
-    third = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/answers", json=payload)
+    first = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
+    second = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
+    third = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
 
     assert first.status_code == 200
     assert second.status_code == 200
     assert third.status_code == 400
+
+
+def test_quiz_answer_rejects_wrong_user(client, started_quiz):
+    question = started_quiz["questions"][0]
+
+    response = client.post(
+        f"/api/quizzes/learner-2/{started_quiz['attempt_id']}/answers",
+        json={"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_complete_quiz_rejects_wrong_user(client, started_quiz):
+    response = client.post(f"/api/quizzes/learner-2/{started_quiz['attempt_id']}/complete")
+
+    assert response.status_code == 404
+
+
+def test_complete_quiz_rejects_unanswered_planned_questions(client, started_quiz):
+    response = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete")
+
+    assert response.status_code == 400

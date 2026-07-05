@@ -169,10 +169,15 @@ def _is_correct(word: VocabularyItem, question_type: str, answer: str) -> bool:
     return normalized == "remembered"
 
 
-def submit_answer(db: Session, attempt_id: int, word_id: int, question_type: str, answer: str) -> dict:
+def _get_user_attempt(db: Session, user_id: str, attempt_id: int) -> QuizAttempt:
     attempt = db.get(QuizAttempt, attempt_id)
-    if attempt is None:
+    if attempt is None or attempt.user_id != user_id:
         raise ValueError("Quiz attempt not found")
+    return attempt
+
+
+def submit_answer(db: Session, user_id: str, attempt_id: int, word_id: int, question_type: str, answer: str) -> dict:
+    attempt = _get_user_attempt(db, user_id, attempt_id)
     if attempt.completed_at is not None:
         raise InvalidQuizSubmission("Quiz attempt is already complete")
     question = _matching_question(attempt, word_id, question_type)
@@ -220,12 +225,19 @@ def submit_answer(db: Session, attempt_id: int, word_id: int, question_type: str
     return {"is_correct": correct, "repeat_word": not correct and incorrect_before == 0, "is_weak": progress.is_weak}
 
 
-def complete_quiz(db: Session, attempt_id: int) -> dict:
-    attempt = db.get(QuizAttempt, attempt_id)
-    if attempt is None:
-        raise ValueError("Quiz attempt not found")
+def complete_quiz(db: Session, user_id: str, attempt_id: int) -> dict:
+    attempt = _get_user_attempt(db, user_id, attempt_id)
+    planned_questions = _question_plan(attempt)
     answers = list(db.scalars(select(QuizAnswer).where(QuizAnswer.quiz_attempt_id == attempt_id)))
-    score = sum(1 for answer in answers if answer.is_correct)
+    answered_keys = {(answer.word_id, answer.question_type) for answer in answers}
+    planned_keys = {(question.get("word_id"), question.get("question_type")) for question in planned_questions}
+    if planned_keys - answered_keys:
+        raise InvalidQuizSubmission("Quiz attempt has unanswered questions")
+    score = sum(
+        1
+        for word_id, question_type in planned_keys
+        if any(answer.word_id == word_id and answer.question_type == question_type and answer.is_correct for answer in answers)
+    )
     weak_word_ids = [
         progress.word_id
         for progress in db.scalars(
@@ -235,7 +247,7 @@ def complete_quiz(db: Session, attempt_id: int) -> dict:
         )
     ]
     attempt.score = score
-    attempt.total_questions = len(answers)
+    attempt.total_questions = len(planned_questions)
     attempt.completed_at = datetime.now(timezone.utc)
     db.commit()
     mistakes = [
@@ -243,4 +255,4 @@ def complete_quiz(db: Session, attempt_id: int) -> dict:
         for answer in answers
         if not answer.is_correct
     ]
-    return {"score": score, "total_questions": len(answers), "weak_word_ids": weak_word_ids, "mistakes": mistakes}
+    return {"score": score, "total_questions": len(planned_questions), "weak_word_ids": weak_word_ids, "mistakes": mistakes}

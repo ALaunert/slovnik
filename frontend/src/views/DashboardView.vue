@@ -55,7 +55,7 @@ async function saveSettings() {
   <main class="page">
     <header class="page-header">
       <div>
-        <p class="eyebrow">{{ userId || "learner" }}</p>
+        <p class="eyebrow">{{ userId || copy.learnerFallback }}</p>
         <h1>{{ copy.dashboard }}</h1>
       </div>
       <RouterLink to="/">{{ copy.changeId }}</RouterLink>
