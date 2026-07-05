@@ -22,5 +22,15 @@ const title = computed(() => (results.value.quizType === "weekly" ? copy.value.w
       <div><strong>{{ results.total_questions }}</strong><span>{{ copy.questionCount }}</span></div>
       <div><strong>{{ results.weak_word_ids.length }}</strong><span>{{ copy.weakWordCount }}</span></div>
     </section>
+    <section v-if="results.mistakes.length > 0" class="panel stack">
+      <h2>{{ copy.mistakes }}</h2>
+      <ul class="word-list">
+        <li v-for="mistake in results.mistakes" :key="`${mistake.word_id}-${mistake.question_type}-${mistake.answer}`" class="word-row">
+          <strong>#{{ mistake.word_id }}</strong>
+          <span>{{ copy.mistakeAnswer }}: {{ mistake.answer }}</span>
+          <span>{{ copy.mistakeType }}: {{ mistake.question_type }}</span>
+        </li>
+      </ul>
+    </section>
   </main>
 </template>

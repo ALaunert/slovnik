@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 def test_start_daily_quiz_returns_supported_question_types(client, completed_learning):
     response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
 
@@ -95,3 +97,119 @@ def test_multiple_choice_does_not_always_put_correct_answer_first(client, comple
     question = next(item for item in response.json()["questions"] if item["question_type"] == "sr_to_ru_choice")
     learned_word = next(word for word in completed_learning if word.id == question["word_id"])
     assert question["choices"][0] != learned_word.russian_translation
+
+
+def test_weekly_quiz_uses_calendar_week_boundary(client, db_session, monkeypatch):
+    from app.models import UserProfile, UserWordProgress, VocabularyItem
+    import app.services.quiz_service as quiz_service
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = datetime(2026, 7, 6, 12, tzinfo=timezone.utc)
+            return value if tz is None else value.astimezone(tz)
+
+    monkeypatch.setattr(quiz_service, "datetime", FixedDateTime)
+    db_session.add(UserProfile(user_id="learner-week"))
+    previous_week_word = VocabularyItem(
+        serbian_cyrillic="недеља",
+        serbian_latin="nedelja",
+        russian_translation="воскресенье",
+        cefr_level="A1",
+        theme="calendar",
+    )
+    current_week_word = VocabularyItem(
+        serbian_cyrillic="понедељак",
+        serbian_latin="ponedeljak",
+        russian_translation="понедельник",
+        cefr_level="A1",
+        theme="calendar",
+    )
+    db_session.add_all([previous_week_word, current_week_word])
+    db_session.commit()
+    previous_sunday = datetime(2026, 7, 5, 12, tzinfo=timezone.utc)
+    current_monday = datetime(2026, 7, 6, 9, tzinfo=timezone.utc)
+    db_session.add_all([
+        UserWordProgress(
+            user_id="learner-week",
+            word_id=previous_week_word.id,
+            status="reviewing",
+            first_seen_at=previous_sunday,
+            last_seen_at=previous_sunday,
+        ),
+        UserWordProgress(
+            user_id="learner-week",
+            word_id=current_week_word.id,
+            status="reviewing",
+            first_seen_at=current_monday,
+            last_seen_at=current_monday,
+        ),
+    ])
+    db_session.commit()
+
+    response = client.post("/api/quizzes/learner-week/start", json={"quiz_type": "weekly"})
+
+    assert response.status_code == 200
+    returned_ids = {question["word_id"] for question in response.json()["questions"]}
+    assert current_week_word.id in returned_ids
+    assert previous_week_word.id not in returned_ids
+
+
+def test_daily_quiz_prioritizes_words_touched_today_under_cap(client, db_session):
+    from app.models import UserProfile, UserWordProgress, VocabularyItem
+
+    db_session.add(UserProfile(user_id="learner-many"))
+    words = [
+        VocabularyItem(
+            serbian_cyrillic=f"реч {index}",
+            serbian_latin=f"rec {index}",
+            russian_translation=f"слово {index}",
+            cefr_level="A1",
+            theme="daily",
+        )
+        for index in range(1, 26)
+    ]
+    db_session.add_all(words)
+    db_session.commit()
+    old_touch = datetime.now(timezone.utc) - timedelta(days=10)
+    today_touch = datetime.now(timezone.utc)
+    progress_rows = [
+        UserWordProgress(
+            user_id="learner-many",
+            word_id=word.id,
+            status="reviewing",
+            first_seen_at=old_touch,
+            last_seen_at=old_touch,
+        )
+        for word in words[:-1]
+    ]
+    progress_rows.append(
+        UserWordProgress(
+            user_id="learner-many",
+            word_id=words[-1].id,
+            status="seen",
+            first_seen_at=today_touch,
+            last_seen_at=today_touch,
+        )
+    )
+    db_session.add_all(progress_rows)
+    db_session.commit()
+
+    response = client.post("/api/quizzes/learner-many/start", json={"quiz_type": "daily"})
+
+    assert response.status_code == 200
+    returned_ids = {question["word_id"] for question in response.json()["questions"]}
+    assert words[-1].id in returned_ids
+
+
+def test_quiz_rejects_submissions_after_repeat_limit(client, started_quiz):
+    question = started_quiz["questions"][0]
+    payload = {"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"}
+
+    first = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/answers", json=payload)
+    second = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/answers", json=payload)
+    third = client.post(f"/api/quizzes/{started_quiz['attempt_id']}/answers", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 400

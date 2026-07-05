@@ -1,9 +1,9 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from random import Random
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.models import QuizAnswer, QuizAttempt, UserWordProgress, VocabularyItem
@@ -16,22 +16,43 @@ class InvalidQuizSubmission(ValueError):
     pass
 
 
+def _day_start(value: datetime) -> datetime:
+    return datetime.combine(value.date(), time.min, tzinfo=timezone.utc)
+
+
+def _week_start(value: datetime) -> datetime:
+    week_start_date = value.date() - timedelta(days=value.weekday())
+    return datetime.combine(week_start_date, time.min, tzinfo=timezone.utc)
+
+
 def _source_progress(db: Session, user_id: str, quiz_type: str) -> list[UserWordProgress]:
     get_or_create_profile(db, user_id)
     statement = select(UserWordProgress).where(UserWordProgress.user_id == user_id)
+    now = datetime.now(timezone.utc)
     if quiz_type == "weekly":
-        week_start = datetime.now(timezone.utc) - timedelta(days=7)
+        current_week_start = _week_start(now)
         statement = statement.where(
-            (UserWordProgress.first_seen_at >= week_start)
-            | (UserWordProgress.last_seen_at >= week_start)
+            (UserWordProgress.first_seen_at >= current_week_start)
+            | (UserWordProgress.last_seen_at >= current_week_start)
             | (UserWordProgress.is_weak.is_(True))
         )
     else:
+        today_start = _day_start(now)
+        touched_today = case(
+            (
+                (UserWordProgress.first_seen_at >= today_start)
+                | (UserWordProgress.last_seen_at >= today_start),
+                1,
+            ),
+            else_=0,
+        )
+        last_touch = func.coalesce(UserWordProgress.last_seen_at, UserWordProgress.first_seen_at)
         statement = statement.where(
             (UserWordProgress.first_seen_at.is_not(None))
             | (UserWordProgress.last_seen_at.is_not(None))
             | (UserWordProgress.is_weak.is_(True))
-        )
+        ).order_by(UserWordProgress.is_weak.desc(), touched_today.desc(), last_touch.desc(), UserWordProgress.id)
+        return list(db.scalars(statement))
     return list(db.scalars(statement.order_by(UserWordProgress.is_weak.desc(), UserWordProgress.id)))
 
 
@@ -94,15 +115,18 @@ def _matching_question(attempt: QuizAttempt, word_id: int, question_type: str) -
     return None
 
 
-def _prior_incorrect_count(db: Session, attempt_id: int, word_id: int, question_type: str) -> int:
-    return db.scalar(
-        select(func.count(QuizAnswer.id)).where(
-            QuizAnswer.quiz_attempt_id == attempt_id,
-            QuizAnswer.word_id == word_id,
-            QuizAnswer.question_type == question_type,
-            QuizAnswer.is_correct.is_(False),
+def _answer_history(db: Session, attempt_id: int, word_id: int, question_type: str) -> list[QuizAnswer]:
+    return list(
+        db.scalars(
+            select(QuizAnswer)
+            .where(
+                QuizAnswer.quiz_attempt_id == attempt_id,
+                QuizAnswer.word_id == word_id,
+                QuizAnswer.question_type == question_type,
+            )
+            .order_by(QuizAnswer.id)
         )
-    ) or 0
+    )
 
 
 def start_quiz(db: Session, user_id: str, quiz_type: str) -> dict:
@@ -115,13 +139,15 @@ def start_quiz(db: Session, user_id: str, quiz_type: str) -> dict:
         if len(word_ids) >= limit:
             break
     words = list(db.scalars(select(VocabularyItem).where(VocabularyItem.id.in_(word_ids)))) if word_ids else []
+    words_by_id = {word.id: word for word in words}
+    ordered_words = [words_by_id[word_id] for word_id in word_ids if word_id in words_by_id]
     questions = []
-    for index, word in enumerate(words):
+    for index, word in enumerate(ordered_words):
         questions.append(_question_for(db, word, QUESTION_TYPES[index % len(QUESTION_TYPES)]))
-    if words and len({q["question_type"] for q in questions}) < len(QUESTION_TYPES):
+    if ordered_words and len({q["question_type"] for q in questions}) < len(QUESTION_TYPES):
         for question_type in QUESTION_TYPES:
             if question_type not in {q["question_type"] for q in questions}:
-                questions.append(_question_for(db, words[0], question_type))
+                questions.append(_question_for(db, ordered_words[0], question_type))
     attempt = QuizAttempt(
         user_id=user_id,
         quiz_type=quiz_type,
@@ -155,6 +181,9 @@ def submit_answer(db: Session, attempt_id: int, word_id: int, question_type: str
     word = db.get(VocabularyItem, word_id)
     if word is None:
         raise ValueError("Word not found")
+    previous_answers = _answer_history(db, attempt_id, word_id, question_type)
+    if any(previous.is_correct for previous in previous_answers) or len(previous_answers) >= 2:
+        raise InvalidQuizSubmission("Question has already reached its answer limit")
     progress = db.scalar(
         select(UserWordProgress).where(
             UserWordProgress.user_id == attempt.user_id, UserWordProgress.word_id == word_id
@@ -164,7 +193,7 @@ def submit_answer(db: Session, attempt_id: int, word_id: int, question_type: str
         progress = UserWordProgress(user_id=attempt.user_id, word_id=word_id)
         db.add(progress)
     correct = _is_correct(word, question_type, answer)
-    incorrect_before = _prior_incorrect_count(db, attempt_id, word_id, question_type)
+    incorrect_before = sum(1 for previous in previous_answers if not previous.is_correct)
     now = datetime.now(timezone.utc)
     progress.last_quizzed_at = now
     if correct:
