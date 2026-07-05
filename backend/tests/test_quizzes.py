@@ -290,3 +290,16 @@ def test_reveal_answer_rejects_non_self_check_question(client, started_quiz):
     )
 
     assert response.status_code == 400
+
+
+def test_complete_quiz_rejects_already_completed_attempt(client, started_quiz):
+    for question in started_quiz["questions"]:
+        payload = {"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"}
+        client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
+        client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
+
+    first = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete")
+    second = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete")
+
+    assert first.status_code == 200
+    assert second.status_code == 400

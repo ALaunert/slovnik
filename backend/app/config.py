@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def reject_placeholder_editor_password_in_production(self) -> "Settings":
         placeholder_passwords = {"", "change-me", "changeme", "dev-editor-password"}
-        if self.environment == "production" and self.editor_password.strip().casefold() in placeholder_passwords:
+        if self.environment.strip().casefold() == "production" and self.editor_password.strip().casefold() in placeholder_passwords:
             raise ValueError("EDITOR_PASSWORD must be set to a non-placeholder value in production")
         return self
 

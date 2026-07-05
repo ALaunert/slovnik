@@ -243,6 +243,8 @@ def _correct_answer_for(word: VocabularyItem, question_type: str) -> str:
 
 def complete_quiz(db: Session, user_id: str, attempt_id: int) -> dict:
     attempt = _get_user_attempt(db, user_id, attempt_id)
+    if attempt.completed_at is not None:
+        raise InvalidQuizSubmission("Quiz attempt is already complete")
     planned_questions = _question_plan(attempt)
     answers = list(db.scalars(select(QuizAnswer).where(QuizAnswer.quiz_attempt_id == attempt_id)))
     answers_by_key = {
