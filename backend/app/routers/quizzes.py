@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -6,15 +8,16 @@ from app.schemas import QuizAnswerPayload, QuizAnswerRead, QuizCompleteRead, Qui
 from app.services.quiz_service import InvalidQuizSubmission, complete_quiz, start_quiz, submit_answer
 
 router = APIRouter(prefix="/api/quizzes", tags=["quizzes"])
+UserIdPath = Annotated[str, Path(min_length=1, max_length=80)]
 
 
 @router.post("/{user_id}/start", response_model=QuizStartRead)
-def start(user_id: str, payload: QuizStartPayload, db: Session = Depends(get_db)):
+def start(user_id: UserIdPath, payload: QuizStartPayload, db: Session = Depends(get_db)):
     return start_quiz(db, user_id, payload.quiz_type)
 
 
 @router.post("/{user_id}/{attempt_id}/answers", response_model=QuizAnswerRead)
-def answer(user_id: str, attempt_id: int, payload: QuizAnswerPayload, db: Session = Depends(get_db)):
+def answer(user_id: UserIdPath, attempt_id: int, payload: QuizAnswerPayload, db: Session = Depends(get_db)):
     try:
         return submit_answer(db, user_id, attempt_id, payload.word_id, payload.question_type, payload.answer)
     except InvalidQuizSubmission as exc:
@@ -24,7 +27,7 @@ def answer(user_id: str, attempt_id: int, payload: QuizAnswerPayload, db: Sessio
 
 
 @router.post("/{user_id}/{attempt_id}/complete", response_model=QuizCompleteRead)
-def complete(user_id: str, attempt_id: int, db: Session = Depends(get_db)):
+def complete(user_id: UserIdPath, attempt_id: int, db: Session = Depends(get_db)):
     try:
         return complete_quiz(db, user_id, attempt_id)
     except InvalidQuizSubmission as exc:

@@ -26,9 +26,8 @@ def test_review_avoids_words_seen_today_when_not_weak(client, db_session, seen_t
     assert seen_today_progress.word_id not in [word["id"] for word in response.json()["words"]]
 
 
-def test_complete_review_marks_reviewing(client, seeded_words):
-    client.post("/api/learning/learner-1/new-words/complete", json={"word_ids": [seeded_words[0].id]})
-    response = client.post("/api/learning/learner-1/review/complete", json={"word_ids": [seeded_words[0].id]})
+def test_complete_review_marks_reviewing(client, weak_progress):
+    response = client.post("/api/learning/learner-1/review/complete", json={"word_ids": [weak_progress.word_id]})
 
     assert response.status_code == 200
     assert response.json()["progress"][0]["status"] == "reviewing"
@@ -53,3 +52,21 @@ def test_complete_review_rejects_unknown_word_id(client):
     response = client.post("/api/learning/learner-1/review/complete", json={"word_ids": [999]})
 
     assert response.status_code == 400
+
+
+def test_complete_new_words_rejects_existing_word_outside_selected_session(client, seeded_words):
+    response = client.post("/api/learning/learner-1/new-words/complete", json={"word_ids": [seeded_words[-1].id]})
+
+    assert response.status_code == 400
+
+
+def test_complete_review_rejects_existing_word_outside_selected_session(client, seen_today_progress):
+    response = client.post("/api/learning/learner-1/review/complete", json={"word_ids": [seen_today_progress.word_id]})
+
+    assert response.status_code == 400
+
+
+def test_learning_routes_reject_too_long_user_id(client):
+    response = client.get(f"/api/learning/{'x' * 81}/new-words")
+
+    assert response.status_code == 422

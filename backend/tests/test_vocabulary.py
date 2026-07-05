@@ -1,10 +1,11 @@
+from app.config import settings
 from app.models import VocabularyItem
 
 
 def test_editor_can_create_word_with_password(client):
     response = client.post(
         "/api/vocabulary",
-        headers={"X-Editor-Password": "dev-editor-password"},
+        headers={"X-Editor-Password": settings.editor_password},
         json={
             "serbian_cyrillic": "добар дан",
             "serbian_latin": "dobar dan",
@@ -79,7 +80,7 @@ def test_get_word_by_id(client, db_session):
 
 
 def test_editor_password_verify_accepts_correct_password(client):
-    response = client.post("/api/vocabulary/editor/verify", headers={"X-Editor-Password": "dev-editor-password"})
+    response = client.post("/api/vocabulary/editor/verify", headers={"X-Editor-Password": settings.editor_password})
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}

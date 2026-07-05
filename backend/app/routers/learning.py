@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -11,15 +13,16 @@ from app.services.learning_service import (
 )
 
 router = APIRouter(prefix="/api/learning", tags=["learning"])
+UserIdPath = Annotated[str, Path(min_length=1, max_length=80)]
 
 
 @router.get("/{user_id}/new-words", response_model=LearningWordsRead)
-def new_words(user_id: str, db: Session = Depends(get_db)):
+def new_words(user_id: UserIdPath, db: Session = Depends(get_db)):
     return {"words": get_daily_new_words(db, user_id)}
 
 
 @router.post("/{user_id}/new-words/complete", response_model=LearningProgressRead)
-def complete_new_words_route(user_id: str, payload: WordIdsPayload, db: Session = Depends(get_db)):
+def complete_new_words_route(user_id: UserIdPath, payload: WordIdsPayload, db: Session = Depends(get_db)):
     try:
         return {"progress": complete_new_words(db, user_id, payload.word_ids)}
     except ValueError as exc:
@@ -27,12 +30,12 @@ def complete_new_words_route(user_id: str, payload: WordIdsPayload, db: Session 
 
 
 @router.get("/{user_id}/review", response_model=ReviewWordsRead)
-def review_words(user_id: str, db: Session = Depends(get_db)):
+def review_words(user_id: UserIdPath, db: Session = Depends(get_db)):
     return {"words": get_review_words(db, user_id)}
 
 
 @router.post("/{user_id}/review/complete", response_model=LearningProgressRead)
-def complete_review_route(user_id: str, payload: WordIdsPayload, db: Session = Depends(get_db)):
+def complete_review_route(user_id: UserIdPath, payload: WordIdsPayload, db: Session = Depends(get_db)):
     try:
         return {"progress": complete_review(db, user_id, payload.word_ids)}
     except ValueError as exc:

@@ -22,3 +22,9 @@ def test_update_profile_settings(client: TestClient):
     assert response.json()["preferred_level"] == "A2"
     assert response.json()["daily_new_word_count"] == 7
     assert response.json()["ui_language"] == "sr"
+
+
+def test_profile_update_rejects_too_long_user_id(client: TestClient):
+    response = client.patch(f"/api/profiles/{'x' * 81}", json={"preferred_level": "A2"})
+
+    assert response.status_code == 422
