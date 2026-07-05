@@ -23,6 +23,11 @@ def post_word(
     return create_word(db, payload)
 
 
+@router.post("/editor/verify")
+def verify_editor_password(_: None = Depends(require_editor_password)):
+    return {"ok": True}
+
+
 @router.put("/{word_id}", response_model=VocabularyRead)
 def put_word(
     word_id: int,

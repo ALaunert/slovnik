@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { computed } from "vue";
+
 import type { VocabularyWord } from "../api/client";
+import { messages } from "../i18n/messages";
+import { sessionStore } from "../stores/session";
 
 type ExampleLine = { sentence: string; translation?: string };
 
 const props = defineProps<{ word: VocabularyWord; weak?: boolean }>();
+const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 
 function lines(value?: string | null) {
   return value ? value.split("\n").filter(Boolean) : [];
@@ -28,11 +33,11 @@ function meta(word: VocabularyWord) {
 
 <template>
   <article class="word-card">
-    <p class="eyebrow">{{ meta(props.word) }} <span v-if="props.weak" class="badge">weak</span></p>
+    <p class="eyebrow">{{ meta(props.word) }} <span v-if="props.weak" class="badge">{{ copy.weak }}</span></p>
     <h2>{{ props.word.serbian_cyrillic }} / {{ props.word.serbian_latin }}</h2>
     <p class="translation">{{ props.word.russian_translation }}</p>
     <details v-if="hasDetails(props.word)">
-      <summary>Подробности</summary>
+      <summary>{{ copy.details }}</summary>
       <p v-if="props.word.meaning_notes">{{ props.word.meaning_notes }}</p>
       <ul v-if="examples(props.word).length > 0">
         <li v-for="(item, index) in examples(props.word)" :key="`${item.sentence}-${index}`">

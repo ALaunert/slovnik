@@ -8,6 +8,8 @@ import {
   updateVocabularyWord,
   type VocabularyPayload,
 } from "../api/client";
+import { messages } from "../i18n/messages";
+import { sessionStore } from "../stores/session";
 
 const route = useRoute();
 const wordId = computed(() => {
@@ -18,6 +20,7 @@ const wordId = computed(() => {
 const editorPassword = ref("");
 const status = ref("");
 const error = ref("");
+const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 const form = reactive<VocabularyPayload>({
   serbian_cyrillic: "",
   serbian_latin: "",
@@ -49,7 +52,7 @@ onMounted(async () => {
   try {
     applyWord(await getVocabularyWord(wordId.value));
   } catch {
-    error.value = "Не удалось загрузить слово";
+    error.value = copy.value.loadWordError;
   }
 });
 
@@ -57,7 +60,7 @@ async function saveWord() {
   status.value = "";
   error.value = "";
   if (!editorPassword.value || !form.serbian_cyrillic || !form.serbian_latin || !form.russian_translation || !form.theme) {
-    error.value = "Заполните обязательные поля и пароль";
+    error.value = copy.value.requiredFieldsError;
     return;
   }
   try {
@@ -66,9 +69,9 @@ async function saveWord() {
     } else {
       await createVocabularyWord(form, editorPassword.value);
     }
-    status.value = "Слово сохранено";
+    status.value = copy.value.wordSaved;
   } catch {
-    error.value = "Не удалось сохранить слово";
+    error.value = copy.value.saveWordError;
   }
 }
 </script>
@@ -76,22 +79,22 @@ async function saveWord() {
 <template>
   <main class="page">
     <header class="page-header">
-      <h1>Редактор</h1>
-      <RouterLink to="/vocabulary">Словарь</RouterLink>
+      <h1>{{ copy.editor }}</h1>
+      <RouterLink to="/vocabulary">{{ copy.vocabulary }}</RouterLink>
     </header>
     <form class="panel form-grid" @submit.prevent="saveWord">
-      <label>Пароль редактора<input v-model="editorPassword" name="editor_password" type="password" /></label>
-      <label>Сербский кириллица<input v-model="form.serbian_cyrillic" name="serbian_cyrillic" required /></label>
-      <label>Сербский латиница<input v-model="form.serbian_latin" name="serbian_latin" required /></label>
-      <label>Русский перевод<input v-model="form.russian_translation" name="russian_translation" required /></label>
-      <label>Уровень<select v-model="form.cefr_level" name="cefr_level"><option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option></select></label>
-      <label>Тема<input v-model="form.theme" name="theme" required /></label>
-      <label>Регистр<input v-model="form.usage_register" name="usage_register" /></label>
-      <label>Ударение<input v-model="form.stress_marker" name="stress_marker" /></label>
-      <label class="wide">Заметки<textarea v-model="form.meaning_notes" name="meaning_notes" rows="3" /></label>
-      <label class="wide">Примеры<textarea v-model="form.example_sentences" name="example_sentences" rows="3" /></label>
-      <label class="wide">Переводы примеров<textarea v-model="form.example_translations" name="example_translations" rows="3" /></label>
-      <button type="submit">Сохранить</button>
+      <label>{{ copy.editorPassword }}<input v-model="editorPassword" name="editor_password" type="password" /></label>
+      <label>{{ copy.serbianCyrillic }}<input v-model="form.serbian_cyrillic" name="serbian_cyrillic" required /></label>
+      <label>{{ copy.serbianLatin }}<input v-model="form.serbian_latin" name="serbian_latin" required /></label>
+      <label>{{ copy.russianTranslation }}<input v-model="form.russian_translation" name="russian_translation" required /></label>
+      <label>{{ copy.level }}<select v-model="form.cefr_level" name="cefr_level"><option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option></select></label>
+      <label>{{ copy.theme }}<input v-model="form.theme" name="theme" required /></label>
+      <label>{{ copy.register }}<input v-model="form.usage_register" name="usage_register" /></label>
+      <label>{{ copy.stress }}<input v-model="form.stress_marker" name="stress_marker" /></label>
+      <label class="wide">{{ copy.notes }}<textarea v-model="form.meaning_notes" name="meaning_notes" rows="3" /></label>
+      <label class="wide">{{ copy.examples }}<textarea v-model="form.example_sentences" name="example_sentences" rows="3" /></label>
+      <label class="wide">{{ copy.exampleTranslations }}<textarea v-model="form.example_translations" name="example_translations" rows="3" /></label>
+      <button type="submit">{{ copy.save }}</button>
       <p v-if="status" class="success">{{ status }}</p>
       <p v-if="error" class="error">{{ error }}</p>
     </form>

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { RouterLink } from "vue-router";
 
 import { createOrLoadProfile, updateProfile, type Profile } from "../api/client";
+import { messages } from "../i18n/messages";
 import { sessionStore } from "../stores/session";
 
 const levels = ["A1", "A2", "B1", "B2", "C1", "C2"];
@@ -14,6 +15,7 @@ const settings = reactive({ preferred_level: "A1", daily_new_word_count: 5, ui_l
 const status = ref("");
 const error = ref("");
 const userId = sessionStore.userId;
+const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 
 function applyProfile(profile: Profile) {
   settings.preferred_level = profile.preferred_level;
@@ -27,7 +29,7 @@ onMounted(async () => {
   try {
     applyProfile(await createOrLoadProfile(userId.value));
   } catch {
-    error.value = "Не удалось загрузить настройки";
+    error.value = copy.value.loadSettingsError;
   }
 });
 
@@ -42,9 +44,9 @@ async function saveSettings() {
   };
   try {
     applyProfile(await updateProfile(userId.value, payload));
-    status.value = "Сохранено";
+    status.value = copy.value.saved;
   } catch {
-    error.value = "Не удалось сохранить настройки";
+    error.value = copy.value.saveSettingsError;
   }
 }
 </script>
@@ -54,30 +56,30 @@ async function saveSettings() {
     <header class="page-header">
       <div>
         <p class="eyebrow">{{ userId || "learner" }}</p>
-        <h1>Сегодня</h1>
+        <h1>{{ copy.dashboard }}</h1>
       </div>
-      <RouterLink to="/">Сменить ID</RouterLink>
+      <RouterLink to="/">{{ copy.changeId }}</RouterLink>
     </header>
 
-    <nav class="action-grid" aria-label="Основные действия">
-      <RouterLink class="action-card" to="/new-words">Новые слова</RouterLink>
-      <RouterLink class="action-card" to="/review">Повторение</RouterLink>
-      <RouterLink class="action-card" to="/quiz?type=daily">Ежедневный тест</RouterLink>
-      <RouterLink class="action-card" to="/quiz?type=weekly">Недельный тест</RouterLink>
-      <RouterLink class="action-card" to="/vocabulary">Словарь</RouterLink>
+    <nav class="action-grid" :aria-label="copy.mainActions">
+      <RouterLink class="action-card" to="/new-words">{{ copy.newWords }}</RouterLink>
+      <RouterLink class="action-card" to="/review">{{ copy.review }}</RouterLink>
+      <RouterLink class="action-card" to="/quiz?type=daily">{{ copy.dailyQuiz }}</RouterLink>
+      <RouterLink class="action-card" to="/quiz?type=weekly">{{ copy.weeklyQuiz }}</RouterLink>
+      <RouterLink class="action-card" to="/vocabulary">{{ copy.vocabulary }}</RouterLink>
     </nav>
 
     <section class="panel">
-      <h2>Настройки</h2>
+      <h2>{{ copy.settings }}</h2>
       <form class="settings-grid" @submit.prevent="saveSettings">
         <label>
-          Уровень
+          {{ copy.level }}
           <select v-model="settings.preferred_level" name="preferred_level">
             <option v-for="level in levels" :key="level" :value="level">{{ level }}</option>
           </select>
         </label>
         <label>
-          Новых слов в день
+          {{ copy.dailyNewWordCount }}
           <input
             v-model.number="settings.daily_new_word_count"
             name="daily_new_word_count"
@@ -87,14 +89,14 @@ async function saveSettings() {
           />
         </label>
         <label>
-          Язык интерфейса
+          {{ copy.uiLanguage }}
           <select v-model="settings.ui_language" name="ui_language">
             <option v-for="language in languages" :key="language.value" :value="language.value">
               {{ language.label }}
             </option>
           </select>
         </label>
-        <button type="submit">Сохранить</button>
+        <button type="submit">{{ copy.save }}</button>
       </form>
       <p v-if="status" class="success">{{ status }}</p>
       <p v-if="error" class="error">{{ error }}</p>

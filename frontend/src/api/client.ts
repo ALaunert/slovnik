@@ -96,6 +96,15 @@ export async function updateVocabularyWord(
 }
 
 
+export async function verifyEditorPassword(editorPassword: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/vocabulary/editor/verify`, {
+    method: "POST",
+    headers: { "X-Editor-Password": editorPassword },
+  });
+  if (!response.ok) throw new Error("Failed to verify editor password");
+}
+
+
 export async function getNewWords(userId: string): Promise<{ words: VocabularyWord[] }> {
   const response = await fetch(`${API_BASE_URL}/api/learning/${encodeURIComponent(userId)}/new-words`);
   if (!response.ok) throw new Error("Failed to load new words");

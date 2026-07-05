@@ -76,3 +76,16 @@ def test_get_word_by_id(client, db_session):
 
     assert response.status_code == 200
     assert response.json()["serbian_latin"] == "zdravo"
+
+
+def test_editor_password_verify_accepts_correct_password(client):
+    response = client.post("/api/vocabulary/editor/verify", headers={"X-Editor-Password": "dev-editor-password"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
+def test_editor_password_verify_rejects_wrong_password(client):
+    response = client.post("/api/vocabulary/editor/verify", headers={"X-Editor-Password": "bad"})
+
+    assert response.status_code == 403

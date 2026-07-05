@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { listVocabulary } from "../../src/api/client";
+import { listVocabulary, verifyEditorPassword } from "../../src/api/client";
 
 describe("vocabulary API", () => {
   it("sends optional level and theme filters", async () => {
@@ -12,5 +12,17 @@ describe("vocabulary API", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/vocabulary?cefr_level=A1&theme=greetings",
     );
+  });
+
+  it("verifies editor password before unlock", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await verifyEditorPassword("secret");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/api/vocabulary/editor/verify", {
+      method: "POST",
+      headers: { "X-Editor-Password": "secret" },
+    });
   });
 });
