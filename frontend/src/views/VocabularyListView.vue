@@ -30,9 +30,15 @@ async function loadWords() {
       cefr_level: selectedLevel.value || undefined,
       theme: selectedTheme.value || undefined,
     });
-    themes.value = await listVocabularyThemes();
   } catch {
     error.value = copy.value.loadVocabularyError;
+    return;
+  }
+
+  try {
+    themes.value = await listVocabularyThemes();
+  } catch {
+    themes.value = [];
   }
 }
 

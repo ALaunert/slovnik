@@ -1,10 +1,27 @@
 from datetime import datetime, timezone
+from typing import TypedDict
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import UserWordProgress, VocabularyItem
 from app.services.profile_service import get_or_create_profile
+
+
+class ReviewWord(TypedDict):
+    id: int
+    serbian_cyrillic: str
+    serbian_latin: str
+    russian_translation: str
+    cefr_level: str
+    theme: str
+    usage_register: str | None
+    stress_marker: str | None
+    meaning_notes: str | None
+    example_sentences: str | None
+    example_translations: str | None
+    incorrect_count: int
+    is_weak: bool
 
 
 def get_daily_new_words(db: Session, user_id: str) -> list[VocabularyItem]:
@@ -62,7 +79,7 @@ def complete_new_words(db: Session, user_id: str, word_ids: list[int]) -> list[U
     return progress_rows
 
 
-def get_review_words(db: Session, user_id: str) -> list[VocabularyItem]:
+def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
     get_or_create_profile(db, user_id)
     today = datetime.now(timezone.utc).date()
     rows = list(
@@ -88,7 +105,7 @@ def get_review_words(db: Session, user_id: str) -> list[VocabularyItem]:
         word.id: word for word in db.scalars(select(VocabularyItem).where(VocabularyItem.id.in_(selected)))
     }
     progress_by_word_id = {progress.word_id: progress for progress in rows}
-    result = []
+    result: list[ReviewWord] = []
     for word_id in selected:
         word = words_by_id.get(word_id)
         progress = progress_by_word_id.get(word_id)

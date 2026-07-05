@@ -16,7 +16,9 @@ const route = useRoute();
 const wordId = computed(() => {
   const raw = route.params.id;
   const value = Array.isArray(raw) ? raw[0] : raw;
-  return value ? Number(value) : null;
+  if (!value) return null;
+  const id = Number(value);
+  return Number.isFinite(id) ? id : null;
 });
 const editorPassword = ref("");
 const status = ref("");

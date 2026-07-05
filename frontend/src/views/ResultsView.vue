@@ -5,8 +5,16 @@ import { RouterLink } from "vue-router";
 import { messages } from "../i18n/messages";
 import { sessionStore } from "../stores/session";
 
-const raw = sessionStorage.getItem("slovnik.quizResults");
-const results = computed(() => raw ? JSON.parse(raw) : { score: 0, total_questions: 0, weak_word_ids: [], mistakes: [] });
+const emptyResults = { score: 0, total_questions: 0, weak_word_ids: [], mistakes: [] };
+const results = computed(() => {
+  const raw = sessionStorage.getItem("slovnik.quizResults");
+  if (!raw) return emptyResults;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return emptyResults;
+  }
+});
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 const title = computed(() => (results.value.quizType === "weekly" ? copy.value.weeklyResults : copy.value.results));
 
