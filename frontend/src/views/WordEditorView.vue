@@ -6,6 +6,7 @@ import {
   createVocabularyWord,
   getVocabularyWord,
   updateVocabularyWord,
+  verifyEditorPassword,
   type VocabularyPayload,
 } from "../api/client";
 import { messages } from "../i18n/messages";
@@ -20,6 +21,7 @@ const wordId = computed(() => {
 const editorPassword = ref("");
 const status = ref("");
 const error = ref("");
+const isEditorUnlocked = ref(false);
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 const form = reactive<VocabularyPayload>({
   serbian_cyrillic: "",
@@ -47,19 +49,33 @@ function applyWord(word: VocabularyPayload) {
   form.example_translations = word.example_translations ?? "";
 }
 
-onMounted(async () => {
+async function loadWordForEdit() {
   if (!wordId.value) return;
-  try {
-    applyWord(await getVocabularyWord(wordId.value));
-  } catch {
-    error.value = copy.value.loadWordError;
-  }
+  applyWord(await getVocabularyWord(wordId.value));
+}
+
+onMounted(() => {
+  isEditorUnlocked.value = false;
 });
+
+async function unlockEditor() {
+  status.value = "";
+  error.value = "";
+  try {
+    await verifyEditorPassword(editorPassword.value);
+    await loadWordForEdit();
+    isEditorUnlocked.value = true;
+    status.value = copy.value.unlocked;
+  } catch {
+    isEditorUnlocked.value = false;
+    error.value = wordId.value ? copy.value.loadWordError : copy.value.unlockError;
+  }
+}
 
 async function saveWord() {
   status.value = "";
   error.value = "";
-  if (!editorPassword.value || !form.serbian_cyrillic || !form.serbian_latin || !form.russian_translation || !form.theme) {
+  if (!isEditorUnlocked.value || !editorPassword.value || !form.serbian_cyrillic || !form.serbian_latin || !form.russian_translation || !form.theme) {
     error.value = copy.value.requiredFieldsError;
     return;
   }
@@ -82,8 +98,15 @@ async function saveWord() {
       <h1>{{ copy.editor }}</h1>
       <RouterLink to="/vocabulary">{{ copy.vocabulary }}</RouterLink>
     </header>
-    <form class="panel form-grid" @submit.prevent="saveWord">
-      <label>{{ copy.editorPassword }}<input v-model="editorPassword" name="editor_password" type="password" /></label>
+    <section class="panel stack">
+      <form class="control-row" @submit.prevent="unlockEditor">
+        <label>{{ copy.editorPassword }}<input v-model="editorPassword" name="editor_password" type="password" /></label>
+        <button type="submit" :disabled="!editorPassword">{{ copy.unlock }}</button>
+      </form>
+      <p v-if="status" class="success">{{ status }}</p>
+      <p v-if="error" class="error">{{ error }}</p>
+    </section>
+    <form v-if="isEditorUnlocked" class="panel form-grid" @submit.prevent="saveWord">
       <label>{{ copy.serbianCyrillic }}<input v-model="form.serbian_cyrillic" name="serbian_cyrillic" required /></label>
       <label>{{ copy.serbianLatin }}<input v-model="form.serbian_latin" name="serbian_latin" required /></label>
       <label>{{ copy.russianTranslation }}<input v-model="form.russian_translation" name="russian_translation" required /></label>
@@ -95,8 +118,6 @@ async function saveWord() {
       <label class="wide">{{ copy.examples }}<textarea v-model="form.example_sentences" name="example_sentences" rows="3" /></label>
       <label class="wide">{{ copy.exampleTranslations }}<textarea v-model="form.example_translations" name="example_translations" rows="3" /></label>
       <button type="submit">{{ copy.save }}</button>
-      <p v-if="status" class="success">{{ status }}</p>
-      <p v-if="error" class="error">{{ error }}</p>
     </form>
   </main>
 </template>

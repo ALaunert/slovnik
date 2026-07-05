@@ -79,7 +79,7 @@ onMounted(loadWords);
           <input v-model="editorPassword" type="password" autocomplete="current-password" />
         </label>
         <button type="button" :disabled="!editorPassword" @click="unlockEditor">{{ copy.unlock }}</button>
-        <RouterLink class="button-link" to="/editor">{{ copy.add }}</RouterLink>
+        <RouterLink v-if="canEdit" class="button-link" to="/editor">{{ copy.add }}</RouterLink>
       </div>
       <p v-if="unlockStatus" class="success">{{ unlockStatus }}</p>
       <p v-if="error" class="error">{{ error }}</p>

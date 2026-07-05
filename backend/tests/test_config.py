@@ -4,6 +4,12 @@ from pydantic import ValidationError
 from app.config import Settings
 
 
+def test_rejects_placeholder_editor_password_without_local_environment():
+    for placeholder in ["", "change-me", "dev-editor-password"]:
+        with pytest.raises(ValidationError):
+            Settings(environment="", editor_password=placeholder)
+
+
 def test_production_rejects_default_editor_password():
     for placeholder in ["", "change-me", "dev-editor-password"]:
         with pytest.raises(ValidationError):

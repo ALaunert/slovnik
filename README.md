@@ -4,7 +4,7 @@ Serbian vocabulary trainer MVP with a FastAPI backend, Postgres persistence, and
 
 ## Local Development
 
-1. Copy `.env.example` to `.env`.
+1. Copy `.env.example` to `.env`; keep `ENVIRONMENT=development` locally.
 2. Install backend dependencies: `cd backend && python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev]"`.
 3. Install frontend dependencies: `cd frontend && npm install`.
 4. Start Postgres: `docker compose up -d postgres`.
@@ -15,6 +15,8 @@ Serbian vocabulary trainer MVP with a FastAPI backend, Postgres persistence, and
 9. Check backend: `curl http://localhost:8000/api/health`.
 
 If local port `5432` is busy, set `POSTGRES_PORT` and update `DATABASE_URL` in `.env`, for example `POSTGRES_PORT=55432` and `DATABASE_URL=postgresql+psycopg://slovnik:slovnik@localhost:55432/slovnik`.
+
+For production deployments, set `ENVIRONMENT=production` and replace `EDITOR_PASSWORD` with a non-placeholder secret before starting the backend. Placeholder editor passwords are accepted only for explicit local/test environments.
 
 ## Verification
 
