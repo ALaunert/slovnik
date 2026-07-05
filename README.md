@@ -1,43 +1,52 @@
-# Serbian Vocabulary Trainer
+# Slovnik
 
-A small responsive web app for learning Serbian vocabulary as a Russian-speaking learner.
+Serbian vocabulary trainer MVP with a FastAPI backend, Postgres persistence, and a Vue 3 frontend.
 
-The first version is intended for personal use by two learners, with a path toward a small private group later. The app focuses on a simple daily routine: learn new words, review previous words, take a quiz, and track weak vocabulary over time.
+## Local Development
 
-## MVP Scope
+1. Copy `.env.example` to `.env`; keep `ENVIRONMENT=development` locally.
+2. Install backend dependencies: `cd backend && python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev]"`.
+3. Install frontend dependencies: `cd frontend && npm install`.
+4. Start Postgres: `docker compose up -d postgres`.
+5. Run migrations: `cd backend && .venv/bin/alembic upgrade head`.
+6. Seed sample words: `cd backend && .venv/bin/python -m app.seed`.
+7. Start backend: `cd backend && .venv/bin/uvicorn app.main:app --reload`.
+8. Start frontend: `cd frontend && npm run dev`.
+9. Check backend: `curl http://localhost:8000/api/health`.
 
-- Serbian vocabulary cards with Cyrillic and Latin forms.
-- Russian translations and learning notes.
-- CEFR-style levels such as A1, A2, B1, B2, C1, and C2.
-- Themes/topics for vocabulary grouping.
-- Separate user progress by lightweight `userId`.
-- Shared global vocabulary pool.
-- Daily new word session.
-- Separate review session.
-- Quiz mode with immediate feedback.
-- Weekly quiz for this week's words plus weak words.
-- Manual word editor protected by a simple editor password.
+If local port `5432` is busy, set `POSTGRES_PORT` and update `DATABASE_URL` in `.env`, for example `POSTGRES_PORT=55432` and `DATABASE_URL=postgresql+psycopg://slovnik:slovnik@localhost:55432/slovnik`.
 
-## Planned Stack
+For production deployments, set `ENVIRONMENT=production` and replace `EDITOR_PASSWORD` with a non-placeholder secret before starting the backend. Placeholder editor passwords are accepted only for explicit local/test environments.
 
-- Frontend: Vue
-- Backend: Python
-- Database: Postgres
-- Hosting: VPS
+## Verification
 
-## Non-Goals for the First Version
+Backend:
 
-- Full authentication
-- Native mobile apps
-- Audio pronunciation
-- Bulk import
-- Social features
-- Payments
-- AI generation
-- Advanced spaced repetition
+```bash
+cd backend
+.venv/bin/ruff check .
+.venv/bin/pytest -v
+```
 
-## Status
+Frontend:
 
-This repository currently contains the project shell and product direction. Implementation has not started yet.
+```bash
+cd frontend
+npm run test:unit
+npm run build
+npm run test:e2e
+```
 
-Detailed planning artifacts are kept locally outside version control.
+Database rebuild and seed:
+
+```bash
+docker compose up -d postgres
+cd backend
+.venv/bin/alembic downgrade base
+.venv/bin/alembic upgrade head
+.venv/bin/python -m app.seed
+```
+
+## MVP Access Caveat
+
+The `userId` flow is lightweight profile access for the MVP. It is not secure authentication, and anyone who knows a `userId` can load that profile until real auth is added.
