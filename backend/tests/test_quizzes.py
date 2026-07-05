@@ -25,17 +25,19 @@ def test_submit_incorrect_answer_marks_word_weak(client, started_quiz):
 
 def test_complete_daily_quiz_returns_score(client, started_quiz):
     for question in started_quiz["questions"]:
-        client.post(
-            f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers",
-            json={"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"},
-        )
+        payload = {"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"}
+        client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
+        client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
 
     response = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete")
 
     assert response.status_code == 200
-    assert response.json()["total_questions"] == len(started_quiz["questions"])
-    assert response.json()["score"] == 0
-    assert started_quiz["questions"][0]["word_id"] in response.json()["weak_word_ids"]
+    body = response.json()
+    assert body["total_questions"] == len(started_quiz["questions"])
+    assert body["score"] == 0
+    assert started_quiz["questions"][0]["word_id"] in body["weak_word_ids"]
+    assert body["mistakes"][0]["prompt"]
+    assert body["mistakes"][0]["correct_answer"]
 
 
 def test_weekly_quiz_includes_this_weeks_words_and_weak_words(client, weekly_progress):
@@ -235,6 +237,18 @@ def test_complete_quiz_rejects_wrong_user(client, started_quiz):
 
 
 def test_complete_quiz_rejects_unanswered_planned_questions(client, started_quiz):
+    response = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete")
+
+    assert response.status_code == 400
+
+
+def test_complete_quiz_rejects_skipped_required_repeats(client, started_quiz):
+    for question in started_quiz["questions"]:
+        client.post(
+            f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers",
+            json={"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"},
+        )
+
     response = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete")
 
     assert response.status_code == 400

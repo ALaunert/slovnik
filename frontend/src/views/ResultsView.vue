@@ -9,6 +9,12 @@ const raw = sessionStorage.getItem("slovnik.quizResults");
 const results = computed(() => raw ? JSON.parse(raw) : { score: 0, total_questions: 0, weak_word_ids: [], mistakes: [] });
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 const title = computed(() => (results.value.quizType === "weekly" ? copy.value.weeklyResults : copy.value.results));
+
+function questionTypeLabel(questionType: string) {
+  if (questionType === "sr_to_ru_choice") return copy.value.srToRuChoice;
+  if (questionType === "ru_to_sr_typing") return copy.value.ruToSrTyping;
+  return copy.value.selfCheck;
+}
 </script>
 
 <template>
@@ -26,9 +32,10 @@ const title = computed(() => (results.value.quizType === "weekly" ? copy.value.w
       <h2>{{ copy.mistakes }}</h2>
       <ul class="word-list">
         <li v-for="mistake in results.mistakes" :key="`${mistake.word_id}-${mistake.question_type}-${mistake.answer}`" class="word-row">
-          <strong>#{{ mistake.word_id }}</strong>
+          <strong>{{ mistake.prompt }}</strong>
           <span>{{ copy.mistakeAnswer }}: {{ mistake.answer }}</span>
-          <span>{{ copy.mistakeType }}: {{ mistake.question_type }}</span>
+          <span>{{ copy.correctAnswer }}: {{ mistake.correct_answer }}</span>
+          <span>{{ copy.mistakeType }}: {{ questionTypeLabel(mistake.question_type) }}</span>
         </li>
       </ul>
     </section>
