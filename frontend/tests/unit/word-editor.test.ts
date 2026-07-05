@@ -27,7 +27,7 @@ vi.mock("../../src/api/client", () => ({
   verifyEditorPassword: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { createVocabularyWord, updateVocabularyWord, verifyEditorPassword } from "../../src/api/client";
+import { createVocabularyWord, getVocabularyWord, updateVocabularyWord, verifyEditorPassword } from "../../src/api/client";
 import WordEditorView from "../../src/views/WordEditorView.vue";
 
 describe("WordEditorView", () => {
@@ -37,11 +37,14 @@ describe("WordEditorView", () => {
     await Promise.resolve();
 
     expect(wrapper.find('input[name="serbian_latin"]').exists()).toBe(false);
+    expect(getVocabularyWord).not.toHaveBeenCalled();
 
     await wrapper.get('input[type="password"]').setValue("dev-editor-password");
     await wrapper.get("form").trigger("submit.prevent");
     await Promise.resolve();
     await Promise.resolve();
+
+    expect(getVocabularyWord).toHaveBeenCalledWith(7);
 
     await wrapper.get('input[name="serbian_latin"]').setValue("hvala updated");
     await wrapper.findAll("form")[1].trigger("submit.prevent");
@@ -53,5 +56,9 @@ describe("WordEditorView", () => {
       "dev-editor-password",
     );
     expect(createVocabularyWord).not.toHaveBeenCalled();
+
+    await wrapper.get('input[type="password"]').setValue("changed-password");
+
+    expect(wrapper.find('input[name="serbian_latin"]').exists()).toBe(false);
   });
 });

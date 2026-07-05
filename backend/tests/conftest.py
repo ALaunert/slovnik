@@ -6,7 +6,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-os.environ.setdefault("ENVIRONMENT", "development")
+os.environ["ENVIRONMENT"] = "test"
+os.environ["EDITOR_PASSWORD"] = "test-editor-password"
 
 from app.db import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402

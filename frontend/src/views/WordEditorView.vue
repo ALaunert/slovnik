@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 
 import {
@@ -22,6 +22,7 @@ const editorPassword = ref("");
 const status = ref("");
 const error = ref("");
 const isEditorUnlocked = ref(false);
+const verifiedEditorPassword = ref("");
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 const form = reactive<VocabularyPayload>({
   serbian_cyrillic: "",
@@ -58,18 +59,37 @@ onMounted(() => {
   isEditorUnlocked.value = false;
 });
 
+watch(editorPassword, (password) => {
+  if (isEditorUnlocked.value && password !== verifiedEditorPassword.value) {
+    isEditorUnlocked.value = false;
+    status.value = "";
+  }
+});
+
 async function unlockEditor() {
   status.value = "";
   error.value = "";
   try {
     await verifyEditorPassword(editorPassword.value);
-    await loadWordForEdit();
-    isEditorUnlocked.value = true;
-    status.value = copy.value.unlocked;
   } catch {
     isEditorUnlocked.value = false;
-    error.value = wordId.value ? copy.value.loadWordError : copy.value.unlockError;
+    verifiedEditorPassword.value = "";
+    error.value = copy.value.unlockError;
+    return;
   }
+
+  try {
+    await loadWordForEdit();
+  } catch {
+    isEditorUnlocked.value = false;
+    verifiedEditorPassword.value = "";
+    error.value = copy.value.loadWordError;
+    return;
+  }
+
+  verifiedEditorPassword.value = editorPassword.value;
+  isEditorUnlocked.value = true;
+  status.value = copy.value.unlocked;
 }
 
 async function saveWord() {
