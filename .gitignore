@@ -1,5 +1,6 @@
 # Planning artifacts
 artifacts/
+.worktrees/
 
 # Environment
 .env
