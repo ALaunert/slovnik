@@ -36,9 +36,9 @@ The v1 flow is inline AI fill:
 3. A compact `AI fill` block appears above the vocabulary form.
 4. The editor enters exactly one Serbian word in a dedicated AI input.
 5. The editor clicks `Fill with AI`.
-6. The frontend sends the word to the backend with `X-Editor-Password`.
-7. The backend checks whether the word already exists in `vocabulary_items`.
-8. If it exists, the backend returns `already_exists` and the frontend shows a message plus a button to open the existing word for editing.
+6. The frontend sends the word to the backend with `X-Editor-Password`; when editing an existing word, it also sends the current word id.
+7. The backend checks whether the word already exists in `vocabulary_items`, excluding the current word id when one was supplied.
+8. If another vocabulary row already contains the word, the backend returns `already_exists` and the frontend shows a message plus a button to open the existing word for editing.
 9. If it does not exist, the backend checks the persistent AI generation store.
 10. If a stored generation exists, the backend returns it without calling OpenAI.
 11. If no stored generation exists, the backend calls OpenAI, validates the result shape, stores any successfully parsed result, and returns it.
@@ -119,9 +119,12 @@ Request:
 
 ```json
 {
-  "source_word": "raditi"
+  "source_word": "raditi",
+  "current_word_id": 123
 }
 ```
+
+`current_word_id` is optional. The frontend sends it only on `/editor/:id`. The backend uses it only to exclude the currently edited row from duplicate lookup; it must not grant access to edit that row or skip editor password verification.
 
 Responses should be modeled as a discriminated union.
 
@@ -173,6 +176,50 @@ Already-existing response:
 
 Strong technical errors should use ordinary HTTP errors with frontend-safe messages. The backend should log the technical details separately.
 
+Error responses should use a stable body:
+
+```json
+{
+  "code": "openai_unavailable",
+  "message": "AI fill is temporarily unavailable."
+}
+```
+
+Expected v1 error codes:
+
+- `invalid_source_word`, 422: empty input, too-long input, or input that appears to contain more than one word.
+- `invalid_editor_password`, 403: existing editor password failure.
+- `openai_not_configured`, 503: missing or unusable OpenAI backend configuration.
+- `openai_rate_limited`, 503: OpenAI rate limit.
+- `openai_timeout`, 503: OpenAI timeout.
+- `openai_unavailable`, 503: OpenAI service failure.
+- `invalid_ai_response`, 502: response did not match the expected shape after parsing/validation.
+
+The frontend may show the returned `message`, but should branch on `code` in tests and state handling.
+
+## AI Fill Payload Contract
+
+The API response uses an `AiFillPayload`, not the full create/update vocabulary schema.
+
+The payload may contain these keys:
+
+- `serbian_cyrillic`
+- `serbian_latin`
+- `russian_translation`
+- `cefr_level`
+- `theme`
+- `usage_register`
+- `stress_marker`
+- `meaning_notes`
+- `example_sentences`
+- `example_translations`
+
+Required vocabulary fields are optional in `AiFillPayload` so partial drafts can be returned. If a required field is present, it must be a non-empty string after trimming. Required fields are considered missing when they are absent, empty, or null in the parsed AI result. The backend should not include null required fields in the response payload.
+
+Optional vocabulary fields may be a string or null. If an optional key is omitted, the frontend leaves the existing form value unchanged. If an optional key is present with null, the frontend clears that form field to blank. This lets AI explicitly remove stale optional data while preserving the "omitted means no change" behavior for partial output.
+
+Stored `generated_payload` should use the same `AiFillPayload` semantics. It should preserve optional nulls when the AI explicitly returned them and should omit required fields that were missing or unusable.
+
 ## Backend Service Boundaries
 
 Keep the router thin. Put product rules in a focused service, for example `ai_vocabulary_service.py`.
@@ -218,6 +265,8 @@ Store `model` and `prompt_version` for observability and future migrations, but 
 
 Only successfully parsed AI results are persisted. Strong OpenAI failures, invalid response shapes, timeouts, and rate limits are logged but are not stored as reusable generation results.
 
+Concurrent first-time requests for the same normalized word may race. The implementation should treat `normalized_source_word` as the uniqueness boundary and use transaction/upsert behavior: if inserting the newly generated row hits a unique-key conflict, re-read the existing row and return it as `source = "store"` instead of failing the request or writing a duplicate row.
+
 ## Duplicate Lookup
 
 Before checking the AI generation table or calling OpenAI, the backend checks existing vocabulary rows.
@@ -230,7 +279,7 @@ For v1, duplicate lookup is strict normalized matching:
 
 No Serbian morphology, transliteration equivalence, lemma matching, fuzzy matching, or semantic duplicate detection is included in v1.
 
-If an existing word is found, the backend returns `already_exists` with the word id. The frontend shows a message and offers a button to open that word in the editor. It does not auto-navigate and does not overwrite the current form.
+When the request includes `current_word_id`, duplicate lookup excludes that row. This lets editors use AI fill while editing the current card without the current card blocking its own generation. If any other existing word is found, the backend returns `already_exists` with the word id. The frontend shows a message and offers a button to open that word in the editor. It does not auto-navigate and does not overwrite the current form.
 
 ## OpenAI Integration
 
@@ -258,9 +307,40 @@ Backend validation should enforce:
 
 - Known payload keys only.
 - Valid CEFR level when present.
+- `theme` is one of the controlled themes listed below when present.
 - String or null optional fields.
 - Length limits compatible with the existing app schema.
 - Missing required fields calculation for `serbian_cyrillic`, `serbian_latin`, `russian_translation`, `cefr_level`, and `theme`.
+
+### Theme Classification
+
+AI fill should use the same controlled theme set as the importer design so AI-created content does not fragment vocabulary filters with arbitrary free-form themes.
+
+Allowed values:
+
+- `greetings`
+- `personal-info`
+- `family-relationships`
+- `home`
+- `daily-life`
+- `food-drink`
+- `shopping-money`
+- `travel-transport`
+- `places-directions`
+- `health-body`
+- `education`
+- `work`
+- `free-time`
+- `nature-weather`
+- `services`
+- `language-communication`
+- `technology-media`
+- `emotions-qualities`
+- `time-numbers`
+- `grammar-functions`
+- `other`
+
+The prompt should tell the model to use `other` only when none of the specific themes fit.
 
 ## Error Handling
 
@@ -303,6 +383,23 @@ Logs must not include:
 - secrets
 - full authorization headers
 
+## Localization
+
+All visible frontend copy added for this feature must be added to `frontend/src/i18n/messages.ts` for both `ru` and `sr`.
+
+This includes:
+
+- AI block title and input label.
+- Fill button.
+- Loading text.
+- Success/info text for OpenAI and stored results.
+- Restore previous values action.
+- Already-exists message and edit button text.
+- Missing required field hint.
+- Strong error fallback text.
+
+Frontend tests should verify that the AI block can render in both supported UI languages.
+
 ## Testing
 
 Backend tests:
@@ -310,10 +407,14 @@ Backend tests:
 - Source normalization: `Raditi`, `raditi`, and ` raditi ` share one key.
 - More-than-one-word input is rejected.
 - Existing vocabulary match returns `already_exists` before any store/OpenAI lookup.
+- Existing vocabulary match excludes `current_word_id` on edit.
 - Store hit returns stored payload before any OpenAI call.
 - OpenAI success persists the parsed generation.
 - Partial OpenAI result is persisted and reports missing required fields.
+- Omitted fields, null optional fields, and missing required fields follow the `AiFillPayload` contract.
 - Invalid OpenAI shape returns a technical error and is not persisted.
+- Unique-key conflict during generation insert re-reads and returns the stored row.
+- Stable error codes are returned for validation, OpenAI configuration, OpenAI failures, and invalid AI responses.
 - Editor password protects the endpoint.
 - Migration creates `ai_vocabulary_generations` with a unique normalized key.
 
@@ -326,6 +427,7 @@ Frontend tests:
 - Partial result highlights missing required fields.
 - `already_exists` shows a message and edit link/button.
 - Strong errors preserve the current form.
+- AI feature copy renders in Russian and Serbian.
 
 Verification:
 
