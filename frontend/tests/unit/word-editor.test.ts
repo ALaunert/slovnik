@@ -314,6 +314,36 @@ describe("WordEditorView", () => {
     expect(wrapper.find('[data-testid="ai-fill"]').exists()).toBe(false);
   });
 
+  it("ignores an older route-load rejection after a newer unlock succeeds", async () => {
+    let rejectRouteLoad!: (error: Error) => void;
+    let routeEightCalls = 0;
+    vi.mocked(getVocabularyWord).mockImplementation(async (id) => {
+      if (id !== 8) return loadedWord;
+      routeEightCalls += 1;
+      if (routeEightCalls === 1) {
+        return new Promise<typeof secondLoadedWord>((_, reject) => {
+          rejectRouteLoad = reject;
+        });
+      }
+      return secondLoadedWord;
+    });
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    routeState.params!.id = "8";
+    await flushPromises();
+    await wrapper.get('[data-testid="unlock-form"]').trigger("submit.prevent");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="ai-fill"]').isVisible()).toBe(true);
+
+    rejectRouteLoad(new Error("stale route failure"));
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("Не удалось загрузить слово");
+
+    await wrapper.get('input[name="editor_password"]').setValue("changed-password");
+    expect(wrapper.find('[data-testid="ai-fill"]').exists()).toBe(false);
+  });
+
   it("clears stale edit data before unlocking the create route", async () => {
     const wrapper = mount(WordEditorView);
     await unlockEditor(wrapper);
@@ -494,6 +524,27 @@ describe("WordEditorView", () => {
     await wrapper.get('[data-testid="ai-restore"]').trigger("click");
     await flushPromises();
 
+    expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("спасибо");
+  });
+
+  it("clears the AI undo snapshot when a password change relocks the editor", async () => {
+    vi.mocked(fillVocabularyWithAi).mockResolvedValue({
+      status: "generated",
+      source: "openai",
+      payload: { russian_translation: "благодарю" },
+      missing_required_fields: [],
+    });
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+    await requestAiFill(wrapper);
+    expect(wrapper.get('[data-testid="ai-restore"]').isVisible()).toBe(true);
+
+    await wrapper.get('input[name="editor_password"]').setValue("changed-password");
+    await wrapper.get('input[name="editor_password"]').setValue("dev-editor-password");
+    await wrapper.get('[data-testid="unlock-form"]').trigger("submit.prevent");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="ai-restore"]').exists()).toBe(false);
     expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("спасибо");
   });
 

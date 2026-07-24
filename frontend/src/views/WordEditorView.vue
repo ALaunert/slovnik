@@ -226,6 +226,10 @@ watch(editorPassword, (password) => {
     verifiedEditorPassword.value = "";
     status.value = "";
     aiError.value = "";
+    aiInfoState.value = null;
+    existingWordId.value = null;
+    undoSnapshot.value = null;
+    showAiMissingFields.value = false;
   }
 });
 
@@ -281,6 +285,7 @@ watch(wordId, async (nextWordId, previousWordId) => {
 
 async function unlockEditor() {
   const requestId = ++unlockRequestId;
+  routeLoadRequestId += 1;
   const submittedPassword = editorPassword.value;
   const submittedWordId = wordId.value;
   const isCurrentRequest = () => (
