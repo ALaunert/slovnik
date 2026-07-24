@@ -31,6 +31,12 @@ export async function updateProfile(
 }
 
 
+export type StressPattern = {
+  cyrillic_syllables: string[];
+  latin_syllables: string[];
+  stressed_syllable_index: number;
+};
+
 export type VocabularyWord = {
   id: number;
   serbian_cyrillic: string;
@@ -40,6 +46,7 @@ export type VocabularyWord = {
   theme: string;
   usage_register?: string | null;
   stress_marker?: string | null;
+  stress_pattern?: StressPattern | null;
   meaning_notes?: string | null;
   example_sentences?: string | null;
   example_translations?: string | null;

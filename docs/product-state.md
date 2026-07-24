@@ -14,6 +14,9 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
 - Dashboard lets a learner change CEFR level, daily new-word count, and UI language.
 - Vocabulary list supports CEFR and theme filters, shows Serbian Cyrillic/Latin, Russian translation, level, and theme.
 - Editor password unlocks add/edit controls; the editor can create and update vocabulary entries with optional register, stress, notes, examples, and example translations.
+- Structured stress is rendered by emphasizing the full stressed syllable in both Serbian scripts
+  in the vocabulary list and the shared new-word/review card. The legacy free-form stress marker
+  remains metadata fallback when structured stress is absent.
 - Daily new-word session selects unseen words at the learner's preferred level up to `daily_new_word_count`; completion records per-user progress.
 - Review session selects weak words and previously seen/reviewing/learned words that are due, includes weak metadata, and marks reviewed words as `reviewing` unless already `learned`.
 - Daily and weekly quizzes use three question types: Serbian-to-Russian multiple choice, Russian-to-Serbian typing, and remembered/forgot self-check with answer reveal.
@@ -34,6 +37,9 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
   - `GET /api/learning/{user_id}/new-words`, `POST /api/learning/{user_id}/new-words/complete`, `GET /api/learning/{user_id}/review`, `POST /api/learning/{user_id}/review/complete`
   - `POST /api/quizzes/{user_id}/start`, `POST /api/quizzes/{user_id}/{attempt_id}/answers`, `GET /api/quizzes/{user_id}/{attempt_id}/questions/{word_id}/{question_type}/answer`, `POST /api/quizzes/{user_id}/{attempt_id}/complete`
 - Business logic lives in `backend/app/services/profile_service.py`, `vocabulary_service.py`, `learning_service.py`, and `quiz_service.py`.
+- Manual vocabulary create/update accepts optional structured stress with non-empty, aligned
+  Cyrillic/Latin syllable arrays, a valid zero-based stress index, and NFC-equivalent exact
+  reconstruction of both Serbian spellings. The legacy `stress_marker` contract remains supported.
 - `backend/app/seed.py` seeds three sample A1 words only.
 - The backend includes the OpenAI Python dependency and AI-generation persistence models, but no
   AI vocabulary endpoint or OpenAI request path is implemented yet.
@@ -87,6 +93,9 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
   PostgreSQL database; the normal `DATABASE_URL` is never migrated or dropped by that target.
   Supplied PostgreSQL configuration, connection, and privilege errors fail instead of skipping.
 - Frontend unit tests cover app shell localization, session persistence, dashboard settings/localization, vocabulary API helpers, quiz repeat/self-check behavior, and word editor update flow.
+- Structured-stress coverage includes manual API create/update persistence and validation,
+  canonical-equivalent Unicode reconstruction, legacy marker compatibility, full-syllable
+  rendering, script-specific syllable arrays, invalid-pattern fallback, and HTML-safe text output.
 - Playwright e2e currently covers only the basic user-id-to-dashboard path with mocked profile API.
 - Manual MVP flow is in `docs/testing/mvp-manual-test.md`.
 
@@ -94,8 +103,9 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
 
 - Real authentication and authorization are deferred.
 - Native mobile apps, audio pronunciation, bulk import, social features, payments, and advanced spaced repetition are not implemented.
-- AI vocabulary persistence is present, but the endpoint, frontend workflow, validation/service
-  layer, and OpenAI call are not implemented yet.
+- AI vocabulary persistence is present, but the endpoint, frontend workflow, AI-generation
+  validation/service layer, OpenAI call, and structured-stress editor controls are not implemented
+  yet.
 - Weekly quiz uses calendar-week selection plus weak words, not a full scheduling system.
 - Seed data is intentionally tiny and not a production vocabulary corpus.
 - Results are stored client-side in `sessionStorage`; historical quiz analytics UI is not implemented.

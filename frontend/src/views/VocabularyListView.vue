@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 
 import { listVocabulary, listVocabularyThemes, verifyEditorPassword, type VocabularyWord } from "../api/client";
+import StressText from "../components/StressText.vue";
 import { messages } from "../i18n/messages";
 import { sessionStore } from "../stores/session";
 
@@ -93,8 +94,16 @@ onMounted(loadWords);
       <ul v-else class="word-list">
         <li v-for="word in words" :key="word.id" class="word-row">
           <div>
-            <strong>{{ word.serbian_cyrillic }}</strong>
-            <span>{{ word.serbian_latin }}</span>
+            <StressText
+              :word="word.serbian_cyrillic"
+              :syllables="word.stress_pattern?.cyrillic_syllables"
+              :stressed-index="word.stress_pattern?.stressed_syllable_index"
+            />
+            <StressText
+              :word="word.serbian_latin"
+              :syllables="word.stress_pattern?.latin_syllables"
+              :stressed-index="word.stress_pattern?.stressed_syllable_index"
+            />
           </div>
           <span>{{ word.russian_translation }}</span>
           <span>{{ word.cefr_level }} · {{ word.theme }}</span>
