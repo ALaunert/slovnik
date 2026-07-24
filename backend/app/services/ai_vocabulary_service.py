@@ -1,15 +1,24 @@
 import logging
+import math
+import threading
+import time
 import unicodedata
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy import delete, func, select, text, update
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 from pydantic import ValidationError
 
 from app.config import settings
-from app.models import AiVocabularyGeneration, VocabularyItem
+from app.models import (
+    AiVocabularyGeneration,
+    AiVocabularyGenerationReservation,
+    VocabularyItem,
+)
 from app.schemas import (
     AiFillExistingResponse,
     AiFillGeneratedResponse,
@@ -71,6 +80,10 @@ STRING_FIELDS = {
     "example_translations": None,
 }
 KNOWN_FIELDS = {*STRING_FIELDS, "cefr_level", "theme", "stress_pattern"}
+VOCABULARY_SCAN_BATCH_SIZE = 250
+RESERVATION_POLL_SECONDS = 0.05
+RESERVATION_LEASE_GRACE_SECONDS = 5.0
+RESERVATION_HEARTBEAT_STOP_SECONDS = 0.25
 
 
 class AiFillServiceError(Exception):
@@ -130,7 +143,12 @@ def _find_existing_word(
     normalized_source_word: str,
     current_word_id: int | None,
 ) -> VocabularyItem | None:
-    words = db.scalars(select(VocabularyItem).order_by(VocabularyItem.id))
+    statement = (
+        select(VocabularyItem)
+        .order_by(VocabularyItem.id)
+        .execution_options(yield_per=VOCABULARY_SCAN_BATCH_SIZE)
+    )
+    words = db.scalars(statement)
     for word in words:
         if current_word_id is not None and word.id == current_word_id:
             continue
@@ -395,6 +413,305 @@ def _is_normalized_source_conflict(error: IntegrityError) -> bool:
     )
 
 
+def _reservation_lease_seconds() -> float:
+    return settings.openai_timeout_seconds + RESERVATION_LEASE_GRACE_SECONDS
+
+
+def _database_now(db: Session) -> datetime:
+    dialect_name = db.get_bind().dialect.name
+    if dialect_name == "postgresql":
+        value = db.scalar(select(func.clock_timestamp()))
+    elif dialect_name == "sqlite":
+        raw_value = db.scalar(
+            select(func.strftime("%Y-%m-%d %H:%M:%f", "now"))
+        )
+        value = datetime.fromisoformat(raw_value)
+    else:
+        value = db.scalar(select(func.current_timestamp()))
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _reservation_expires_at(database_now: datetime) -> datetime:
+    return database_now + timedelta(seconds=_reservation_lease_seconds())
+
+
+def _reservation_heartbeat_interval_seconds() -> float:
+    return max(
+        RESERVATION_POLL_SECONDS,
+        min(1.0, _reservation_lease_seconds() / 3),
+    )
+
+
+def _reservation_wait_deadline() -> float:
+    return time.monotonic() + _reservation_lease_seconds()
+
+
+def _remaining_before(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise _reservation_in_progress_error()
+    return remaining
+
+
+def _configure_transaction_deadline(db: Session, deadline: float) -> None:
+    timeout_ms = max(1, math.ceil(_remaining_before(deadline) * 1000))
+    dialect_name = db.get_bind().dialect.name
+    if dialect_name == "postgresql":
+        timeout = f"{timeout_ms}ms"
+        db.execute(
+            text("SELECT set_config('statement_timeout', :timeout, true)"),
+            {"timeout": timeout},
+        )
+        db.execute(
+            text("SELECT set_config('lock_timeout', :timeout, true)"),
+            {"timeout": timeout},
+        )
+    elif dialect_name == "sqlite":
+        db.execute(text(f"PRAGMA busy_timeout = {timeout_ms}"))
+
+
+def _reservation_in_progress_error() -> AiFillServiceError:
+    return AiFillServiceError(
+        "ai_fill_in_progress",
+        "AI fill for this word is already in progress.",
+        503,
+    )
+
+
+def _is_reservation_conflict(error: IntegrityError) -> bool:
+    constraint_name = getattr(
+        getattr(error.orig, "diag", None),
+        "constraint_name",
+        None,
+    )
+    if constraint_name == "pk_ai_vocabulary_generation_reservations":
+        return True
+    message = str(error.orig)
+    return (
+        "UNIQUE constraint failed" in message
+        and (
+            "ai_vocabulary_generation_reservations.normalized_source_word"
+            in message
+        )
+    )
+
+
+def _is_reservation_deadline_error(error: SQLAlchemyError) -> bool:
+    sqlstate = getattr(getattr(error, "orig", None), "sqlstate", None)
+    if sqlstate in {"55P03", "57014"}:
+        return True
+    message = str(error).casefold()
+    return any(
+        fragment in message
+        for fragment in (
+            "database is locked",
+            "lock timeout",
+            "statement timeout",
+            "canceling statement due to statement timeout",
+        )
+    )
+
+
+def _try_acquire_reservation(
+    db: Session,
+    normalized_source_word: str,
+    owner_token: str,
+    deadline: float | None = None,
+) -> bool:
+    deadline = deadline if deadline is not None else _reservation_wait_deadline()
+    try:
+        _configure_transaction_deadline(db, deadline)
+        database_now = _database_now(db)
+        reservation = AiVocabularyGenerationReservation(
+            normalized_source_word=normalized_source_word,
+            owner_token=owner_token,
+            expires_at=_reservation_expires_at(database_now),
+        )
+        db.add(reservation)
+        db.commit()
+        return True
+    except IntegrityError as error:
+        db.rollback()
+        if not _is_reservation_conflict(error):
+            raise
+    except SQLAlchemyError as error:
+        db.rollback()
+        if not _is_reservation_deadline_error(error):
+            raise
+        _remaining_before(deadline)
+        return False
+
+    try:
+        _configure_transaction_deadline(db, deadline)
+        database_now = _database_now(db)
+        takeover = db.execute(
+            update(AiVocabularyGenerationReservation)
+            .where(
+                AiVocabularyGenerationReservation.normalized_source_word
+                == normalized_source_word,
+                AiVocabularyGenerationReservation.expires_at <= database_now,
+            )
+            .values(
+                owner_token=owner_token,
+                expires_at=_reservation_expires_at(database_now),
+                updated_at=database_now,
+            )
+        )
+        if takeover.rowcount == 1:
+            db.commit()
+            return True
+        db.rollback()
+        return False
+    except SQLAlchemyError as error:
+        db.rollback()
+        if not _is_reservation_deadline_error(error):
+            raise
+        _remaining_before(deadline)
+        return False
+
+
+class _ReservationHeartbeat:
+    def __init__(
+        self,
+        db: Session,
+        normalized_source_word: str,
+        owner_token: str,
+    ):
+        bind = db.get_bind()
+        self._session_factory = sessionmaker(
+            bind=getattr(bind, "engine", bind),
+            autoflush=False,
+            expire_on_commit=False,
+        )
+        self._normalized_source_word = normalized_source_word
+        self._owner_token = owner_token
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="ai-vocabulary-reservation-heartbeat",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def request_stop(self) -> None:
+        self._stop_event.set()
+
+    def wait(self, *, deadline: float) -> bool:
+        if self._thread.ident is None:
+            return True
+        self._thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        return not self._thread.is_alive()
+
+    def stop(self, *, deadline: float) -> bool:
+        self.request_stop()
+        return self.wait(deadline=deadline)
+
+    def _run(self) -> None:
+        interval = _reservation_heartbeat_interval_seconds()
+        while not self._stop_event.wait(interval):
+            try:
+                with self._session_factory() as heartbeat_db:
+                    operation_deadline = (
+                        time.monotonic()
+                        + _reservation_heartbeat_interval_seconds()
+                    )
+                    _configure_transaction_deadline(
+                        heartbeat_db,
+                        operation_deadline,
+                    )
+                    database_now = _database_now(heartbeat_db)
+                    renewal = heartbeat_db.execute(
+                        update(AiVocabularyGenerationReservation)
+                        .where(
+                            AiVocabularyGenerationReservation.normalized_source_word
+                            == self._normalized_source_word,
+                            AiVocabularyGenerationReservation.owner_token
+                            == self._owner_token,
+                        )
+                        .values(
+                            expires_at=_reservation_expires_at(database_now),
+                            updated_at=database_now,
+                        )
+                    )
+                    heartbeat_db.commit()
+                    if renewal.rowcount != 1:
+                        return
+            except (AiFillServiceError, SQLAlchemyError):
+                logger.exception(
+                    "Failed to renew AI vocabulary generation reservation",
+                    extra={
+                        "normalized_source_word": self._normalized_source_word,
+                    },
+                )
+
+
+def _fence_reservation_owner(
+    db: Session,
+    normalized_source_word: str,
+    owner_token: str,
+) -> bool:
+    database_now = _database_now(db)
+    fence = db.execute(
+        update(AiVocabularyGenerationReservation)
+        .where(
+            AiVocabularyGenerationReservation.normalized_source_word
+            == normalized_source_word,
+            AiVocabularyGenerationReservation.owner_token == owner_token,
+        )
+        .values(
+            expires_at=_reservation_expires_at(database_now),
+            updated_at=database_now,
+        )
+    )
+    return fence.rowcount == 1
+
+
+def _wait_for_stored_generation(
+    db: Session,
+    normalized_source_word: str,
+    deadline: float,
+) -> AiFillGeneratedResponse:
+    while True:
+        stored = _find_stored_generation(db, normalized_source_word)
+        if stored is not None:
+            return _stored_response(stored, normalized_source_word)
+        db.rollback()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _reservation_in_progress_error()
+        time.sleep(min(RESERVATION_POLL_SECONDS, remaining))
+
+
+def _release_reservation(
+    db: Session,
+    normalized_source_word: str,
+    owner_token: str,
+    deadline: float,
+) -> None:
+    try:
+        db.rollback()
+        _configure_transaction_deadline(db, deadline)
+        db.execute(
+            delete(AiVocabularyGenerationReservation).where(
+                AiVocabularyGenerationReservation.normalized_source_word
+                == normalized_source_word,
+                AiVocabularyGenerationReservation.owner_token == owner_token,
+            )
+        )
+        _remaining_before(deadline)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to release AI vocabulary generation reservation",
+            extra={"normalized_source_word": normalized_source_word},
+        )
+
+
 def fill_vocabulary(
     db: Session,
     payload: AiFillRequest,
@@ -412,53 +729,140 @@ def fill_vocabulary(
     if stored is not None:
         return _stored_response(stored, normalized_source_word)
 
-    db.rollback()
-    generator = generate or generate_vocabulary
-    try:
-        generated = generator(source_word)
-    except (
-        OpenAiNotConfiguredError,
-        OpenAiRateLimitedError,
-        OpenAiTimeoutError,
-        OpenAiUnavailableError,
-        InvalidAiResponseError,
-    ) as error:
-        raise _translate_openai_error(error, normalized_source_word) from error
-
-    generated_payload = _validated_patch(generated, normalized_source_word)
-    existing = _find_existing_word(db, normalized_source_word, payload.current_word_id)
-    if existing is not None:
-        return AiFillExistingResponse(word_id=existing.id)
-    stored = _find_stored_generation(db, normalized_source_word)
-    if stored is not None:
-        return _stored_response(stored, normalized_source_word)
-
-    generated_data = generated_payload.model_dump(exclude_none=True)
-    missing_required_fields = [
-        field for field in REQUIRED_FIELDS if field not in generated_data
-    ]
-    generation = AiVocabularyGeneration(
-        source_word=source_word,
-        normalized_source_word=normalized_source_word,
-        generated_payload=generated_data,
-        missing_required_fields=missing_required_fields,
-        model=settings.openai_model,
-        prompt_version=PROMPT_VERSION,
-    )
-    db.add(generation)
-    try:
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        if not _is_normalized_source_conflict(error):
-            raise
+    owner_token = str(uuid4())
+    reservation_wait_deadline = _reservation_wait_deadline()
+    while not _try_acquire_reservation(
+        db,
+        normalized_source_word,
+        owner_token,
+        reservation_wait_deadline,
+    ):
         stored = _find_stored_generation(db, normalized_source_word)
-        if stored is None:
-            raise
-        return _stored_response(stored, normalized_source_word)
+        if stored is not None:
+            return _stored_response(stored, normalized_source_word)
+        db.rollback()
+        remaining = reservation_wait_deadline - time.monotonic()
+        if remaining <= 0:
+            raise _reservation_in_progress_error()
+        time.sleep(min(RESERVATION_POLL_SECONDS, remaining))
 
-    return AiFillGeneratedResponse(
-        source="openai",
-        payload=generated_payload,
-        missing_required_fields=missing_required_fields,
+    reservation_owned = True
+    heartbeat = _ReservationHeartbeat(
+        db,
+        normalized_source_word,
+        owner_token,
     )
+    try:
+        heartbeat.start()
+        existing = _find_existing_word(
+            db,
+            normalized_source_word,
+            payload.current_word_id,
+        )
+        if existing is not None:
+            return AiFillExistingResponse(word_id=existing.id)
+        stored = _find_stored_generation(db, normalized_source_word)
+        if stored is not None:
+            return _stored_response(stored, normalized_source_word)
+
+        db.rollback()
+        generator = generate or generate_vocabulary
+        try:
+            generated = generator(source_word)
+        except (
+            OpenAiNotConfiguredError,
+            OpenAiRateLimitedError,
+            OpenAiTimeoutError,
+            OpenAiUnavailableError,
+            InvalidAiResponseError,
+        ) as error:
+            raise _translate_openai_error(error, normalized_source_word) from error
+
+        generated_payload = _validated_patch(generated, normalized_source_word)
+        existing = _find_existing_word(
+            db,
+            normalized_source_word,
+            payload.current_word_id,
+        )
+        if existing is not None:
+            return AiFillExistingResponse(word_id=existing.id)
+        stored = _find_stored_generation(db, normalized_source_word)
+        if stored is not None:
+            return _stored_response(stored, normalized_source_word)
+
+        generated_data = generated_payload.model_dump(exclude_none=True)
+        missing_required_fields = [
+            field for field in REQUIRED_FIELDS if field not in generated_data
+        ]
+        generation = AiVocabularyGeneration(
+            source_word=source_word,
+            normalized_source_word=normalized_source_word,
+            generated_payload=generated_data,
+            missing_required_fields=missing_required_fields,
+            model=settings.openai_model,
+            prompt_version=PROMPT_VERSION,
+        )
+        try:
+            if not _fence_reservation_owner(
+                db,
+                normalized_source_word,
+                owner_token,
+            ):
+                db.rollback()
+                reservation_owned = False
+                return _wait_for_stored_generation(
+                    db,
+                    normalized_source_word,
+                    reservation_wait_deadline,
+                )
+            db.add(generation)
+            db.flush()
+            release = db.execute(
+                delete(AiVocabularyGenerationReservation).where(
+                    AiVocabularyGenerationReservation.normalized_source_word
+                    == normalized_source_word,
+                    AiVocabularyGenerationReservation.owner_token == owner_token,
+                )
+            )
+            if release.rowcount != 1:
+                db.rollback()
+                reservation_owned = False
+                return _wait_for_stored_generation(
+                    db,
+                    normalized_source_word,
+                    reservation_wait_deadline,
+                )
+            db.commit()
+            reservation_owned = False
+        except IntegrityError as error:
+            db.rollback()
+            if not _is_normalized_source_conflict(error):
+                raise
+            stored = _find_stored_generation(db, normalized_source_word)
+            if stored is None:
+                raise
+            return _stored_response(stored, normalized_source_word)
+
+        return AiFillGeneratedResponse(
+            source="openai",
+            payload=generated_payload,
+            missing_required_fields=missing_required_fields,
+        )
+    finally:
+        cleanup_deadline = (
+            time.monotonic() + RESERVATION_HEARTBEAT_STOP_SECONDS
+        )
+        heartbeat.request_stop()
+        if reservation_owned:
+            _release_reservation(
+                db,
+                normalized_source_word,
+                owner_token,
+                cleanup_deadline,
+            )
+        stopped = heartbeat.wait(deadline=cleanup_deadline)
+        if not stopped:
+            logger.warning(
+                "AI vocabulary reservation heartbeat did not stop before deadline",
+                extra={"normalized_source_word": normalized_source_word},
+            )

@@ -84,6 +84,10 @@ const secondLoadedWord = {
     stressed_syllable_index: 0,
   },
 };
+const secondUnstressedWord = {
+  ...secondLoadedWord,
+  stress_pattern: null,
+};
 const thirdLoadedWord = {
   ...secondLoadedWord,
   id: 9,
@@ -384,6 +388,51 @@ describe("WordEditorView", () => {
     expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("");
   });
 
+  it("clears a preserved local stress split when switching to another card", async () => {
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    await wrapper.get('input[name="serbian_cyrillic"]').setValue("хвала!");
+    await flushPromises();
+    expect(
+      (wrapper.get('input[name="cyrillic_syllables"]').element as HTMLInputElement).value,
+    ).toBe("хва·ла");
+
+    delete routeState.params!.id;
+    await flushPromises();
+
+    expect(
+      (wrapper.get('input[name="cyrillic_syllables"]').element as HTMLInputElement).value,
+    ).toBe("");
+    expect(
+      (wrapper.get('input[name="latin_syllables"]').element as HTMLInputElement).value,
+    ).toBe("");
+  });
+
+  it("clears a preserved local stress split when switching between words", async () => {
+    vi.mocked(getVocabularyWord).mockImplementation(async (id) => (
+      id === 8 ? secondUnstressedWord : loadedWord
+    ));
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    await wrapper.get('input[name="serbian_cyrillic"]').setValue("хвала!");
+    await flushPromises();
+    expect(
+      (wrapper.get('input[name="cyrillic_syllables"]').element as HTMLInputElement).value,
+    ).toBe("хва·ла");
+
+    routeState.params!.id = "8";
+    await flushPromises();
+
+    expect(
+      (wrapper.get('input[name="cyrillic_syllables"]').element as HTMLInputElement).value,
+    ).toBe("");
+    expect(
+      (wrapper.get('input[name="latin_syllables"]').element as HTMLInputElement).value,
+    ).toBe("");
+  });
+
   it("applies only returned fields and sends the current route id", async () => {
     vi.mocked(fillVocabularyWithAi).mockResolvedValue({
       status: "generated",
@@ -521,6 +570,23 @@ describe("WordEditorView", () => {
     await wrapper.get('[data-testid="dismiss-ai-error"]').trigger("click");
 
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+
+  it.each([
+    ["ru" as const, "Это слово уже обрабатывается. Попробуйте чуть позже."],
+    ["sr" as const, "Ova reč se već obrađuje. Pokušaj malo kasnije."],
+  ])("localizes an AI fill already in progress in $0", async (language, message) => {
+    sessionStore.setUiLanguage(language);
+    vi.mocked(fillVocabularyWithAi).mockRejectedValue(
+      new AiFillApiError("ai_fill_in_progress", "AI fill is already in progress.", 503),
+    );
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    await requestAiFill(wrapper);
+
+    expect(wrapper.get('[role="alert"]').text()).toContain(message);
+    expect(wrapper.get('[role="alert"]').text()).not.toContain("AI fill is already in progress.");
   });
 
   it("keeps the previous AI undo action accessible after a later request errors", async () => {
@@ -756,5 +822,29 @@ describe("WordEditorView", () => {
       }),
       "dev-editor-password",
     );
+  });
+
+  it("keeps the local stress split visible when saving a stale pattern", async () => {
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    const headword = wrapper.get('input[name="serbian_cyrillic"]');
+    (headword.element as HTMLInputElement).value = "хвала!";
+    const inputUpdate = headword.trigger("input");
+    const submit = wrapper.get('[data-testid="word-form"]').trigger("submit.prevent");
+    await Promise.all([inputUpdate, submit]);
+    await flushPromises();
+
+    expect(updateVocabularyWord).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ stress_pattern: null }),
+      "dev-editor-password",
+    );
+    expect(
+      (wrapper.get('input[name="cyrillic_syllables"]').element as HTMLInputElement).value,
+    ).toBe("хва·ла");
+    expect(
+      (wrapper.get('input[name="latin_syllables"]').element as HTMLInputElement).value,
+    ).toBe("hva·la");
   });
 });

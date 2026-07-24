@@ -207,6 +207,7 @@ function aiErrorMessage(cause: unknown): string {
     openai_not_configured: copy.value.aiErrorNotConfigured,
     openai_rate_limited: copy.value.aiErrorRateLimited,
     openai_timeout: copy.value.aiErrorTimeout,
+    ai_fill_in_progress: copy.value.aiErrorInProgress,
     openai_unavailable: copy.value.aiErrorUnavailable,
     invalid_ai_response: copy.value.aiErrorInvalidResponse,
     ai_fill_failed: copy.value.aiErrorFallback,
@@ -412,8 +413,8 @@ async function saveWord() {
   aiRequestId += 1;
   isAiLoading.value = false;
   try {
-    form.stress_pattern = validStressPatternOrNull(form);
     const payload = cloneFormState(form);
+    payload.stress_pattern = validStressPatternOrNull(form);
     if (wordId.value) {
       await updateVocabularyWord(wordId.value, payload, editorPassword.value);
     } else {
@@ -586,6 +587,7 @@ async function saveWord() {
           <input v-model="form.stress_marker" name="stress_marker" />
         </label>
         <StressEditor
+          :key="wordId ?? 'new'"
           v-model="stressPattern"
           :cyrillic-word="form.serbian_cyrillic"
           :latin-word="form.serbian_latin"

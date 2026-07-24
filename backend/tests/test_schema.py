@@ -1,8 +1,15 @@
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
-from app.models import AiVocabularyGeneration, UserProfile, VocabularyItem
+from app.models import (
+    AiVocabularyGeneration,
+    AiVocabularyGenerationReservation,
+    UserProfile,
+    VocabularyItem,
+)
 
 
 def test_can_create_vocabulary_item(db_session):
@@ -116,6 +123,28 @@ def test_ai_generation_persists_required_json_values(db_session):
     assert saved is not None
     assert saved.generated_payload == {"serbian_latin": "raditi"}
     assert saved.missing_required_fields == ["serbian_cyrillic"]
+
+
+def test_ai_generation_reservation_normalized_source_is_unique(db_session):
+    expires_at = datetime.now(timezone.utc)
+    db_session.add(
+        AiVocabularyGenerationReservation(
+            normalized_source_word="raditi",
+            owner_token="first-owner",
+            expires_at=expires_at,
+        )
+    )
+    db_session.commit()
+    db_session.add(
+        AiVocabularyGenerationReservation(
+            normalized_source_word="raditi",
+            owner_token="second-owner",
+            expires_at=expires_at,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
 
 
 @pytest.mark.parametrize("field_name", ["generated_payload", "missing_required_fields"])

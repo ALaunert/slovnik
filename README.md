@@ -26,6 +26,8 @@ AI fill appears only after the vocabulary editor password is verified. Set `OPEN
 
 `POST /api/vocabulary/ai-fill` accepts one Serbian word and the editor password header. It uses a strict key normalized with Unicode NFC, trimming, and case folding. The backend checks existing vocabulary first, then the persistent generation store, and calls OpenAI only when neither has a match. Stored drafts are reused and v1 has no regenerate action. Valid partial drafts are allowed; failed, timed-out, or invalid generations are not cached.
 
+Concurrent requests for the same normalized word share one provider call through an expiring database reservation. Lease timestamps use the database clock, acquisition is bounded by database lock/statement timeouts derived from a monotonic request deadline, and a heartbeat renews the lease in short independent transactions through validation and fenced persistence/release. Provider failures release the reservation, expired reservations can be reclaimed after a worker crash, and waiters return a stable `503` after a bounded wait. The request session holds no open transaction during the OpenAI call.
+
 Structured stress stores aligned Cyrillic and Latin syllables plus one stressed-syllable index. The editor preview, vocabulary list, and new-word/review cards emphasize the full stressed syllable. When structured stress is absent, the legacy `stress_marker` remains visible as metadata without inferred emphasis.
 
 ## Verification

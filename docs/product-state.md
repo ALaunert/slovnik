@@ -1,6 +1,6 @@
 # Slovnik Product State
 
-Last audited: 2026-07-24
+Last audited: 2026-07-25
 
 ## Product Summary
 
@@ -44,6 +44,14 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
 - Business logic lives in focused modules under `backend/app/services/`, including
   `ai_vocabulary_service.py` for duplicate/store/generation orchestration and
   `openai_vocabulary_client.py` for the Responses API adapter.
+- Concurrent AI fills for the same normalized source are coalesced with an expiring database
+  reservation. Lease timestamps come from the database clock, and acquisition lock/statement
+  waits are bounded by a monotonic request deadline. The owner commits the lease before calling
+  OpenAI, renews it through an independent heartbeat until validation, rechecks, fenced
+  persistence, and release finish, and bounds heartbeat shutdown. Waiters reuse the stored result
+  or receive a stable `503`; provider failures release the lease, stale leases can be reclaimed
+  after a worker crash, and the request session holds no database transaction during the provider
+  call.
 - Manual vocabulary create/update accepts optional structured stress with non-empty, aligned
   Cyrillic/Latin syllable arrays, a valid zero-based stress index, and NFC-equivalent exact
   reconstruction of both Serbian spellings. The legacy `stress_marker` contract remains supported.
@@ -75,9 +83,14 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
   - `quiz_answers`: submitted answers per attempt/question.
 - Migration `20260724_0002_ai_vocabulary_fill.py` adds nullable JSON `stress_pattern` to
   `vocabulary_items` while preserving the legacy `stress_marker`, and creates
-  `ai_vocabulary_generations`. Generation records retain the source word, a unique normalized source
-  key, generated JSON payload, missing required fields, model and prompt versions, and timestamps.
-  Both generation JSON fields are required, and explicit Python `None` values are rejected.
+  `ai_vocabulary_generations`. Generation records retain the source word, a unique normalized
+  source key, generated JSON payload, missing required fields, model and prompt versions, and
+  timestamps. Both generation JSON fields are required, and explicit Python `None` values are
+  rejected.
+- Migration `20260725_0003_ai_fill_reservations.py` creates
+  `ai_vocabulary_generation_reservations` without rewriting the existing `0002` revision.
+  Reservations use the normalized source as their primary key and retain an owner token and expiry
+  for crash recovery.
 - Clearing `VocabularyItem.stress_pattern` stores SQL `NULL`; JSON values are replaced wholesale
   rather than tracked for in-place mutation.
 - Vocabulary content is global; profiles, progress, quiz attempts, answers, and weak-word state are scoped by `user_id`.
@@ -105,12 +118,16 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
   redaction without real network calls.
 - AI service and endpoint tests cover source normalization and validation, duplicate priority and
   edit exclusion, persistent store hits, partial patches, controlled fields and limits, structured
-  stress validation, provider error translation, insertion races, and stable response bodies.
+  stress validation, provider error translation, concurrent request coalescing, reservation
+  failure/stale recovery, insertion races, and stable response bodies.
 - Migration tests default to temporary SQLite databases and cover upgrade/downgrade data
-  preservation, JSON schema, and normalized-source uniqueness. Setting
+  preservation, the upgrade path from the existing `0002` revision, JSON schema, and
+  normalized-source uniqueness. Setting
   `SLOVNIK_TEST_POSTGRES_ADMIN_URL` enables the same round trip in a newly created disposable
-  PostgreSQL database; the normal `DATABASE_URL` is never migrated or dropped by that target.
-  Supplied PostgreSQL configuration, connection, and privilege errors fail instead of skipping.
+  PostgreSQL database plus a synchronized two-session expired-reservation contention check that
+  keeps the provider active beyond the initial lease; the normal `DATABASE_URL` is never migrated
+  or dropped by that target. Supplied PostgreSQL configuration, connection, and privilege errors
+  fail instead of skipping.
 - Frontend unit tests cover app shell localization, session persistence, dashboard
   settings/localization, vocabulary API helpers, quiz repeat/self-check behavior, AI fill and undo,
   route/password request races, duplicate navigation, partial-field highlighting, localized
@@ -122,8 +139,8 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
   1280x900 and 390x844. The editor scenario covers unlock, generated and stored drafts, full-syllable
   stress, save, undo, partial fill, timeout, duplicate action, and horizontal-overflow checks without
   a real OpenAI request.
-- Verified on 2026-07-24: backend Ruff passed; backend tests passed with `157 passed, 1 skipped`;
-  frontend unit tests passed with `61 passed`; production build passed; all three Playwright tests
+- Verified on 2026-07-25: backend Ruff passed; backend tests passed with `175 passed, 2 skipped`;
+  frontend unit tests passed with `68 passed`; production build passed; all three Playwright tests
   passed, including the AI editor scenario at desktop and mobile viewports.
 - Manual MVP flow is in `docs/testing/mvp-manual-test.md`.
 
@@ -152,6 +169,8 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
 - `backend/alembic/versions/20260702_0001_initial_schema.py`: initial database schema.
 - `backend/alembic/versions/20260724_0002_ai_vocabulary_fill.py`: structured stress and persistent
   AI generation schema.
+- `backend/alembic/versions/20260725_0003_ai_fill_reservations.py`: concurrent generation
+  reservation schema.
 - `frontend/src/router.ts`: frontend route map.
 - `frontend/src/api/client.ts`: typed frontend API wrapper.
 - `frontend/src/views/`: user-facing workflows.

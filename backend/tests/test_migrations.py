@@ -1,6 +1,10 @@
 import logging
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -9,8 +13,13 @@ from alembic.config import Config
 from sqlalchemy import JSON, MetaData, Table, create_engine, inspect, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
+from app.models import AiVocabularyGenerationReservation
+from app.schemas import AiFillRequest
+from app.services import ai_vocabulary_service
+from app.services.openai_vocabulary_client import OpenAiVocabularyResult, RawAiVocabulary
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 POSTGRES_ADMIN_URL_ENV = "SLOVNIK_TEST_POSTGRES_ADMIN_URL"
@@ -273,6 +282,7 @@ def test_upgrade_adds_ai_vocabulary_persistence_schema(migration_database):
     table_names = inspector.get_table_names()
 
     assert "ai_vocabulary_generations" in table_names
+    assert "ai_vocabulary_generation_reservations" in table_names
 
     vocabulary_columns = {
         column["name"]: column for column in inspector.get_columns("vocabulary_items")
@@ -290,6 +300,15 @@ def test_upgrade_adds_ai_vocabulary_persistence_schema(migration_database):
         for index in inspector.get_indexes("ai_vocabulary_generations")
         if index["unique"]
     }
+    reservation_columns = {
+        column["name"]
+        for column in inspector.get_columns(
+            "ai_vocabulary_generation_reservations"
+        )
+    }
+    reservation_primary_key = inspector.get_pk_constraint(
+        "ai_vocabulary_generation_reservations"
+    )
 
     assert "stress_pattern" in vocabulary_columns
     assert isinstance(vocabulary_columns["stress_pattern"]["type"], JSON)
@@ -305,8 +324,47 @@ def test_upgrade_adds_ai_vocabulary_persistence_schema(migration_database):
         "updated_at",
     } == generation_columns
     assert ("normalized_source_word",) in unique_columns | unique_indexes
+    assert {
+        "normalized_source_word",
+        "owner_token",
+        "expires_at",
+        "created_at",
+        "updated_at",
+    } == reservation_columns
+    assert reservation_primary_key["name"] == (
+        "pk_ai_vocabulary_generation_reservations"
+    )
+    assert reservation_primary_key["constrained_columns"] == [
+        "normalized_source_word"
+    ]
     assert read_legacy_stress_marker(engine) == LEGACY_STRESS_MARKER
     assert_unique_generation_winner_survives(engine)
+
+
+def test_upgrade_from_existing_ai_fill_revision_adds_reservations(
+    tmp_path,
+    monkeypatch,
+):
+    database_url = f"sqlite:///{tmp_path / 'upgrade-from-0002.db'}"
+    config = build_alembic_config(database_url, monkeypatch)
+
+    command.upgrade(config, "20260724_0002")
+    engine = create_engine(database_url)
+    try:
+        assert (
+            "ai_vocabulary_generation_reservations"
+            not in inspect(engine).get_table_names()
+        )
+
+        engine.dispose()
+        command.upgrade(config, "head")
+
+        assert (
+            "ai_vocabulary_generation_reservations"
+            in inspect(engine).get_table_names()
+        )
+    finally:
+        engine.dispose()
 
 
 def test_downgrade_to_initial_schema_preserves_legacy_stress(migration_database):
@@ -326,6 +384,10 @@ def test_downgrade_to_initial_schema_preserves_legacy_stress(migration_database)
     assert "stress_marker" in vocabulary_columns
     assert "stress_pattern" not in vocabulary_columns
     assert "ai_vocabulary_generations" not in inspector.get_table_names()
+    assert (
+        "ai_vocabulary_generation_reservations"
+        not in inspector.get_table_names()
+    )
     assert read_legacy_stress_marker(engine) == LEGACY_STRESS_MARKER
 
 
@@ -350,4 +412,103 @@ def test_postgresql_migration_round_trip(postgresql_migration_database):
     assert "stress_marker" in vocabulary_columns
     assert "stress_pattern" not in vocabulary_columns
     assert "ai_vocabulary_generations" not in inspector.get_table_names()
+    assert (
+        "ai_vocabulary_generation_reservations"
+        not in inspector.get_table_names()
+    )
     assert read_legacy_stress_marker(engine) == LEGACY_STRESS_MARKER
+
+
+def test_postgresql_expired_reservation_has_one_takeover_and_provider_call(
+    postgresql_migration_database,
+    monkeypatch,
+):
+    _, engine = postgresql_migration_database
+    SessionFactory = sessionmaker(bind=engine)
+    expired_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    with SessionFactory() as session:
+        session.add(
+            AiVocabularyGenerationReservation(
+                normalized_source_word="uciti",
+                owner_token="crashed-owner",
+                expires_at=expired_at,
+            )
+        )
+        session.commit()
+
+    monkeypatch.setattr(
+        ai_vocabulary_service,
+        "settings",
+        SimpleNamespace(openai_model="test-model", openai_timeout_seconds=0.05),
+    )
+    monkeypatch.setattr(
+        ai_vocabulary_service,
+        "RESERVATION_LEASE_GRACE_SECONDS",
+        0.05,
+    )
+    monkeypatch.setattr(ai_vocabulary_service, "RESERVATION_POLL_SECONDS", 0.01)
+    provider_entered = threading.Event()
+    second_acquisition_failed = threading.Event()
+    release_provider = threading.Event()
+    provider_lock = threading.Lock()
+    provider_call_count = 0
+    original_acquire = ai_vocabulary_service._try_acquire_reservation
+    first_request_ident = None
+
+    def tracked_acquire(*args, **kwargs):
+        acquired = original_acquire(*args, **kwargs)
+        if threading.get_ident() != first_request_ident and not acquired:
+            second_acquisition_failed.set()
+        return acquired
+
+    monkeypatch.setattr(
+        ai_vocabulary_service,
+        "_try_acquire_reservation",
+        tracked_acquire,
+    )
+
+    def generate(_):
+        nonlocal provider_call_count
+        with provider_lock:
+            provider_call_count += 1
+        provider_entered.set()
+        assert release_provider.wait(timeout=3)
+        return OpenAiVocabularyResult(
+            payload=RawAiVocabulary.model_construct(
+                serbian_cyrillic="учити",
+                serbian_latin="uciti",
+                russian_translation="учить",
+                cefr_level="A1",
+                theme="education",
+            ),
+            request_id="postgres-concurrency",
+        )
+
+    def fill(*, first_request=False):
+        nonlocal first_request_ident
+        if first_request:
+            first_request_ident = threading.get_ident()
+        with SessionFactory() as session:
+            return ai_vocabulary_service.fill_vocabulary(
+                session,
+                AiFillRequest(source_word="uciti"),
+                generate=generate,
+            )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(fill, first_request=True)
+            assert provider_entered.wait(timeout=3)
+            threading.Event().wait(0.12)
+            second = executor.submit(fill)
+            assert second_acquisition_failed.wait(timeout=3)
+            assert provider_call_count == 1
+            release_provider.set()
+            results = [first.result(timeout=3), second.result(timeout=3)]
+    finally:
+        release_provider.set()
+
+    assert provider_call_count == 1
+    assert {result.source for result in results} == {"openai", "store"}
+    with SessionFactory() as session:
+        assert session.get(AiVocabularyGenerationReservation, "uciti") is None

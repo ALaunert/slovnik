@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -56,6 +57,24 @@ class AiVocabularyGeneration(Base):
     )
     model: Mapped[str] = mapped_column(String(120), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AiVocabularyGenerationReservation(Base):
+    __tablename__ = "ai_vocabulary_generation_reservations"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "normalized_source_word",
+            name="pk_ai_vocabulary_generation_reservations",
+        ),
+    )
+
+    normalized_source_word: Mapped[str] = mapped_column(String(160), nullable=False)
+    owner_token: Mapped[str] = mapped_column(String(36), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
