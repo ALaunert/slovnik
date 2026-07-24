@@ -24,7 +24,10 @@ describe("StressEditor", () => {
       latin_syllables: ["ra", "di", "ti"],
       stressed_syllable_index: 1,
     });
-    expect(wrapper.get('[data-stress-index="1"]').classes()).toContain("is-selected");
+    const selectedButton = wrapper.get('[data-stress-index="1"]');
+    expect(selectedButton.classes()).toContain("is-selected");
+    expect(selectedButton.attributes("aria-label")).toContain("ди");
+    expect(selectedButton.attributes("aria-label")).toContain("di");
     expect(wrapper.findAll(".stress-preview strong").map((node) => node.text())).toEqual(["ди", "di"]);
   });
 

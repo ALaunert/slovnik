@@ -217,7 +217,7 @@ function clearStress() {
           class="stress-syllable-button"
           :class="{ 'is-selected': selectedIndex === index }"
           :data-stress-index="index"
-          :aria-label="`${labels.syllableLabel} ${index + 1}`"
+          :aria-label="`${labels.syllableLabel} ${index + 1}: ${validSplit.cyrillicSyllables[index]}, ${validSplit.latinSyllables[index]}`"
           :aria-pressed="selectedIndex === index"
           @click="selectStress(index)"
         >

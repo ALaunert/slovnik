@@ -61,6 +61,8 @@ const existingWordId = ref<number | null>(null);
 const undoSnapshot = ref<VocabularyPayload | null>(null);
 const showAiMissingFields = ref(false);
 let aiRequestId = 0;
+let routeLoadRequestId = 0;
+let unlockRequestId = 0;
 
 const requiredFields: RequiredField[] = [
   "serbian_cyrillic",
@@ -195,17 +197,13 @@ function aiErrorMessage(cause: unknown): string {
   return messagesByCode[cause.code] ?? (cause.message.trim() || copy.value.aiErrorFallback);
 }
 
-async function loadWordForEdit() {
-  if (!wordId.value) return;
-  applyFormState(await getVocabularyWord(wordId.value));
-}
-
 onMounted(() => {
   isEditorUnlocked.value = false;
 });
 
 watch(editorPassword, (password) => {
-  if (isEditorUnlocked.value && password !== verifiedEditorPassword.value) {
+  unlockRequestId += 1;
+  if (verifiedEditorPassword.value && password !== verifiedEditorPassword.value) {
     aiRequestId += 1;
     isAiLoading.value = false;
     isEditorUnlocked.value = false;
@@ -215,28 +213,105 @@ watch(editorPassword, (password) => {
   }
 });
 
+watch(wordId, async (nextWordId, previousWordId) => {
+  if (nextWordId === previousWordId) return;
+
+  unlockRequestId += 1;
+  aiRequestId += 1;
+  isAiLoading.value = false;
+  aiInfoState.value = null;
+  aiError.value = "";
+  existingWordId.value = null;
+  undoSnapshot.value = null;
+  showAiMissingFields.value = false;
+  const loadRequestId = ++routeLoadRequestId;
+  const hasVerifiedRouteAccess = (
+    isEditorUnlocked.value
+    || (
+      verifiedEditorPassword.value.length > 0
+      && verifiedEditorPassword.value === editorPassword.value
+    )
+  );
+  if (!hasVerifiedRouteAccess) return;
+
+  const routePassword = verifiedEditorPassword.value;
+  isEditorUnlocked.value = false;
+  status.value = "";
+  error.value = "";
+  if (nextWordId === null) {
+    applyFormState({
+      serbian_cyrillic: "",
+      serbian_latin: "",
+      russian_translation: "",
+      cefr_level: "A1",
+      theme: "",
+      usage_register: "",
+      stress_marker: "",
+      stress_pattern: null,
+      meaning_notes: "",
+      example_sentences: "",
+      example_translations: "",
+    });
+    isEditorUnlocked.value = true;
+    status.value = copy.value.unlocked;
+    return;
+  }
+
+  try {
+    const word = await getVocabularyWord(nextWordId);
+    if (
+      loadRequestId !== routeLoadRequestId
+      || nextWordId !== wordId.value
+      || routePassword !== editorPassword.value
+      || routePassword !== verifiedEditorPassword.value
+    ) return;
+    applyFormState(word);
+    isEditorUnlocked.value = true;
+    status.value = copy.value.unlocked;
+  } catch {
+    if (loadRequestId !== routeLoadRequestId || nextWordId !== wordId.value) return;
+    verifiedEditorPassword.value = "";
+    error.value = copy.value.loadWordError;
+  }
+});
+
 async function unlockEditor() {
+  const requestId = ++unlockRequestId;
+  const submittedPassword = editorPassword.value;
+  const submittedWordId = wordId.value;
+  const isCurrentRequest = () => (
+    requestId === unlockRequestId
+    && submittedPassword === editorPassword.value
+    && submittedWordId === wordId.value
+  );
   status.value = "";
   error.value = "";
   try {
-    await verifyEditorPassword(editorPassword.value);
+    await verifyEditorPassword(submittedPassword);
   } catch {
+    if (!isCurrentRequest()) return;
     isEditorUnlocked.value = false;
     verifiedEditorPassword.value = "";
     error.value = copy.value.unlockError;
     return;
   }
+  if (!isCurrentRequest()) return;
 
   try {
-    await loadWordForEdit();
+    const word = submittedWordId === null
+      ? null
+      : await getVocabularyWord(submittedWordId);
+    if (!isCurrentRequest()) return;
+    if (word) applyFormState(word);
   } catch {
+    if (!isCurrentRequest()) return;
     isEditorUnlocked.value = false;
     verifiedEditorPassword.value = "";
     error.value = copy.value.loadWordError;
     return;
   }
 
-  verifiedEditorPassword.value = editorPassword.value;
+  verifiedEditorPassword.value = submittedPassword;
   isEditorUnlocked.value = true;
   status.value = copy.value.unlocked;
 }
@@ -247,6 +322,7 @@ async function fillWithAi() {
 
   const requestId = ++aiRequestId;
   const requestPassword = verifiedEditorPassword.value;
+  const requestWordId = wordId.value;
   isAiLoading.value = true;
   aiError.value = "";
   aiInfoState.value = null;
@@ -256,12 +332,13 @@ async function fillWithAi() {
     const response = await fillVocabularyWithAi(
       sourceWord,
       requestPassword,
-      wordId.value ?? undefined,
+      requestWordId ?? undefined,
     );
     if (
       requestId !== aiRequestId
       || !isEditorUnlocked.value
       || requestPassword !== verifiedEditorPassword.value
+      || requestWordId !== wordId.value
     ) return;
 
     if (response.status === "already_exists") {
@@ -363,8 +440,8 @@ async function saveWord() {
             {{ isAiLoading ? copy.aiFilling : copy.aiFill }}
           </button>
         </div>
-        <div v-if="aiInfoMessage" class="ai-feedback" data-testid="ai-info">
-          <span>{{ aiInfoMessage }}</span>
+        <div v-if="aiInfoMessage || undoSnapshot" class="ai-feedback">
+          <span v-if="aiInfoMessage" role="status" data-testid="ai-info">{{ aiInfoMessage }}</span>
           <RouterLink
             v-if="existingWordId"
             class="button-link compact-button"

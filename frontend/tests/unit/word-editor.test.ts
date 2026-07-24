@@ -1,20 +1,26 @@
 import { mount, type VueWrapper } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const routeParams = vi.hoisted(() => ({ value: {} as Record<string, string> }));
+const routeState = vi.hoisted(() => ({
+  params: null as Record<string, string> | null,
+}));
 const loadedStressPattern = vi.hoisted(() => ({
   cyrillic_syllables: ["хва", "ла"],
   latin_syllables: ["hva", "la"],
   stressed_syllable_index: 0,
 }));
 
-vi.mock("vue-router", () => ({
-  RouterLink: {
-    props: ["to"],
-    template: '<a :href="to"><slot /></a>',
-  },
-  useRoute: () => ({ params: routeParams.value }),
-}));
+vi.mock("vue-router", async () => {
+  const { reactive } = await vi.importActual<typeof import("vue")>("vue");
+  routeState.params = reactive({});
+  return {
+    RouterLink: {
+      props: ["to"],
+      template: '<a :href="to"><slot /></a>',
+    },
+    useRoute: () => ({ params: routeState.params! }),
+  };
+});
 
 vi.mock("../../src/api/client", () => {
   class AiFillApiError extends Error {
@@ -63,6 +69,32 @@ const loadedWord = {
   example_sentences: null,
   example_translations: null,
 };
+const secondLoadedWord = {
+  ...loadedWord,
+  id: 8,
+  serbian_cyrillic: "жена",
+  serbian_latin: "žena",
+  russian_translation: "женщина",
+  theme: "people",
+  stress_pattern: {
+    cyrillic_syllables: ["же", "на"],
+    latin_syllables: ["že", "na"],
+    stressed_syllable_index: 0,
+  },
+};
+const thirdLoadedWord = {
+  ...secondLoadedWord,
+  id: 9,
+  serbian_cyrillic: "радити",
+  serbian_latin: "raditi",
+  russian_translation: "работать",
+  theme: "daily-life",
+  stress_pattern: {
+    cyrillic_syllables: ["ра", "ди", "ти"],
+    latin_syllables: ["ra", "di", "ti"],
+    stressed_syllable_index: 0,
+  },
+};
 
 async function flushPromises() {
   await Promise.resolve();
@@ -84,7 +116,9 @@ async function requestAiFill(wrapper: VueWrapper, sourceWord = "raditi") {
 
 describe("WordEditorView", () => {
   beforeEach(() => {
-    routeParams.value = { id: "7" };
+    const params = routeState.params!;
+    Object.keys(params).forEach((key) => delete params[key]);
+    params.id = "7";
     sessionStore.setUiLanguage("ru");
     vi.mocked(getVocabularyWord).mockReset().mockResolvedValue(loadedWord);
     vi.mocked(createVocabularyWord).mockReset().mockResolvedValue({ id: 8 } as never);
@@ -107,6 +141,47 @@ describe("WordEditorView", () => {
 
     expect(wrapper.get('[data-testid="ai-fill"]').isVisible()).toBe(true);
     expect(wrapper.get('[data-testid="ai-fill-button"]').attributes("disabled")).toBeDefined();
+  });
+
+  it("does not unlock when the submitted password changes before verification resolves", async () => {
+    let resolveVerification!: () => void;
+    vi.mocked(verifyEditorPassword).mockReturnValue(new Promise((resolve) => {
+      resolveVerification = resolve;
+    }));
+    const wrapper = mount(WordEditorView);
+
+    await wrapper.get('input[name="editor_password"]').setValue("old-password");
+    await wrapper.get('[data-testid="unlock-form"]').trigger("submit.prevent");
+    await wrapper.get('input[name="editor_password"]').setValue("new-password");
+    resolveVerification();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="ai-fill"]').exists()).toBe(false);
+    expect(getVocabularyWord).not.toHaveBeenCalled();
+  });
+
+  it("ignores an older verification rejection after a newer attempt unlocks", async () => {
+    let rejectFirstVerification!: (error: Error) => void;
+    const firstVerification = new Promise<void>((_, reject) => {
+      rejectFirstVerification = reject;
+    });
+    vi.mocked(verifyEditorPassword).mockImplementation((password) => (
+      password === "old-password" ? firstVerification : Promise.resolve()
+    ));
+    const wrapper = mount(WordEditorView);
+
+    await wrapper.get('input[name="editor_password"]').setValue("old-password");
+    await wrapper.get('[data-testid="unlock-form"]').trigger("submit.prevent");
+    await wrapper.get('input[name="editor_password"]').setValue("new-password");
+    await wrapper.get('[data-testid="unlock-form"]').trigger("submit.prevent");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="ai-fill"]').isVisible()).toBe(true);
+
+    rejectFirstVerification(new Error("stale rejection"));
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="ai-fill"]').isVisible()).toBe(true);
+    expect(wrapper.text()).not.toContain("Неверный пароль редактора");
   });
 
   it("shows a loading state while AI fill is pending", async () => {
@@ -159,6 +234,86 @@ describe("WordEditorView", () => {
     expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("спасибо");
   });
 
+  it("loads the new route word and ignores an AI response from the previous word", async () => {
+    let resolveRequest!: (value: Awaited<ReturnType<typeof fillVocabularyWithAi>>) => void;
+    vi.mocked(fillVocabularyWithAi).mockReturnValue(new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+    vi.mocked(getVocabularyWord).mockImplementation(async (id) => (
+      id === 8 ? secondLoadedWord : loadedWord
+    ));
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+    await wrapper.get('input[name="ai_source_word"]').setValue("raditi");
+    await wrapper.get('[data-testid="ai-fill-button"]').trigger("click");
+
+    routeState.params!.id = "8";
+    await flushPromises();
+
+    expect(getVocabularyWord).toHaveBeenCalledWith(8);
+    expect((wrapper.get('[name="serbian_cyrillic"]').element as HTMLInputElement).value).toBe("жена");
+    expect(wrapper.get('[data-testid="ai-fill-button"]').text()).toBe("Заполнить");
+
+    resolveRequest({
+      status: "generated",
+      source: "openai",
+      payload: { russian_translation: "stale AI result" },
+      missing_required_fields: [],
+    });
+    await flushPromises();
+
+    expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("женщина");
+  });
+
+  it("loads the latest word when routes change again during an earlier route load", async () => {
+    let resolveSecondWord!: (value: typeof secondLoadedWord) => void;
+    const secondWordRequest = new Promise<typeof secondLoadedWord>((resolve) => {
+      resolveSecondWord = resolve;
+    });
+    vi.mocked(getVocabularyWord).mockImplementation(async (id) => {
+      if (id === 8) return secondWordRequest;
+      if (id === 9) return thirdLoadedWord;
+      return loadedWord;
+    });
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    routeState.params!.id = "8";
+    await flushPromises();
+    expect(getVocabularyWord).toHaveBeenCalledWith(8);
+
+    routeState.params!.id = "9";
+    await flushPromises();
+
+    expect(getVocabularyWord).toHaveBeenCalledWith(9);
+    expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("работать");
+
+    resolveSecondWord(secondLoadedWord);
+    await flushPromises();
+    expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("работать");
+  });
+
+  it("does not re-unlock a route load after verified access was cleared", async () => {
+    let resolveSecondWord!: (value: typeof secondLoadedWord) => void;
+    vi.mocked(getVocabularyWord).mockImplementation(async (id) => {
+      if (id !== 8) return loadedWord;
+      return new Promise<typeof secondLoadedWord>((resolve) => {
+        resolveSecondWord = resolve;
+      });
+    });
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    routeState.params!.id = "8";
+    await flushPromises();
+    await wrapper.get('input[name="editor_password"]').setValue("changed-password");
+    await wrapper.get('input[name="editor_password"]').setValue("dev-editor-password");
+    resolveSecondWord(secondLoadedWord);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="ai-fill"]').exists()).toBe(false);
+  });
+
   it("applies only returned fields and sends the current route id", async () => {
     vi.mocked(fillVocabularyWithAi).mockResolvedValue({
       status: "generated",
@@ -185,6 +340,7 @@ describe("WordEditorView", () => {
     expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("благодарю");
     expect((wrapper.get('[name="meaning_notes"]').element as HTMLTextAreaElement).value).toBe("Новая заметка");
     expect(wrapper.get('[data-testid="ai-info"]').text()).toContain("OpenAI");
+    expect(wrapper.get('[data-testid="ai-info"]').attributes("role")).toBe("status");
   });
 
   it("restores the complete pre-fill form including structured stress", async () => {
@@ -276,6 +432,7 @@ describe("WordEditorView", () => {
     expect((wrapper.get('[name="meaning_notes"]').element as HTMLTextAreaElement).value).toBe("keep me");
     expect(wrapper.get('[data-testid="existing-word-link"]').attributes("href")).toBe("/editor/42");
     expect(wrapper.get('[data-testid="ai-info"]').text()).toContain("уже есть");
+    expect(wrapper.get('[data-testid="ai-info"]').attributes("role")).toBe("status");
   });
 
   it("preserves the form in a dismissible localized technical-error toast", async () => {
@@ -294,6 +451,33 @@ describe("WordEditorView", () => {
     await wrapper.get('[data-testid="dismiss-ai-error"]').trigger("click");
 
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+
+  it("keeps the previous AI undo action accessible after a later request errors", async () => {
+    vi.mocked(fillVocabularyWithAi)
+      .mockResolvedValueOnce({
+        status: "generated",
+        source: "openai",
+        payload: { russian_translation: "благодарю" },
+        missing_required_fields: [],
+      })
+      .mockRejectedValueOnce(
+        new AiFillApiError("openai_timeout", "AI fill timed out.", 503),
+      );
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    await requestAiFill(wrapper);
+    expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("благодарю");
+    await requestAiFill(wrapper, "hvala");
+
+    expect(wrapper.get('[role="alert"]').text()).toContain("ИИ не ответил вовремя");
+    expect(wrapper.get('[data-testid="ai-restore"]').isVisible()).toBe(true);
+
+    await wrapper.get('[data-testid="ai-restore"]').trigger("click");
+    await flushPromises();
+
+    expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("спасибо");
   });
 
   it("uses neutral copy for a stored generation", async () => {
