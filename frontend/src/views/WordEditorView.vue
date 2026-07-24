@@ -7,6 +7,7 @@ import {
   getVocabularyWord,
   updateVocabularyWord,
   verifyEditorPassword,
+  type StressPattern,
   type VocabularyPayload,
 } from "../api/client";
 import { messages } from "../i18n/messages";
@@ -60,6 +61,33 @@ function applyWord(word: VocabularyPayload) {
   form.example_translations = word.example_translations ?? "";
 }
 
+function validStressPatternOrNull(payload: VocabularyPayload): StressPattern | null {
+  const pattern = payload.stress_pattern;
+  if (!pattern) return null;
+
+  const syllableCount = pattern.cyrillic_syllables.length;
+  const segments = [...pattern.cyrillic_syllables, ...pattern.latin_syllables];
+  const hasValidShape = (
+    syllableCount > 0
+    && syllableCount === pattern.latin_syllables.length
+    && segments.every((segment) => segment.trim().length > 0)
+    && Number.isInteger(pattern.stressed_syllable_index)
+    && pattern.stressed_syllable_index >= 0
+    && pattern.stressed_syllable_index < syllableCount
+  );
+  if (!hasValidShape) return null;
+
+  const reconstructsCyrillic = (
+    pattern.cyrillic_syllables.join("").normalize("NFC")
+    === payload.serbian_cyrillic.normalize("NFC")
+  );
+  const reconstructsLatin = (
+    pattern.latin_syllables.join("").normalize("NFC")
+    === payload.serbian_latin.normalize("NFC")
+  );
+  return reconstructsCyrillic && reconstructsLatin ? pattern : null;
+}
+
 async function loadWordForEdit() {
   if (!wordId.value) return;
   applyWord(await getVocabularyWord(wordId.value));
@@ -110,10 +138,12 @@ async function saveWord() {
     return;
   }
   try {
+    form.stress_pattern = validStressPatternOrNull(form);
+    const payload: VocabularyPayload = { ...form };
     if (wordId.value) {
-      await updateVocabularyWord(wordId.value, form, editorPassword.value);
+      await updateVocabularyWord(wordId.value, payload, editorPassword.value);
     } else {
-      await createVocabularyWord(form, editorPassword.value);
+      await createVocabularyWord(payload, editorPassword.value);
     }
     status.value = copy.value.wordSaved;
   } catch {
