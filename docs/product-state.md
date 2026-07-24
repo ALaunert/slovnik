@@ -121,9 +121,9 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
   1280x900 and 390x844. The editor scenario covers unlock, generated and stored drafts, full-syllable
   stress, save, undo, partial fill, timeout, duplicate action, and horizontal-overflow checks without
   a real OpenAI request.
-- Verified on 2026-07-24: backend Ruff passed; backend tests passed with `143 passed, 1 skipped`;
-  frontend unit tests passed with `54 passed`; production build passed; the AI editor Playwright
-  scenario passed at both desktop and mobile viewports.
+- Verified on 2026-07-24: backend Ruff passed; backend tests passed with `157 passed, 1 skipped`;
+  frontend unit tests passed with `57 passed`; production build passed; all three Playwright tests
+  passed, including the AI editor scenario at desktop and mobile viewports.
 - Manual MVP flow is in `docs/testing/mvp-manual-test.md`.
 
 ## Known Limitations / Deferred Scope

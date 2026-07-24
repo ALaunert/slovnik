@@ -138,7 +138,10 @@ def test_normalize_source_word_uses_nfc_trim_and_casefold():
     assert normalize_source_word(f"  {decomposed}  ") == normalize_source_word("ráditi")
 
 
-@pytest.mark.parametrize("source_word", ["", "   ", "dve reči", "x" * 161])
+@pytest.mark.parametrize(
+    "source_word",
+    ["", "   ", "dve reči", "x" * 161, "\x00raditi", "İ" * 160],
+)
 def test_invalid_source_word_uses_stable_service_error(db_session, source_word):
     with pytest.raises(AiFillServiceError) as caught:
         fill_vocabulary(
@@ -240,6 +243,50 @@ def test_openai_success_persists_non_null_patch_and_metadata(db_session):
     assert generation.generated_payload == result.payload.model_dump(exclude_none=True)
     assert generation.model == "test-model"
     assert generation.prompt_version == ai_vocabulary_service.PROMPT_VERSION
+
+
+def test_openai_call_runs_without_an_open_database_transaction(db_session):
+    def generate(_):
+        assert not db_session.in_transaction()
+        return generated_result()
+
+    result = fill_vocabulary(
+        db_session,
+        AiFillRequest(source_word="raditi"),
+        generate=generate,
+    )
+
+    assert result.source == "openai"
+
+
+def test_vocabulary_created_during_generation_wins_before_persistence(db_session):
+    def generate(_):
+        existing = add_word(db_session)
+        return generated_result(request_id=f"word-{existing.id}")
+
+    result = fill_vocabulary(
+        db_session,
+        AiFillRequest(source_word="raditi"),
+        generate=generate,
+    )
+
+    assert result.status == "already_exists"
+    assert db_session.scalar(select(func.count(AiVocabularyGeneration.id))) == 0
+
+
+def test_store_row_created_during_generation_is_reused(db_session):
+    def generate(_):
+        add_generation(db_session)
+        return generated_result()
+
+    result = fill_vocabulary(
+        db_session,
+        AiFillRequest(source_word="raditi"),
+        generate=generate,
+    )
+
+    assert result.source == "store"
+    assert db_session.scalar(select(func.count(AiVocabularyGeneration.id))) == 1
 
 
 def test_openai_receives_trimmed_source_word(db_session):
@@ -499,13 +546,22 @@ def test_integrity_error_rolls_back_and_returns_concurrent_store_row(
         model="other-model",
         prompt_version="other-v1",
     )
-    find_stored = Mock(side_effect=[None, concurrent])
+    find_stored = Mock(side_effect=[None, None, concurrent])
     rollback = Mock()
     monkeypatch.setattr(ai_vocabulary_service, "_find_stored_generation", find_stored)
     monkeypatch.setattr(
         db_session,
         "commit",
-        Mock(side_effect=IntegrityError("insert", {}, Exception("unique"))),
+        Mock(
+            side_effect=IntegrityError(
+                "insert",
+                {},
+                Exception(
+                    "UNIQUE constraint failed: "
+                    "ai_vocabulary_generations.normalized_source_word"
+                ),
+            )
+        ),
     )
     monkeypatch.setattr(db_session, "rollback", rollback)
 
@@ -517,8 +573,73 @@ def test_integrity_error_rolls_back_and_returns_concurrent_store_row(
 
     assert result.source == "store"
     assert result.payload.serbian_latin == "raditi"
-    rollback.assert_called_once_with()
-    assert find_stored.call_count == 2
+    assert rollback.call_count == 2
+    assert find_stored.call_count == 3
+
+
+def test_non_unique_integrity_error_is_not_misclassified(db_session, monkeypatch):
+    monkeypatch.setattr(
+        db_session,
+        "commit",
+        Mock(
+            side_effect=IntegrityError(
+                "insert",
+                {},
+                Exception("NOT NULL constraint failed: ai_vocabulary_generations.model"),
+            )
+        ),
+    )
+
+    with pytest.raises(IntegrityError):
+        fill_vocabulary(
+            db_session,
+            AiFillRequest(source_word="raditi"),
+            generate=lambda _: generated_result(),
+        )
+
+
+def test_invalid_stored_payload_returns_stable_error(db_session):
+    add_generation(
+        db_session,
+        generated_payload={
+            "serbian_latin": ["not", "a", "string"],
+            "russian_translation": "делать",
+        },
+    )
+
+    with pytest.raises(AiFillServiceError) as caught:
+        fill_vocabulary(
+            db_session,
+            AiFillRequest(source_word="raditi"),
+            generate=Mock(side_effect=AssertionError("OpenAI must not run")),
+        )
+
+    assert (caught.value.code, caught.value.status_code) == ("invalid_ai_response", 502)
+
+
+def test_stored_payload_revalidates_and_drops_invalid_stress(db_session):
+    add_generation(
+        db_session,
+        generated_payload={
+            "serbian_cyrillic": "радити",
+            "serbian_latin": "raditi",
+            "russian_translation": "делать",
+            "stress_pattern": {
+                "cyrillic_syllables": ["не", "ваља"],
+                "latin_syllables": ["ra", "di", "ti"],
+                "stressed_syllable_index": 0,
+            },
+        },
+    )
+
+    result = fill_vocabulary(
+        db_session,
+        AiFillRequest(source_word="raditi"),
+        generate=Mock(side_effect=AssertionError("OpenAI must not run")),
+    )
+
+    assert result.source == "store"
+    assert result.payload.stress_pattern is None
 
 
 def test_ai_fill_requires_editor_password(client):

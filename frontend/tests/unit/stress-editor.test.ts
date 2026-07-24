@@ -147,4 +147,24 @@ describe("StressEditor", () => {
     expect(wrapper.get('[data-testid="stress-invalid"]').text()).not.toBe("");
     expect(wrapper.emitted("update:modelValue")).toBeUndefined();
   });
+
+  it("announces invalid splits and associates the error with both inputs", async () => {
+    const wrapper = mount(StressEditor, {
+      props: {
+        cyrillicWord: "радити",
+        latinWord: "raditi",
+        modelValue: null,
+      },
+    });
+
+    await wrapper.get('[name="cyrillic_syllables"]').setValue("по·грешно");
+    await wrapper.get('[name="latin_syllables"]').setValue("po·grešno");
+
+    expect(wrapper.get('[data-testid="stress-invalid"]').attributes("role")).toBe("status");
+    expect(wrapper.get('[name="cyrillic_syllables"]').attributes("aria-invalid")).toBe("true");
+    expect(wrapper.get('[name="latin_syllables"]').attributes("aria-invalid")).toBe("true");
+    expect(wrapper.get('[name="cyrillic_syllables"]').attributes("aria-describedby")).toBe(
+      "stress-split-error",
+    );
+  });
 });

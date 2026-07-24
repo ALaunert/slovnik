@@ -7,7 +7,10 @@ from openai import (
     APIStatusError,
     APITimeoutError,
     AuthenticationError,
+    BadRequestError,
+    NotFoundError,
     OpenAI,
+    PermissionDeniedError,
     RateLimitError,
 )
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -15,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+sdk_logger = logging.getLogger("openai")
 
 PROMPT_VERSION = "v1"
 SYSTEM_PROMPT = """
@@ -133,31 +137,49 @@ def _has_refusal(response) -> bool:
 
 def generate_vocabulary(source_word: str, client=None) -> OpenAiVocabularyResult:
     if client is None:
-        if not settings.openai_api_key.strip():
+        if not settings.openai_api_key.strip() or not settings.openai_model.strip():
             _log_failure("not_configured")
             raise OpenAiNotConfiguredError("OpenAI is not configured")
 
     failure = None
+    request_id = None
     try:
+        if sdk_logger.getEffectiveLevel() < logging.INFO:
+            sdk_logger.setLevel(logging.INFO)
         if client is None:
             client = OpenAI(
                 api_key=settings.openai_api_key,
                 timeout=settings.openai_timeout_seconds,
+                max_retries=0,
             )
-        response = client.responses.parse(
-            model=settings.openai_model,
-            input=[
+        request_options = {
+            "model": settings.openai_model,
+            "input": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": source_word},
             ],
-            text_format=RawAiVocabulary,
-            store=False,
-        )
+            "text_format": RawAiVocabulary,
+            "store": False,
+        }
+        raw_api = getattr(client.responses, "with_raw_response", None)
+        if raw_api is None:
+            response = client.responses.parse(**request_options)
+        else:
+            raw_response = raw_api.parse(**request_options)
+            request_id = raw_response.headers.get("x-request-id")
+            response = raw_response.parse()
     except AuthenticationError as error:
         failure = (
             OpenAiNotConfiguredError,
             "OpenAI authentication failed",
             "authentication",
+            _request_id(error),
+        )
+    except (BadRequestError, PermissionDeniedError, NotFoundError) as error:
+        failure = (
+            OpenAiNotConfiguredError,
+            "OpenAI model configuration is unavailable",
+            "configuration",
             _request_id(error),
         )
     except RateLimitError as error:
@@ -193,7 +215,7 @@ def generate_vocabulary(source_word: str, client=None) -> OpenAiVocabularyResult
             InvalidAiResponseError,
             "OpenAI returned invalid structured output",
             "parse_validation",
-            _request_id(error),
+            request_id or _request_id(error),
         )
 
     if failure is not None:
@@ -201,7 +223,7 @@ def generate_vocabulary(source_word: str, client=None) -> OpenAiVocabularyResult
         _log_failure(category, request_id)
         raise error_type(message, request_id)
 
-    request_id = _request_id(response)
+    request_id = request_id or _request_id(response)
     if response.output_parsed is None:
         category = "refusal" if _has_refusal(response) else "unparsed"
         _log_failure(category, request_id)

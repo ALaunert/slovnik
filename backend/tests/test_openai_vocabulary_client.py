@@ -9,6 +9,9 @@ from openai import (
     APIStatusError,
     APITimeoutError,
     AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    PermissionDeniedError,
     RateLimitError,
 )
 from pydantic import ValidationError
@@ -133,10 +136,13 @@ def test_raw_vocabulary_has_no_defaults_for_nullable_fields():
 def test_generate_uses_responses_parse_with_exact_structured_request(monkeypatch):
     monkeypatch.setattr(client_module.settings, "openai_model", "test-model")
     parsed = _raw_vocabulary()
-    responses = Mock()
-    responses.parse.return_value = SimpleNamespace(
-        output_parsed=parsed,
-        _request_id="req_123",
+    responses = SimpleNamespace(
+        parse=Mock(
+            return_value=SimpleNamespace(
+                output_parsed=parsed,
+                _request_id="req_123",
+            )
+        )
     )
 
     result = generate_vocabulary("raditi", client=SimpleNamespace(responses=responses))
@@ -182,6 +188,19 @@ def test_missing_api_key_does_not_construct_or_call_sdk(monkeypatch, caplog):
     assert caplog.records[-1].category == "not_configured"
 
 
+def test_blank_model_does_not_construct_or_call_sdk(monkeypatch, caplog):
+    openai_constructor = Mock()
+    monkeypatch.setattr(client_module.settings, "openai_api_key", "configured-key")
+    monkeypatch.setattr(client_module.settings, "openai_model", "  ")
+    monkeypatch.setattr(client_module, "OpenAI", openai_constructor)
+
+    with caplog.at_level("WARNING"), pytest.raises(OpenAiNotConfiguredError):
+        generate_vocabulary("raditi")
+
+    openai_constructor.assert_not_called()
+    assert caplog.records[-1].category == "not_configured"
+
+
 def test_default_client_uses_configured_key_and_timeout(monkeypatch):
     parsed = _raw_vocabulary()
     sdk_client = SimpleNamespace(
@@ -198,7 +217,32 @@ def test_default_client_uses_configured_key_and_timeout(monkeypatch):
 
     generate_vocabulary("raditi")
 
-    openai_constructor.assert_called_once_with(api_key="configured-key", timeout=31.0)
+    openai_constructor.assert_called_once_with(
+        api_key="configured-key",
+        timeout=31.0,
+        max_retries=0,
+    )
+
+
+def test_generation_prevents_openai_sdk_debug_payload_logging():
+    sdk_logger = client_module.sdk_logger
+    previous_level = sdk_logger.level
+    sdk_logger.setLevel("DEBUG")
+    try:
+        responses = SimpleNamespace(
+            parse=Mock(
+                return_value=SimpleNamespace(
+                    output_parsed=_raw_vocabulary(),
+                    _request_id=None,
+                )
+            )
+        )
+
+        generate_vocabulary("source-word-must-not-be-debug-logged", client=SimpleNamespace(responses=responses))
+
+        assert sdk_logger.getEffectiveLevel() >= client_module.logging.INFO
+    finally:
+        sdk_logger.setLevel(previous_level)
 
 
 @pytest.mark.parametrize(
@@ -213,6 +257,36 @@ def test_default_client_uses_configured_key_and_timeout(monkeypatch):
             OpenAiNotConfiguredError,
             "authentication",
             "req_auth",
+        ),
+        (
+            BadRequestError(
+                "invalid model",
+                response=_http_response(400, "req_bad_model"),
+                body=None,
+            ),
+            OpenAiNotConfiguredError,
+            "configuration",
+            "req_bad_model",
+        ),
+        (
+            PermissionDeniedError(
+                "model access denied",
+                response=_http_response(403, "req_permission"),
+                body=None,
+            ),
+            OpenAiNotConfiguredError,
+            "configuration",
+            "req_permission",
+        ),
+        (
+            NotFoundError(
+                "model not found",
+                response=_http_response(404, "req_not_found"),
+                body=None,
+            ),
+            OpenAiNotConfiguredError,
+            "configuration",
+            "req_not_found",
         ),
         (
             RateLimitError(
@@ -312,6 +386,24 @@ def test_parse_validation_error_maps_to_invalid_response(caplog):
 
     assert exc_info.value.request_id is None
     assert caplog.records[-1].category == "parse_validation"
+
+
+def test_raw_response_preserves_request_id_when_parsing_fails(caplog):
+    with pytest.raises(ValidationError) as validation_error:
+        RawAiVocabulary.model_validate({})
+    raw_response = SimpleNamespace(
+        headers={"x-request-id": "req_parse"},
+        parse=Mock(side_effect=validation_error.value),
+    )
+    raw_parse = Mock(return_value=raw_response)
+    responses = SimpleNamespace(with_raw_response=SimpleNamespace(parse=raw_parse))
+
+    with caplog.at_level("WARNING"), pytest.raises(InvalidAiResponseError) as exc_info:
+        generate_vocabulary("raditi", client=SimpleNamespace(responses=responses))
+
+    assert exc_info.value.request_id == "req_parse"
+    assert caplog.records[-1].request_id == "req_parse"
+    assert raw_parse.call_args.kwargs["store"] is False
 
 
 def test_logs_and_client_errors_exclude_secret_and_source_word(monkeypatch, caplog):

@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
 
 from app.config import settings
 from app.models import AiVocabularyGeneration, VocabularyItem
@@ -105,7 +106,17 @@ def _log_context(
 
 def _validate_source_word(source_word: str) -> str:
     trimmed = source_word.strip()
-    if not trimmed or len(trimmed) > 160 or len(trimmed.split()) != 1:
+    normalized = normalize_source_word(trimmed)
+    has_control_character = any(
+        unicodedata.category(character).startswith("C") for character in trimmed
+    )
+    if (
+        not trimmed
+        or len(trimmed) > 160
+        or len(normalized) > 160
+        or len(trimmed.split()) != 1
+        or has_control_character
+    ):
         raise AiFillServiceError(
             "invalid_source_word",
             "Enter one Serbian word up to 160 characters.",
@@ -142,11 +153,34 @@ def _find_stored_generation(
     )
 
 
-def _stored_response(generation: AiVocabularyGeneration) -> AiFillGeneratedResponse:
+def _stored_response(
+    generation: AiVocabularyGeneration,
+    normalized_source_word: str,
+) -> AiFillGeneratedResponse:
+    try:
+        stored_payload = AiFillPayload.model_validate(generation.generated_payload)
+        payload = _validated_patch(
+            OpenAiVocabularyResult(payload=stored_payload, request_id=None),
+            normalized_source_word,
+        )
+    except (AiFillServiceError, ValidationError, TypeError, ValueError) as error:
+        _log_context(
+            normalized_source_word,
+            "invalid_stored_generation",
+            None,
+        )
+        raise AiFillServiceError(
+            "invalid_ai_response",
+            "Stored AI fill data is invalid.",
+            502,
+        ) from error
+    generated_data = payload.model_dump(exclude_none=True)
     return AiFillGeneratedResponse(
         source="store",
-        payload=AiFillPayload.model_validate(generation.generated_payload),
-        missing_required_fields=generation.missing_required_fields,
+        payload=payload,
+        missing_required_fields=[
+            field for field in REQUIRED_FIELDS if field not in generated_data
+        ],
     )
 
 
@@ -346,6 +380,21 @@ def _translate_openai_error(
     return AiFillServiceError(*details)
 
 
+def _is_normalized_source_conflict(error: IntegrityError) -> bool:
+    constraint_name = getattr(
+        getattr(error.orig, "diag", None),
+        "constraint_name",
+        None,
+    )
+    if constraint_name == "uq_ai_vocabulary_generations_normalized_source_word":
+        return True
+    message = str(error.orig)
+    return (
+        "UNIQUE constraint failed" in message
+        and "ai_vocabulary_generations.normalized_source_word" in message
+    )
+
+
 def fill_vocabulary(
     db: Session,
     payload: AiFillRequest,
@@ -361,8 +410,9 @@ def fill_vocabulary(
 
     stored = _find_stored_generation(db, normalized_source_word)
     if stored is not None:
-        return _stored_response(stored)
+        return _stored_response(stored, normalized_source_word)
 
+    db.rollback()
     generator = generate or generate_vocabulary
     try:
         generated = generator(source_word)
@@ -376,6 +426,13 @@ def fill_vocabulary(
         raise _translate_openai_error(error, normalized_source_word) from error
 
     generated_payload = _validated_patch(generated, normalized_source_word)
+    existing = _find_existing_word(db, normalized_source_word, payload.current_word_id)
+    if existing is not None:
+        return AiFillExistingResponse(word_id=existing.id)
+    stored = _find_stored_generation(db, normalized_source_word)
+    if stored is not None:
+        return _stored_response(stored, normalized_source_word)
+
     generated_data = generated_payload.model_dump(exclude_none=True)
     missing_required_fields = [
         field for field in REQUIRED_FIELDS if field not in generated_data
@@ -391,12 +448,14 @@ def fill_vocabulary(
     db.add(generation)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as error:
         db.rollback()
+        if not _is_normalized_source_conflict(error):
+            raise
         stored = _find_stored_generation(db, normalized_source_word)
         if stored is None:
             raise
-        return _stored_response(stored)
+        return _stored_response(stored, normalized_source_word)
 
     return AiFillGeneratedResponse(
         source="openai",

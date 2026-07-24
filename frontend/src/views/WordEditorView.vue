@@ -138,6 +138,22 @@ function applyFormState(source: VocabularyPayload) {
   form.example_translations = source.example_translations ?? "";
 }
 
+function clearFormState() {
+  applyFormState({
+    serbian_cyrillic: "",
+    serbian_latin: "",
+    russian_translation: "",
+    cefr_level: "A1",
+    theme: "",
+    usage_register: "",
+    stress_marker: "",
+    stress_pattern: null,
+    meaning_notes: "",
+    example_sentences: "",
+    example_translations: "",
+  });
+}
+
 function applyAiPayload(payload: AiFillPayload) {
   if (payload.serbian_cyrillic !== undefined) form.serbian_cyrillic = payload.serbian_cyrillic;
   if (payload.serbian_latin !== undefined) form.serbian_latin = payload.serbian_latin;
@@ -225,6 +241,7 @@ watch(wordId, async (nextWordId, previousWordId) => {
   undoSnapshot.value = null;
   showAiMissingFields.value = false;
   const loadRequestId = ++routeLoadRequestId;
+  if (nextWordId === null) clearFormState();
   const hasVerifiedRouteAccess = (
     isEditorUnlocked.value
     || (
@@ -239,19 +256,6 @@ watch(wordId, async (nextWordId, previousWordId) => {
   status.value = "";
   error.value = "";
   if (nextWordId === null) {
-    applyFormState({
-      serbian_cyrillic: "",
-      serbian_latin: "",
-      russian_translation: "",
-      cefr_level: "A1",
-      theme: "",
-      usage_register: "",
-      stress_marker: "",
-      stress_pattern: null,
-      meaning_notes: "",
-      example_sentences: "",
-      example_translations: "",
-    });
     isEditorUnlocked.value = true;
     status.value = copy.value.unlocked;
     return;
@@ -302,7 +306,11 @@ async function unlockEditor() {
       ? null
       : await getVocabularyWord(submittedWordId);
     if (!isCurrentRequest()) return;
-    if (word) applyFormState(word);
+    if (word) {
+      applyFormState(word);
+    } else {
+      clearFormState();
+    }
   } catch {
     if (!isCurrentRequest()) return;
     isEditorUnlocked.value = false;

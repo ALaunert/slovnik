@@ -16,10 +16,12 @@ const themes = ref<string[]>([]);
 const error = ref("");
 const unlockStatus = ref("");
 const isEditorUnlocked = ref(false);
+let unlockRequestId = 0;
 const canEdit = computed(() => isEditorUnlocked.value);
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 
 watch(editorPassword, () => {
+  unlockRequestId += 1;
   isEditorUnlocked.value = false;
   unlockStatus.value = "";
 });
@@ -44,13 +46,20 @@ async function loadWords() {
 }
 
 async function unlockEditor() {
+  const requestId = ++unlockRequestId;
+  const submittedPassword = editorPassword.value;
+  const isCurrentRequest = () => (
+    requestId === unlockRequestId && submittedPassword === editorPassword.value
+  );
   error.value = "";
   unlockStatus.value = "";
   try {
-    await verifyEditorPassword(editorPassword.value);
+    await verifyEditorPassword(submittedPassword);
+    if (!isCurrentRequest()) return;
     isEditorUnlocked.value = true;
     unlockStatus.value = copy.value.unlocked;
   } catch {
+    if (!isCurrentRequest()) return;
     isEditorUnlocked.value = false;
     error.value = copy.value.unlockError;
   }

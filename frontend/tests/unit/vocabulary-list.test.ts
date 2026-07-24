@@ -53,4 +53,24 @@ describe("VocabularyListView", () => {
       "legacy marker",
     ]);
   });
+
+  it("ignores verification that completes after the password changes", async () => {
+    let resolveVerification!: () => void;
+    apiMocks.verifyEditorPassword.mockReturnValue(new Promise<void>((resolve) => {
+      resolveVerification = resolve;
+    }));
+    const wrapper = mount(VocabularyListView, {
+      global: { stubs: { RouterLink: RouterLinkStub } },
+    });
+    await flushPromises();
+
+    const password = wrapper.get('input[type="password"]');
+    await password.setValue("old-password");
+    await wrapper.get('button[type="button"]').trigger("click");
+    await password.setValue("new-password");
+    resolveVerification();
+    await flushPromises();
+
+    expect(wrapper.find('a[href="/editor"]').exists()).toBe(false);
+  });
 });

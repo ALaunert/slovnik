@@ -189,6 +189,8 @@ function clearStress() {
           v-model="cyrillicInput"
           name="cyrillic_syllables"
           placeholder="ра·ди·ти"
+          :aria-invalid="hasSplitInput && !validSplit ? 'true' : undefined"
+          :aria-describedby="hasSplitInput && !validSplit ? 'stress-split-error' : undefined"
         />
       </label>
       <label>
@@ -197,13 +199,17 @@ function clearStress() {
           v-model="latinInput"
           name="latin_syllables"
           placeholder="ra·di·ti"
+          :aria-invalid="hasSplitInput && !validSplit ? 'true' : undefined"
+          :aria-describedby="hasSplitInput && !validSplit ? 'stress-split-error' : undefined"
         />
       </label>
     </div>
     <p
       v-if="hasSplitInput && !validSplit"
+      id="stress-split-error"
       class="field-hint error"
       data-testid="stress-invalid"
+      role="status"
     >
       {{ labels.invalidSplit }}
     </p>

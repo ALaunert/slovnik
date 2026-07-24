@@ -314,6 +314,23 @@ describe("WordEditorView", () => {
     expect(wrapper.find('[data-testid="ai-fill"]').exists()).toBe(false);
   });
 
+  it("clears stale edit data before unlocking the create route", async () => {
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+    expect((wrapper.get('[name="serbian_cyrillic"]').element as HTMLInputElement).value).toBe("хвала");
+
+    await wrapper.get('input[name="editor_password"]').setValue("changed-password");
+    delete routeState.params!.id;
+    await flushPromises();
+    await wrapper.get('input[name="editor_password"]').setValue("dev-editor-password");
+    await wrapper.get('[data-testid="unlock-form"]').trigger("submit.prevent");
+    await flushPromises();
+
+    expect((wrapper.get('[name="serbian_cyrillic"]').element as HTMLInputElement).value).toBe("");
+    expect((wrapper.get('[name="serbian_latin"]').element as HTMLInputElement).value).toBe("");
+    expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("");
+  });
+
   it("applies only returned fields and sends the current route id", async () => {
     vi.mocked(fillVocabularyWithAi).mockResolvedValue({
       status: "generated",
