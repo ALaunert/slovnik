@@ -31,6 +31,12 @@ export async function updateProfile(
 }
 
 
+export type StressPattern = {
+  cyrillic_syllables: string[];
+  latin_syllables: string[];
+  stressed_syllable_index: number;
+};
+
 export type VocabularyWord = {
   id: number;
   serbian_cyrillic: string;
@@ -40,6 +46,7 @@ export type VocabularyWord = {
   theme: string;
   usage_register?: string | null;
   stress_marker?: string | null;
+  stress_pattern?: StressPattern | null;
   meaning_notes?: string | null;
   example_sentences?: string | null;
   example_translations?: string | null;
@@ -48,6 +55,77 @@ export type VocabularyWord = {
 };
 
 export type VocabularyPayload = Omit<VocabularyWord, "id">;
+
+export type AiFillPayload = {
+  serbian_cyrillic?: string;
+  serbian_latin?: string;
+  russian_translation?: string;
+  cefr_level?: string;
+  theme?: string;
+  usage_register?: string;
+  stress_pattern?: StressPattern;
+  meaning_notes?: string;
+  example_sentences?: string;
+  example_translations?: string;
+};
+
+export type AiFillGeneratedResponse = {
+  status: "generated";
+  source: "openai" | "store";
+  payload: AiFillPayload;
+  missing_required_fields: string[];
+};
+
+export type AiFillExistingResponse = {
+  status: "already_exists";
+  word_id: number;
+  message: string;
+};
+
+export type AiFillResponse = AiFillGeneratedResponse | AiFillExistingResponse;
+
+export class AiFillApiError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "AiFillApiError";
+  }
+}
+
+function parseAiFillErrorBody(body: unknown): { code: string; message: string } | null {
+  if (typeof body !== "object" || body === null) return null;
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.code !== "string" || typeof candidate.message !== "string") return null;
+  return { code: candidate.code, message: candidate.message };
+}
+
+export async function fillVocabularyWithAi(
+  sourceWord: string,
+  editorPassword: string,
+  currentWordId?: number,
+): Promise<AiFillResponse> {
+  const body: { source_word: string; current_word_id?: number } = { source_word: sourceWord };
+  if (currentWordId !== undefined) body.current_word_id = currentWordId;
+
+  const response = await fetch(`${API_BASE_URL}/api/vocabulary/ai-fill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Editor-Password": editorPassword },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const parsedBody = await response.json().catch(() => null);
+    const errorBody = parseAiFillErrorBody(parsedBody);
+    throw new AiFillApiError(
+      errorBody?.code ?? "ai_fill_failed",
+      errorBody?.message ?? "Failed to fill vocabulary with AI",
+      response.status,
+    );
+  }
+  return response.json();
+}
 
 export async function listVocabulary(filters: { cefr_level?: string; theme?: string } = {}): Promise<VocabularyWord[]> {
   const params = new URLSearchParams();

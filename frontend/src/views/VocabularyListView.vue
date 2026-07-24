@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 
 import { listVocabulary, listVocabularyThemes, verifyEditorPassword, type VocabularyWord } from "../api/client";
+import StressText from "../components/StressText.vue";
 import { messages } from "../i18n/messages";
 import { sessionStore } from "../stores/session";
 
@@ -15,10 +16,12 @@ const themes = ref<string[]>([]);
 const error = ref("");
 const unlockStatus = ref("");
 const isEditorUnlocked = ref(false);
+let unlockRequestId = 0;
 const canEdit = computed(() => isEditorUnlocked.value);
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 
 watch(editorPassword, () => {
+  unlockRequestId += 1;
   isEditorUnlocked.value = false;
   unlockStatus.value = "";
 });
@@ -43,13 +46,20 @@ async function loadWords() {
 }
 
 async function unlockEditor() {
+  const requestId = ++unlockRequestId;
+  const submittedPassword = editorPassword.value;
+  const isCurrentRequest = () => (
+    requestId === unlockRequestId && submittedPassword === editorPassword.value
+  );
   error.value = "";
   unlockStatus.value = "";
   try {
-    await verifyEditorPassword(editorPassword.value);
+    await verifyEditorPassword(submittedPassword);
+    if (!isCurrentRequest()) return;
     isEditorUnlocked.value = true;
     unlockStatus.value = copy.value.unlocked;
   } catch {
+    if (!isCurrentRequest()) return;
     isEditorUnlocked.value = false;
     error.value = copy.value.unlockError;
   }
@@ -93,8 +103,23 @@ onMounted(loadWords);
       <ul v-else class="word-list">
         <li v-for="word in words" :key="word.id" class="word-row">
           <div>
-            <strong>{{ word.serbian_cyrillic }}</strong>
-            <span>{{ word.serbian_latin }}</span>
+            <StressText
+              :word="word.serbian_cyrillic"
+              :syllables="word.stress_pattern?.cyrillic_syllables"
+              :stressed-index="word.stress_pattern?.stressed_syllable_index"
+            />
+            <StressText
+              :word="word.serbian_latin"
+              :syllables="word.stress_pattern?.latin_syllables"
+              :stressed-index="word.stress_pattern?.stressed_syllable_index"
+            />
+            <span
+              v-if="!word.stress_pattern && word.stress_marker"
+              class="muted"
+              data-testid="legacy-stress"
+            >
+              {{ word.stress_marker }}
+            </span>
           </div>
           <span>{{ word.russian_translation }}</span>
           <span>{{ word.cefr_level }} · {{ word.theme }}</span>

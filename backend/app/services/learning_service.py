@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,6 +17,7 @@ class ReviewWord(TypedDict):
     theme: str
     usage_register: str | None
     stress_marker: str | None
+    stress_pattern: dict[str, Any] | None
     meaning_notes: str | None
     example_sentences: str | None
     example_translations: str | None
@@ -121,6 +122,7 @@ def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
                 "theme": word.theme,
                 "usage_register": word.usage_register,
                 "stress_marker": word.stress_marker,
+                "stress_pattern": word.stress_pattern,
                 "meaning_notes": word.meaning_notes,
                 "example_sentences": word.example_sentences,
                 "example_translations": word.example_translations,

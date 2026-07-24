@@ -1,8 +1,46 @@
+from app.models import UserWordProgress
+
+
+STRUCTURED_STRESS = {
+    "cyrillic_syllables": ["реч ", "1"],
+    "latin_syllables": ["rec ", "1"],
+    "stressed_syllable_index": 0,
+}
+
+
 def test_daily_new_words_prefers_unseen_words_for_user(client, seeded_words):
     response = client.get("/api/learning/learner-1/new-words")
 
     assert response.status_code == 200
     assert len(response.json()["words"]) == 5
+
+
+def test_structured_stress_survives_new_word_and_review_projections(client, db_session, seeded_words):
+    word = seeded_words[0]
+    word.stress_pattern = STRUCTURED_STRESS
+    db_session.commit()
+
+    new_words_response = client.get("/api/learning/learner-1/new-words")
+
+    assert new_words_response.status_code == 200
+    new_word = next(item for item in new_words_response.json()["words"] if item["id"] == word.id)
+    assert new_word["stress_pattern"] == STRUCTURED_STRESS
+
+    db_session.add(
+        UserWordProgress(
+            user_id="learner-1",
+            word_id=word.id,
+            status="reviewing",
+            is_weak=True,
+        )
+    )
+    db_session.commit()
+
+    review_response = client.get("/api/learning/learner-1/review")
+
+    assert review_response.status_code == 200
+    review_word = next(item for item in review_response.json()["words"] if item["id"] == word.id)
+    assert review_word["stress_pattern"] == STRUCTURED_STRESS
 
 
 def test_complete_new_words_records_first_seen_progress(client, seeded_words):
