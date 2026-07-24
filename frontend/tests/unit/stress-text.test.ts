@@ -31,6 +31,42 @@ describe("StressText", () => {
     expect(cyrillic.text()).toBe("љубав");
   });
 
+  it("renders stress when the word and syllables are NFC-equivalent", () => {
+    const decomposedFirstSyllable = "z\u030ce";
+    const wrapper = mount(StressText, {
+      props: {
+        word: "žena",
+        syllables: [decomposedFirstSyllable, "na"],
+        stressedIndex: 0,
+      },
+    });
+
+    expect(wrapper.get("strong").text()).toBe(decomposedFirstSyllable);
+    expect(wrapper.text()).toBe(`${decomposedFirstSyllable}na`);
+  });
+
+  it.each([
+    {
+      name: "empty syllable",
+      word: "raditi",
+      syllables: ["", "raditi"],
+      stressedIndex: 1,
+    },
+    {
+      name: "whitespace-only syllable",
+      word: "ra diti",
+      syllables: ["ra", " ", "diti"],
+      stressedIndex: 0,
+    },
+  ])("falls back to the exact plain word for an $name", ({ word, syllables, stressedIndex }) => {
+    const wrapper = mount(StressText, {
+      props: { word, syllables, stressedIndex },
+    });
+
+    expect(wrapper.find("strong").exists()).toBe(false);
+    expect(wrapper.text()).toBe(word);
+  });
+
   it.each([
     {
       name: "invalid reconstruction",

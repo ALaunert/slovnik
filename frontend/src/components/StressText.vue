@@ -15,7 +15,8 @@ const hasValidPattern = computed(() => {
     && Number.isInteger(stressedIndex)
     && stressedIndex >= 0
     && stressedIndex < syllables.length
-    && syllables.join("") === props.word
+    && syllables.every((syllable) => syllable.trim().length > 0)
+    && syllables.join("").normalize("NFC") === props.word.normalize("NFC")
   );
 });
 </script>
