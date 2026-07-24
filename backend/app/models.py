@@ -48,8 +48,12 @@ class AiVocabularyGeneration(Base):
     normalized_source_word: Mapped[str] = mapped_column(
         String(160), nullable=False, unique=True
     )
-    generated_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    missing_required_fields: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    generated_payload: Mapped[dict[str, Any]] = mapped_column(
+        JSON(none_as_null=True), nullable=False
+    )
+    missing_required_fields: Mapped[list[str]] = mapped_column(
+        JSON(none_as_null=True), nullable=False
+    )
     model: Mapped[str] = mapped_column(String(120), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(40), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

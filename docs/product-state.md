@@ -60,6 +60,7 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
   `vocabulary_items` while preserving the legacy `stress_marker`, and creates
   `ai_vocabulary_generations`. Generation records retain the source word, a unique normalized source
   key, generated JSON payload, missing required fields, model and prompt versions, and timestamps.
+  Both generation JSON fields are required, and explicit Python `None` values are rejected.
 - Clearing `VocabularyItem.stress_pattern` stores SQL `NULL`; JSON values are replaced wholesale
   rather than tracked for in-place mutation.
 - Vocabulary content is global; profiles, progress, quiz attempts, answers, and weak-word state are scoped by `user_id`.
@@ -84,6 +85,7 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
   preservation, JSON schema, and normalized-source uniqueness. Setting
   `SLOVNIK_TEST_POSTGRES_ADMIN_URL` enables the same round trip in a newly created disposable
   PostgreSQL database; the normal `DATABASE_URL` is never migrated or dropped by that target.
+  Supplied PostgreSQL configuration, connection, and privilege errors fail instead of skipping.
 - Frontend unit tests cover app shell localization, session persistence, dashboard settings/localization, vocabulary API helpers, quiz repeat/self-check behavior, and word editor update flow.
 - Playwright e2e currently covers only the basic user-id-to-dashboard path with mocked profile API.
 - Manual MVP flow is in `docs/testing/mvp-manual-test.md`.

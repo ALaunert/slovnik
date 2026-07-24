@@ -129,30 +129,21 @@ def postgresql_migration_database(monkeypatch):
     if not admin_url_value:
         pytest.skip(f"{POSTGRES_ADMIN_URL_ENV} is not configured")
 
-    try:
-        admin_url = make_url(admin_url_value)
-    except (TypeError, ValueError, SQLAlchemyError):
-        pytest.skip(f"{POSTGRES_ADMIN_URL_ENV} is not a valid database URL")
+    admin_url = make_url(admin_url_value)
     if admin_url.get_backend_name() != "postgresql":
-        pytest.skip(f"{POSTGRES_ADMIN_URL_ENV} must use PostgreSQL")
+        raise ValueError(f"{POSTGRES_ADMIN_URL_ENV} must use PostgreSQL")
 
     database_name = f"slovnik_migration_test_{uuid4().hex}"
     test_database_url = admin_url.set(database=database_name)
     if test_database_url == make_url(settings.database_url):
         pytest.fail("Refusing to run migration tests against DATABASE_URL")
 
-    try:
-        admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
-    except (ImportError, SQLAlchemyError) as error:
-        pytest.skip(f"PostgreSQL test database is unavailable: {type(error).__name__}")
+    admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
     database_created = False
     test_engine = None
     try:
-        try:
-            with admin_engine.connect() as connection:
-                connection.execute(text(f'CREATE DATABASE "{database_name}"'))
-        except SQLAlchemyError as error:
-            pytest.skip(f"PostgreSQL test database is unavailable: {type(error).__name__}")
+        with admin_engine.connect() as connection:
+            connection.execute(text(f'CREATE DATABASE "{database_name}"'))
         database_created = True
 
         database_url = test_database_url.render_as_string(hide_password=False)
@@ -185,6 +176,84 @@ def postgresql_migration_database(monkeypatch):
                 )
                 connection.execute(text(f'DROP DATABASE "{database_name}"'))
         admin_engine.dispose()
+
+
+def advance_postgresql_fixture_without_skip(monkeypatch):
+    fixture_generator = postgresql_migration_database.__wrapped__(monkeypatch)
+    try:
+        return next(fixture_generator)
+    except pytest.skip.Exception as error:
+        raise AssertionError("A configured PostgreSQL target must not skip") from error
+
+
+def test_postgresql_migration_target_skips_without_admin_url(monkeypatch):
+    monkeypatch.delenv(POSTGRES_ADMIN_URL_ENV, raising=False)
+    fixture_generator = postgresql_migration_database.__wrapped__(monkeypatch)
+
+    with pytest.raises(pytest.skip.Exception):
+        next(fixture_generator)
+
+
+def test_postgresql_migration_target_rejects_invalid_admin_url(monkeypatch):
+    monkeypatch.setenv(POSTGRES_ADMIN_URL_ENV, "://")
+
+    with pytest.raises(SQLAlchemyError):
+        advance_postgresql_fixture_without_skip(monkeypatch)
+
+
+def test_postgresql_migration_target_rejects_non_postgresql_url(monkeypatch):
+    monkeypatch.setenv(POSTGRES_ADMIN_URL_ENV, "sqlite:///:memory:")
+
+    with pytest.raises(ValueError, match="must use PostgreSQL"):
+        advance_postgresql_fixture_without_skip(monkeypatch)
+
+
+def test_postgresql_migration_target_propagates_engine_errors(monkeypatch):
+    monkeypatch.setenv(
+        POSTGRES_ADMIN_URL_ENV,
+        "postgresql+psycopg://test:test@localhost/postgres",
+    )
+
+    def fail_create_engine(*args, **kwargs):
+        raise SQLAlchemyError("unreachable")
+
+    monkeypatch.setitem(globals(), "create_engine", fail_create_engine)
+
+    with pytest.raises(SQLAlchemyError, match="unreachable"):
+        advance_postgresql_fixture_without_skip(monkeypatch)
+
+
+def test_postgresql_migration_target_propagates_create_database_errors(monkeypatch):
+    monkeypatch.setenv(
+        POSTGRES_ADMIN_URL_ENV,
+        "postgresql+psycopg://test:test@localhost/postgres",
+    )
+
+    class FailingConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, statement):
+            raise SQLAlchemyError("permission denied")
+
+    class FailingAdminEngine:
+        def connect(self):
+            return FailingConnection()
+
+        def dispose(self):
+            pass
+
+    monkeypatch.setitem(
+        globals(),
+        "create_engine",
+        lambda *args, **kwargs: FailingAdminEngine(),
+    )
+
+    with pytest.raises(SQLAlchemyError, match="permission denied"):
+        advance_postgresql_fixture_without_skip(monkeypatch)
 
 
 def test_upgrade_adds_ai_vocabulary_persistence_schema(migration_database):

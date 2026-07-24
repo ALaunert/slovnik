@@ -98,6 +98,44 @@ def test_ai_generation_normalized_source_is_unique(db_session):
         db_session.commit()
 
 
+def test_ai_generation_persists_required_json_values(db_session):
+    generation = AiVocabularyGeneration(
+        source_word="raditi",
+        normalized_source_word="raditi",
+        generated_payload={"serbian_latin": "raditi"},
+        missing_required_fields=["serbian_cyrillic"],
+        model="test-model",
+        prompt_version="v1",
+    )
+
+    db_session.add(generation)
+    db_session.commit()
+    db_session.expire_all()
+
+    saved = db_session.get(AiVocabularyGeneration, generation.id)
+    assert saved is not None
+    assert saved.generated_payload == {"serbian_latin": "raditi"}
+    assert saved.missing_required_fields == ["serbian_cyrillic"]
+
+
+@pytest.mark.parametrize("field_name", ["generated_payload", "missing_required_fields"])
+def test_ai_generation_rejects_none_for_required_json(db_session, field_name):
+    values = {
+        "source_word": "raditi",
+        "normalized_source_word": "raditi",
+        "generated_payload": {"serbian_latin": "raditi"},
+        "missing_required_fields": [],
+        "model": "test-model",
+        "prompt_version": "v1",
+    }
+    values[field_name] = None
+
+    db_session.add(AiVocabularyGeneration(**values))
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
 def test_can_create_user_profile(db_session):
     profile = UserProfile(user_id="learner-1", preferred_level="A1", daily_new_word_count=5)
 
