@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -254,6 +255,10 @@ def test_postgresql_migration_target_propagates_create_database_errors(monkeypat
 
     with pytest.raises(SQLAlchemyError, match="permission denied"):
         advance_postgresql_fixture_without_skip(monkeypatch)
+
+
+def test_migrations_do_not_disable_application_loggers(migration_database):
+    assert not logging.getLogger("app.services.openai_vocabulary_client").disabled
 
 
 def test_upgrade_adds_ai_vocabulary_persistence_schema(migration_database):
