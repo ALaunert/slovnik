@@ -8,6 +8,8 @@ from openai import (
     APITimeoutError,
     AuthenticationError,
     BadRequestError,
+    ContentFilterFinishReasonError,
+    LengthFinishReasonError,
     NotFoundError,
     OpenAI,
     PermissionDeniedError,
@@ -215,6 +217,20 @@ def generate_vocabulary(source_word: str, client=None) -> OpenAiVocabularyResult
             InvalidAiResponseError,
             "OpenAI returned invalid structured output",
             "parse_validation",
+            request_id or _request_id(error),
+        )
+    except LengthFinishReasonError as error:
+        failure = (
+            InvalidAiResponseError,
+            "OpenAI structured output exceeded the length limit",
+            "length_finish_reason",
+            request_id or _request_id(error),
+        )
+    except ContentFilterFinishReasonError as error:
+        failure = (
+            InvalidAiResponseError,
+            "OpenAI structured output was rejected by the content filter",
+            "content_filter_finish_reason",
             request_id or _request_id(error),
         )
 

@@ -344,6 +344,8 @@ async function fillWithAi() {
   const requestId = ++aiRequestId;
   const requestPassword = verifiedEditorPassword.value;
   const requestWordId = wordId.value;
+  saveRequestId += 1;
+  status.value = "";
   isAiLoading.value = true;
   aiError.value = "";
   aiInfoState.value = null;
@@ -407,6 +409,8 @@ async function saveWord() {
     error.value = copy.value.requiredFieldsError;
     return;
   }
+  aiRequestId += 1;
+  isAiLoading.value = false;
   try {
     form.stress_pattern = validStressPatternOrNull(form);
     const payload = cloneFormState(form);

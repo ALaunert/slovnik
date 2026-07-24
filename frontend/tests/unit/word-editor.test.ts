@@ -642,6 +642,64 @@ describe("WordEditorView", () => {
     expect(wrapper.text()).not.toContain("Слово сохранено");
   });
 
+  it("does not report a stale save when it completes before a later AI fill", async () => {
+    let resolveSave!: (value: { id: number }) => void;
+    let resolveAi!: (value: Awaited<ReturnType<typeof fillVocabularyWithAi>>) => void;
+    vi.mocked(updateVocabularyWord).mockReturnValue(new Promise((resolve) => {
+      resolveSave = resolve;
+    }) as never);
+    vi.mocked(fillVocabularyWithAi).mockReturnValue(new Promise((resolve) => {
+      resolveAi = resolve;
+    }));
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    await wrapper.get('[data-testid="word-form"]').trigger("submit.prevent");
+    await wrapper.get('input[name="ai_source_word"]').setValue("raditi");
+    await wrapper.get('[data-testid="ai-fill-button"]').trigger("click");
+    resolveSave({ id: 7 });
+    await flushPromises();
+    resolveAi({
+      status: "generated",
+      source: "openai",
+      payload: { russian_translation: "работать" },
+      missing_required_fields: [],
+    });
+    await flushPromises();
+
+    expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("работать");
+    expect(wrapper.text()).not.toContain("Слово сохранено");
+  });
+
+  it("does not report a stale save when it completes after a later AI fill", async () => {
+    let resolveSave!: (value: { id: number }) => void;
+    let resolveAi!: (value: Awaited<ReturnType<typeof fillVocabularyWithAi>>) => void;
+    vi.mocked(updateVocabularyWord).mockReturnValue(new Promise((resolve) => {
+      resolveSave = resolve;
+    }) as never);
+    vi.mocked(fillVocabularyWithAi).mockReturnValue(new Promise((resolve) => {
+      resolveAi = resolve;
+    }));
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    await wrapper.get('[data-testid="word-form"]').trigger("submit.prevent");
+    await wrapper.get('input[name="ai_source_word"]').setValue("raditi");
+    await wrapper.get('[data-testid="ai-fill-button"]').trigger("click");
+    resolveAi({
+      status: "generated",
+      source: "openai",
+      payload: { russian_translation: "работать" },
+      missing_required_fields: [],
+    });
+    await flushPromises();
+    resolveSave({ id: 7 });
+    await flushPromises();
+
+    expect((wrapper.get('[name="russian_translation"]').element as HTMLInputElement).value).toBe("работать");
+    expect(wrapper.text()).not.toContain("Слово сохранено");
+  });
+
   it("preserves loaded structured stress when an unrelated field changes", async () => {
     const wrapper = mount(WordEditorView);
 

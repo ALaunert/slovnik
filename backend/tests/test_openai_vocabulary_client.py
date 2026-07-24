@@ -10,6 +10,8 @@ from openai import (
     APITimeoutError,
     AuthenticationError,
     BadRequestError,
+    ContentFilterFinishReasonError,
+    LengthFinishReasonError,
     NotFoundError,
     PermissionDeniedError,
     RateLimitError,
@@ -404,6 +406,42 @@ def test_raw_response_preserves_request_id_when_parsing_fails(caplog):
     assert exc_info.value.request_id == "req_parse"
     assert caplog.records[-1].request_id == "req_parse"
     assert raw_parse.call_args.kwargs["store"] is False
+
+
+@pytest.mark.parametrize(
+    ("sdk_error", "category"),
+    [
+        (
+            LengthFinishReasonError(completion=SimpleNamespace(usage=None)),
+            "length_finish_reason",
+        ),
+        (
+            ContentFilterFinishReasonError(),
+            "content_filter_finish_reason",
+        ),
+    ],
+)
+def test_structured_finish_reason_errors_map_to_invalid_response(
+    sdk_error,
+    category,
+    caplog,
+):
+    raw_response = SimpleNamespace(
+        headers={"x-request-id": "req_finish_reason"},
+        parse=Mock(side_effect=sdk_error),
+    )
+    responses = SimpleNamespace(
+        with_raw_response=SimpleNamespace(parse=Mock(return_value=raw_response)),
+    )
+
+    with caplog.at_level("WARNING"), pytest.raises(InvalidAiResponseError) as exc_info:
+        generate_vocabulary("raditi", client=SimpleNamespace(responses=responses))
+
+    assert exc_info.value.request_id == "req_finish_reason"
+    assert caplog.records[-1].category == category
+    assert caplog.records[-1].request_id == "req_finish_reason"
+    assert caplog.records[-1].model == client_module.settings.openai_model
+    assert caplog.records[-1].prompt_version == PROMPT_VERSION
 
 
 def test_logs_and_client_errors_exclude_secret_and_source_word(monkeypatch, caplog):
