@@ -1,5 +1,5 @@
 import unicodedata
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -77,6 +77,68 @@ class VocabularyRead(VocabularyCreate):
     id: int
 
     model_config = {"from_attributes": True}
+
+
+AiFillTheme = Literal[
+    "greetings",
+    "personal-info",
+    "family-relationships",
+    "home",
+    "daily-life",
+    "food-drink",
+    "shopping-money",
+    "travel-transport",
+    "places-directions",
+    "health-body",
+    "education",
+    "work",
+    "free-time",
+    "nature-weather",
+    "services",
+    "language-communication",
+    "technology-media",
+    "emotions-qualities",
+    "time-numbers",
+    "grammar-functions",
+    "other",
+]
+
+
+class AiFillRequest(BaseModel):
+    source_word: str
+    current_word_id: int | None = Field(default=None, ge=1)
+
+
+class AiFillPayload(BaseModel):
+    serbian_cyrillic: str | None = None
+    serbian_latin: str | None = None
+    russian_translation: str | None = None
+    cefr_level: Literal["A1", "A2", "B1", "B2", "C1", "C2"] | None = None
+    theme: AiFillTheme | None = None
+    usage_register: str | None = None
+    stress_pattern: StressPattern | None = None
+    meaning_notes: str | None = None
+    example_sentences: str | None = None
+    example_translations: str | None = None
+
+
+class AiFillGeneratedResponse(BaseModel):
+    status: Literal["generated"] = "generated"
+    source: Literal["openai", "store"]
+    payload: AiFillPayload
+    missing_required_fields: list[str]
+
+
+class AiFillExistingResponse(BaseModel):
+    status: Literal["already_exists"] = "already_exists"
+    word_id: int
+    message: str = "Word already exists."
+
+
+AiFillResponse = Annotated[
+    AiFillGeneratedResponse | AiFillExistingResponse,
+    Field(discriminator="status"),
+]
 
 
 class WordIdsPayload(BaseModel):
