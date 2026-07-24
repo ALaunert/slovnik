@@ -1,5 +1,5 @@
-import { mount, type VueWrapper } from "@vue/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { enableAutoUnmount, mount, type VueWrapper } from "@vue/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const routeState = vi.hoisted(() => ({
   params: null as Record<string, string> | null,
@@ -54,6 +54,8 @@ import {
 } from "../../src/api/client";
 import { sessionStore } from "../../src/stores/session";
 import WordEditorView from "../../src/views/WordEditorView.vue";
+
+enableAutoUnmount(afterEach);
 
 const loadedWord = {
   id: 7,
@@ -311,6 +313,27 @@ describe("WordEditorView", () => {
     resolveSecondWord(secondLoadedWord);
     await flushPromises();
 
+    expect(wrapper.find('[data-testid="ai-fill"]').exists()).toBe(false);
+  });
+
+  it("ignores a route-load rejection after password relock", async () => {
+    let rejectRouteLoad!: (error: Error) => void;
+    vi.mocked(getVocabularyWord).mockImplementation(async (id) => {
+      if (id !== 8) return loadedWord;
+      return new Promise<typeof secondLoadedWord>((_, reject) => {
+        rejectRouteLoad = reject;
+      });
+    });
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    routeState.params!.id = "8";
+    await flushPromises();
+    await wrapper.get('input[name="editor_password"]').setValue("changed-password");
+    rejectRouteLoad(new Error("stale route failure"));
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain("Не удалось загрузить слово");
     expect(wrapper.find('[data-testid="ai-fill"]').exists()).toBe(false);
   });
 
@@ -596,6 +619,27 @@ describe("WordEditorView", () => {
 
     expect(updateVocabularyWord).toHaveBeenCalled();
     expect(wrapper.get('[data-field="theme"]').classes()).not.toContain("is-missing");
+  });
+
+  it("ignores a save completion after navigating to another word", async () => {
+    let resolveSave!: (value: { id: number }) => void;
+    vi.mocked(updateVocabularyWord).mockReturnValue(new Promise((resolve) => {
+      resolveSave = resolve;
+    }) as never);
+    vi.mocked(getVocabularyWord).mockImplementation(async (id) => (
+      id === 8 ? secondLoadedWord : loadedWord
+    ));
+    const wrapper = mount(WordEditorView);
+    await unlockEditor(wrapper);
+
+    await wrapper.get('[data-testid="word-form"]').trigger("submit.prevent");
+    routeState.params!.id = "8";
+    await flushPromises();
+    resolveSave({ id: 7 });
+    await flushPromises();
+
+    expect((wrapper.get('[name="serbian_cyrillic"]').element as HTMLInputElement).value).toBe("жена");
+    expect(wrapper.text()).not.toContain("Слово сохранено");
   });
 
   it("preserves loaded structured stress when an unrelated field changes", async () => {

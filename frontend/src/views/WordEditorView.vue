@@ -63,6 +63,7 @@ const showAiMissingFields = ref(false);
 let aiRequestId = 0;
 let routeLoadRequestId = 0;
 let unlockRequestId = 0;
+let saveRequestId = 0;
 
 const requiredFields: RequiredField[] = [
   "serbian_cyrillic",
@@ -219,6 +220,7 @@ onMounted(() => {
 
 watch(editorPassword, (password) => {
   unlockRequestId += 1;
+  saveRequestId += 1;
   if (verifiedEditorPassword.value && password !== verifiedEditorPassword.value) {
     aiRequestId += 1;
     isAiLoading.value = false;
@@ -238,6 +240,7 @@ watch(wordId, async (nextWordId, previousWordId) => {
 
   unlockRequestId += 1;
   aiRequestId += 1;
+  saveRequestId += 1;
   isAiLoading.value = false;
   aiInfoState.value = null;
   aiError.value = "";
@@ -277,7 +280,12 @@ watch(wordId, async (nextWordId, previousWordId) => {
     isEditorUnlocked.value = true;
     status.value = copy.value.unlocked;
   } catch {
-    if (loadRequestId !== routeLoadRequestId || nextWordId !== wordId.value) return;
+    if (
+      loadRequestId !== routeLoadRequestId
+      || nextWordId !== wordId.value
+      || routePassword !== editorPassword.value
+      || routePassword !== verifiedEditorPassword.value
+    ) return;
     verifiedEditorPassword.value = "";
     error.value = copy.value.loadWordError;
   }
@@ -381,6 +389,15 @@ function restorePreviousValues() {
 }
 
 async function saveWord() {
+  const requestId = ++saveRequestId;
+  const requestWordId = wordId.value;
+  const requestPassword = editorPassword.value;
+  const isCurrentRequest = () => (
+    requestId === saveRequestId
+    && requestWordId === wordId.value
+    && requestPassword === editorPassword.value
+    && isEditorUnlocked.value
+  );
   status.value = "";
   error.value = "";
   const hasMissingRequiredField = requiredFields.some(
@@ -398,9 +415,11 @@ async function saveWord() {
     } else {
       await createVocabularyWord(payload, editorPassword.value);
     }
+    if (!isCurrentRequest()) return;
     showAiMissingFields.value = false;
     status.value = copy.value.wordSaved;
   } catch {
+    if (!isCurrentRequest()) return;
     error.value = copy.value.saveWordError;
   }
 }

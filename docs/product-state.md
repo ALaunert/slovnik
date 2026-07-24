@@ -123,7 +123,7 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
   stress, save, undo, partial fill, timeout, duplicate action, and horizontal-overflow checks without
   a real OpenAI request.
 - Verified on 2026-07-24: backend Ruff passed; backend tests passed with `157 passed, 1 skipped`;
-  frontend unit tests passed with `59 passed`; production build passed; all three Playwright tests
+  frontend unit tests passed with `61 passed`; production build passed; all three Playwright tests
   passed, including the AI editor scenario at desktop and mobile viewports.
 - Manual MVP flow is in `docs/testing/mvp-manual-test.md`.
 
