@@ -8,6 +8,8 @@ Add a product UI feature that lets an editor fill the current vocabulary form fr
 
 This is an editor-assist feature for the existing manual word editor. It is not the CLI importer, not a batch workflow, not a chat interface, and not Russian-to-Serbian card creation.
 
+Generated stress data should also improve the product presentation: when structured stress is available, the stressed syllable is emphasized inside the Serbian word instead of being shown only as separate metadata.
+
 ## Current Product Context
 
 Slovnik already has a password-gated manual vocabulary editor at `/editor` and `/editor/:id`. The editor can create and update rows in `vocabulary_items` with:
@@ -55,12 +57,14 @@ In scope for v1:
 - AI fill is available only after successful editor password verification.
 - The AI input accepts one Serbian word only.
 - The input may be Serbian Latin or Serbian Cyrillic.
-- The backend normalizes the lookup key with `trim + casefold`.
+- The backend normalizes the lookup key with Unicode NFC, `trim`, and `casefold`.
 - Duplicate checks use strict normalized matching against existing Serbian headword fields.
 - Persistent generation lookup uses the same normalized key.
 - Stored AI generations are reused to save time and OpenAI cost.
 - There is no v1 regenerate button.
 - Partial generated results are valid draft output and are persisted.
+- AI may return structured syllable and stress data for both Serbian scripts.
+- When structured stress is available, product word displays emphasize the full stressed syllable inside both Serbian spellings.
 - Strong technical failures do not mutate the form.
 - OpenAI errors are logged in structured logs without secrets.
 
@@ -98,8 +102,34 @@ The frontend behavior:
 - Apply only fields returned by the backend.
 - Keep ordinary save validation in place.
 - Highlight required fields left empty after partial generation.
+- Let the editor review and manually adjust the syllable split and stressed syllable before saving.
+- Render a structured stress preview by wrapping the selected syllable in `<strong>`; never render model-provided HTML.
 - Do not store the undo snapshot in localStorage or on the backend.
 - Do not expose `OPENAI_API_KEY` to the browser.
+
+Reusable product word displays should use the same stress-rendering component or helper. Given a valid `stress_pattern`, it renders each syllable through ordinary Vue text interpolation and wraps only the syllable at `stressed_syllable_index` in `<strong>`. It must not use `v-html`. Cyrillic and Latin use their own syllable arrays because corresponding syllables may have different character lengths, for example `љу` and `lju`.
+
+The v1 rendering surfaces are:
+
+- `WordCard.vue`, which covers new-word and review sessions.
+- Serbian headwords in `VocabularyListView.vue`.
+- The structured stress preview in `WordEditorView.vue`.
+
+Quiz prompts, answer reveals, results, and example sentences keep their current plain-string contracts in v1. Extending stress emphasis to those surfaces is deferred because it requires a separate quiz snapshot/API design.
+
+The existing `stress_marker` remains available as a legacy fallback. When `stress_pattern` is absent and `stress_marker` is present, the UI continues showing the old marker as metadata. It must not guess a substring to emphasize from an unstructured legacy value.
+
+### Manual Stress Control
+
+The editor uses a deterministic text-and-selection control:
+
+- One input contains Cyrillic syllables separated by a middle dot, for example `ра·ди·ти`.
+- One input contains Latin syllables separated by a middle dot, for example `ra·di·ti`.
+- When both inputs contain the same number of valid syllables and reconstruct the current headwords, the UI shows aligned syllable buttons.
+- Clicking a syllable selects one shared zero-based `stressed_syllable_index` and updates the preview.
+- A `Clear structured stress` action sets `stress_pattern` to null without changing the legacy `stress_marker`.
+
+If either Serbian headword changes and the existing syllable arrays no longer reconstruct it, the frontend immediately marks the structured control invalid and excludes the stale `stress_pattern` from save until the editor fixes the split or clears it. Invalid optional stress must not block saving the rest of the card. The existing free-form `stress_marker` input remains available in v1 for legacy values, but AI fill does not populate it.
 
 ## Backend API
 
@@ -140,8 +170,11 @@ Generated response:
     "russian_translation": "делать, работать",
     "cefr_level": "A1",
     "theme": "daily-life",
-    "usage_register": null,
-    "stress_marker": null,
+    "stress_pattern": {
+      "cyrillic_syllables": ["ра", "ди", "ти"],
+      "latin_syllables": ["ra", "di", "ti"],
+      "stressed_syllable_index": 0
+    },
     "meaning_notes": "Глагол для действий и работы.",
     "example_sentences": "Šta radiš?",
     "example_translations": "Что ты делаешь?"
@@ -209,16 +242,41 @@ The payload may contain these keys:
 - `cefr_level`
 - `theme`
 - `usage_register`
-- `stress_marker`
+- `stress_pattern`
 - `meaning_notes`
 - `example_sentences`
 - `example_translations`
 
 Required vocabulary fields are optional in `AiFillPayload` so partial drafts can be returned. If a required field is present, it must be a non-empty string after trimming. Required fields are considered missing when they are absent, empty, or null in the parsed AI result. The backend should not include null required fields in the response payload.
 
-Optional vocabulary fields may be a string or null. If an optional key is omitted, the frontend leaves the existing form value unchanged. If an optional key is present with null, the frontend clears that form field to blank. This lets AI explicitly remove stale optional data while preserving the "omitted means no change" behavior for partial output.
+`AiFillPayload` is a patch produced by the backend, not the model's raw Structured Output. It contains only validated, non-null generated fields. If a key is omitted, the frontend leaves the existing form value unchanged. AI fill never clears an existing form field in v1; a human can clear optional values manually.
 
-Stored `generated_payload` should use the same `AiFillPayload` semantics. It should preserve optional nulls when the AI explicitly returned them and should omit required fields that were missing or unusable.
+The raw OpenAI schema contains every known property and uses `null` for uncertain values so it is compatible with strict Structured Outputs. The backend converts that full nullable object into `AiFillPayload` by dropping null and unusable fields. Stored `generated_payload` uses the same non-null patch semantics as the API response.
+
+A generated result is minimally usable only when the validated patch contains `russian_translation` and at least one of `serbian_cyrillic` or `serbian_latin`. A result below this threshold returns `invalid_ai_response` and is not persisted. This prevents an empty or echoed-only result from becoming the permanent stored generation when v1 has no regenerate action.
+
+### Stress Pattern Contract
+
+`stress_pattern` is an optional structured object:
+
+```json
+{
+  "cyrillic_syllables": ["ра", "ди", "ти"],
+  "latin_syllables": ["ra", "di", "ti"],
+  "stressed_syllable_index": 0
+}
+```
+
+The index is zero-based and identifies the same spoken syllable in both arrays. The backend validates that:
+
+- Both arrays contain the same non-zero number of non-empty strings.
+- Concatenating `cyrillic_syllables` equals `serbian_cyrillic`.
+- Concatenating `latin_syllables` equals `serbian_latin`.
+- `stressed_syllable_index` exists in both arrays.
+
+The comparisons use Unicode NFC normalization and exact script-specific text after normalization. Generated `stress_pattern` is accepted only when the same raw model output also contains valid, non-null `serbian_cyrillic` and `serbian_latin`; it is not validated against pre-existing frontend values. If either spelling is absent, or generated stress data is otherwise invalid while the rest of the AI payload is usable, the backend omits `stress_pattern`, persists the remaining partial payload, and logs an `invalid_stress_pattern` validation category. Invalid stress alone must not turn a usable card draft into `invalid_ai_response`.
+
+Manual create/update payloads may include `stress_pattern`. The editor exposes the syllable split and selected stress so a human can correct AI output or enter stress manually. The existing `stress_marker` field remains readable and writable during v1 for backward compatibility, but AI fill does not generate it.
 
 ## Backend Service Boundaries
 
@@ -267,13 +325,15 @@ Only successfully parsed AI results are persisted. Strong OpenAI failures, inval
 
 Concurrent first-time requests for the same normalized word may race. The implementation should treat `normalized_source_word` as the uniqueness boundary and use transaction/upsert behavior: if inserting the newly generated row hits a unique-key conflict, re-read the existing row and return it as `source = "store"` instead of failing the request or writing a duplicate row.
 
+Add a nullable `stress_pattern` JSON column to `vocabulary_items`. Keep the existing nullable `stress_marker` column in v1 so migrations do not discard legacy editor data. New structured stress takes display precedence; no automatic conversion of free-form legacy markers is attempted.
+
 ## Duplicate Lookup
 
 Before checking the AI generation table or calling OpenAI, the backend checks existing vocabulary rows.
 
 For v1, duplicate lookup is strict normalized matching:
 
-- Normalize input with `trim + casefold`.
+- Normalize input with Unicode NFC, `trim`, and `casefold`.
 - Compare against normalized `serbian_latin`.
 - Compare against normalized `serbian_cyrillic`.
 
@@ -288,7 +348,7 @@ Use the OpenAI API from the backend only.
 Configuration:
 
 - `OPENAI_API_KEY` is required for the feature to call OpenAI.
-- `OPENAI_MODEL` should be configurable with a documented default.
+- `OPENAI_MODEL` is configurable and defaults to `gpt-5.6-luna`, the current efficient GPT-5.6 variant suited to a small structured extraction request.
 - `PROMPT_VERSION` should be a code constant stored with each generation.
 
 The integration should use the Responses API for direct text-generation requests and Structured Outputs with a JSON Schema for predictable field extraction. OpenAI's current docs describe the Responses API as the recommended API for text-generation apps and document JSON Schema-based Structured Outputs.
@@ -298,17 +358,19 @@ The prompt should clearly state:
 - Input is one Serbian word.
 - The target learner is Russian-speaking.
 - Output is a Slovnik vocabulary card draft.
-- It is acceptable to leave uncertain fields empty.
+- Return `null` for uncertain fields.
+- When stress is known, split both Serbian spellings into corresponding syllables and identify the full stressed syllable with a shared zero-based index.
 - Do not invent a phrase or list of alternatives when the input is not a single Serbian word.
 
-The response schema should allow partial payloads while still enforcing a known object shape and no unexpected fields.
+The strict response schema should require every known property while allowing `null` for uncertain values and disallowing unexpected fields. The backend, not the model schema, converts this full nullable result into the partial `AiFillPayload` patch returned to the frontend.
 
 Backend validation should enforce:
 
 - Known payload keys only.
 - Valid CEFR level when present.
 - `theme` is one of the controlled themes listed below when present.
-- String or null optional fields.
+- The minimum usable result contains a Russian translation and at least one Serbian spelling.
+- Valid `stress_pattern` structure and correspondence with both generated Serbian spellings when present.
 - Length limits compatible with the existing app schema.
 - Missing required fields calculation for `serbian_cyrillic`, `serbian_latin`, `russian_translation`, `cefr_level`, and `theme`.
 
@@ -411,18 +473,33 @@ Backend tests:
 - Store hit returns stored payload before any OpenAI call.
 - OpenAI success persists the parsed generation.
 - Partial OpenAI result is persisted and reports missing required fields.
-- Omitted fields, null optional fields, and missing required fields follow the `AiFillPayload` contract.
+- Raw nulls, omitted API patch fields, and missing required fields follow the `AiFillPayload` contract.
+- The full nullable model result is converted to a non-null API patch without clearing existing frontend fields.
+- Empty, echoed-only, or otherwise below-threshold results return `invalid_ai_response` and are not persisted.
+- Valid structured stress is accepted when both syllable arrays reconstruct their corresponding words.
+- Structured stress is omitted when either generated Serbian spelling is absent.
+- Invalid stress index, unequal syllable counts, or mismatched reconstructed words cause only `stress_pattern` to be omitted.
+- Manual vocabulary create/update accepts valid `stress_pattern` while legacy `stress_marker` remains compatible.
 - Invalid OpenAI shape returns a technical error and is not persisted.
 - Unique-key conflict during generation insert re-reads and returns the stored row.
 - Stable error codes are returned for validation, OpenAI configuration, OpenAI failures, and invalid AI responses.
 - Editor password protects the endpoint.
 - Migration creates `ai_vocabulary_generations` with a unique normalized key.
+- Migration adds nullable structured stress storage without dropping `stress_marker`.
 
 Frontend tests:
 
 - AI block appears only after editor unlock.
 - Empty AI input disables the fill button.
 - Generated result applies fields to the form.
+- Generated stress can be reviewed and manually adjusted before save.
+- Middle-dot syllable inputs and the shared index produce a valid `stress_pattern`; clear removes only structured stress.
+- Editing a headword invalidates and excludes a stale structured pattern without blocking the rest of the save.
+- Word displays emphasize the complete stressed syllable in both Serbian scripts.
+- Latin digraph and Cyrillic single-letter syllables render correctly from separate arrays.
+- Invalid or absent structured stress never causes raw HTML rendering or guessed emphasis.
+- Legacy `stress_marker` remains visible as metadata when no `stress_pattern` exists.
+- Quiz and results views retain their current plain-string rendering.
 - Previous values can be restored after applying AI output.
 - Partial result highlights missing required fields.
 - `already_exists` shows a message and edit link/button.
@@ -449,15 +526,17 @@ Do not update `docs/product-state.md` merely for this design document; update it
 
 ## Open Questions Deferred
 
-- Which OpenAI model should be the default for production.
 - Whether a future "Regenerate" action should bypass the stored generation.
 - Whether Russian-to-Serbian card creation should become a separate feature.
 - Whether phrase generation should be supported later.
 - Whether stored AI generations need an admin review/debug UI.
+- Whether quiz prompts, answer reveals, and results should carry structured stress data.
 
 ## References
 
 - OpenAI Text generation guide: `https://developers.openai.com/api/docs/guides/text`
 - OpenAI Structured Outputs guide: `https://developers.openai.com/api/docs/guides/structured-outputs`
+- OpenAI model guidance: `https://developers.openai.com/api/docs/guides/latest-model`
+- OpenAI `gpt-5.6-luna` model reference: `https://developers.openai.com/api/docs/models/gpt-5.6-luna`
 - Product audit: `docs/product-state.md`
 - Existing importer design: `docs/superpowers/specs/2026-07-06-vocabulary-importer-design.md`
