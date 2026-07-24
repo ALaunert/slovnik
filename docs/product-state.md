@@ -6,7 +6,8 @@ Last audited: 2026-07-24
 
 Slovnik is a Serbian vocabulary trainer MVP for Russian-speaking learners. It has a FastAPI backend, Postgres persistence, Alembic migrations, and a Vue 3/Vite frontend. The app supports lightweight `userId` profile access, a shared vocabulary pool, per-user learning progress, daily new-word and review sessions, daily and weekly quizzes, weak-word tracking, a password-gated vocabulary editor with manual and AI-assisted fill, and Russian/Serbian UI copy.
 
-This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": merge commit `7f99f084347e51212d5e78ff1ebdb0a5b457ea83`, final feature branch head `906d4ec7dcee7befc5703ff7c7714dee7332fb4d`.
+This audit reflects the current product implementation on the AI vocabulary fill feature branch,
+built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
 
 ## Implemented User-Facing Capabilities
 
