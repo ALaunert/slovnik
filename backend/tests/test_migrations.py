@@ -257,8 +257,14 @@ def test_postgresql_migration_target_propagates_create_database_errors(monkeypat
         advance_postgresql_fixture_without_skip(monkeypatch)
 
 
-def test_migrations_do_not_disable_application_loggers(migration_database):
-    assert not logging.getLogger("app.services.openai_vocabulary_client").disabled
+def test_migrations_do_not_disable_existing_application_loggers(tmp_path, monkeypatch):
+    application_logger = logging.getLogger("app.services.openai_vocabulary_client")
+    application_logger.disabled = False
+    database_url = f"sqlite:///{tmp_path / 'logging.db'}"
+
+    command.upgrade(build_alembic_config(database_url, monkeypatch), "head")
+
+    assert not application_logger.disabled
 
 
 def test_upgrade_adds_ai_vocabulary_persistence_schema(migration_database):
