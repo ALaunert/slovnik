@@ -30,7 +30,7 @@ class VocabularyItem(Base):
     theme: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     usage_register: Mapped[str | None] = mapped_column(String(80))
     stress_marker: Mapped[str | None] = mapped_column(String(160))
-    stress_pattern: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    stress_pattern: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True))
     meaning_notes: Mapped[str | None] = mapped_column(Text)
     example_sentences: Mapped[str | None] = mapped_column(Text)
     example_translations: Mapped[str | None] = mapped_column(Text)

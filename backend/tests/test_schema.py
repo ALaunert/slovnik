@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
 from app.models import AiVocabularyGeneration, UserProfile, VocabularyItem
@@ -44,6 +44,32 @@ def test_vocabulary_item_accepts_structured_stress(db_session):
     saved = db_session.get(VocabularyItem, word.id)
     assert saved is not None
     assert saved.stress_pattern == stress_pattern
+
+
+def test_clearing_structured_stress_persists_sql_null(db_session):
+    word = VocabularyItem(
+        serbian_cyrillic="радити",
+        serbian_latin="raditi",
+        russian_translation="делать",
+        cefr_level="A1",
+        theme="work",
+        stress_pattern={
+            "cyrillic_syllables": ["ра", "ди", "ти"],
+            "latin_syllables": ["ra", "di", "ti"],
+            "stressed_syllable_index": 0,
+        },
+    )
+    db_session.add(word)
+    db_session.commit()
+
+    word.stress_pattern = None
+    db_session.commit()
+
+    is_sql_null = db_session.scalar(
+        text("SELECT stress_pattern IS NULL FROM vocabulary_items WHERE id = :word_id"),
+        {"word_id": word.id},
+    )
+    assert is_sql_null == 1
 
 
 def test_ai_generation_normalized_source_is_unique(db_session):

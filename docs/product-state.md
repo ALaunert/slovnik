@@ -1,6 +1,6 @@
 # Slovnik Product State
 
-Last audited: 2026-07-05
+Last audited: 2026-07-24
 
 ## Product Summary
 
@@ -35,6 +35,8 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
   - `POST /api/quizzes/{user_id}/start`, `POST /api/quizzes/{user_id}/{attempt_id}/answers`, `GET /api/quizzes/{user_id}/{attempt_id}/questions/{word_id}/{question_type}/answer`, `POST /api/quizzes/{user_id}/{attempt_id}/complete`
 - Business logic lives in `backend/app/services/profile_service.py`, `vocabulary_service.py`, `learning_service.py`, and `quiz_service.py`.
 - `backend/app/seed.py` seeds three sample A1 words only.
+- The backend includes the OpenAI Python dependency and AI-generation persistence models, but no
+  AI vocabulary endpoint or OpenAI request path is implemented yet.
 
 ## Frontend Architecture and Routes/Views
 
@@ -54,6 +56,12 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
   - `user_word_progress`: per-user word status, seen/quizzed timestamps, correct/incorrect counts, weak status.
   - `quiz_attempts`: user-scoped quiz type, timestamps, score, total questions, serialized question plan.
   - `quiz_answers`: submitted answers per attempt/question.
+- Migration `20260724_0002_ai_vocabulary_fill.py` adds nullable JSON `stress_pattern` to
+  `vocabulary_items` while preserving the legacy `stress_marker`, and creates
+  `ai_vocabulary_generations`. Generation records retain the source word, a unique normalized source
+  key, generated JSON payload, missing required fields, model and prompt versions, and timestamps.
+- Clearing `VocabularyItem.stress_pattern` stores SQL `NULL`; JSON values are replaced wholesale
+  rather than tracked for in-place mutation.
 - Vocabulary content is global; profiles, progress, quiz attempts, answers, and weak-word state are scoped by `user_id`.
 
 ## Security/Access Model and Caveats
@@ -67,9 +75,15 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
 ## Verification and Test Coverage
 
 - Backend verification documented in `README.md`: `cd backend && .venv/bin/ruff check .` and `.venv/bin/pytest -v`.
+- Backend editable installation is verified with `.venv/bin/python -m pip install -e ".[dev]"`;
+  setuptools discovers only `app*`, and the dev dependency remains on Ruff `0.6.x`.
 - Frontend verification documented in `README.md`: `cd frontend && npm run test:unit`, `npm run build`, and `npm run test:e2e`.
 - Database rebuild/seed verification is documented in `README.md` with `docker compose up -d postgres`, Alembic downgrade/upgrade, and `python -m app.seed`.
 - Backend tests cover health, config validation, schema defaults, profiles, vocabulary, learning sessions, quiz selection/submission/completion, weak-word behavior, repeat limits, and answer reveal.
+- Migration tests default to temporary SQLite databases and cover upgrade/downgrade data
+  preservation, JSON schema, and normalized-source uniqueness. Setting
+  `SLOVNIK_TEST_POSTGRES_ADMIN_URL` enables the same round trip in a newly created disposable
+  PostgreSQL database; the normal `DATABASE_URL` is never migrated or dropped by that target.
 - Frontend unit tests cover app shell localization, session persistence, dashboard settings/localization, vocabulary API helpers, quiz repeat/self-check behavior, and word editor update flow.
 - Playwright e2e currently covers only the basic user-id-to-dashboard path with mocked profile API.
 - Manual MVP flow is in `docs/testing/mvp-manual-test.md`.
@@ -77,7 +91,9 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
 ## Known Limitations / Deferred Scope
 
 - Real authentication and authorization are deferred.
-- Native mobile apps, audio pronunciation, bulk import, social features, payments, AI generation, and advanced spaced repetition are not implemented.
+- Native mobile apps, audio pronunciation, bulk import, social features, payments, and advanced spaced repetition are not implemented.
+- AI vocabulary persistence is present, but the endpoint, frontend workflow, validation/service
+  layer, and OpenAI call are not implemented yet.
 - Weekly quiz uses calendar-week selection plus weak words, not a full scheduling system.
 - Seed data is intentionally tiny and not a production vocabulary corpus.
 - Results are stored client-side in `sessionStorage`; historical quiz analytics UI is not implemented.
