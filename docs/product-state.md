@@ -41,8 +41,9 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
   Cyrillic/Latin syllable arrays, a valid zero-based stress index, and NFC-equivalent exact
   reconstruction of both Serbian spellings. The legacy `stress_marker` contract remains supported.
 - `backend/app/seed.py` seeds three sample A1 words only.
-- The backend includes the OpenAI Python dependency and AI-generation persistence models, but no
-  AI vocabulary endpoint or OpenAI request path is implemented yet.
+- The backend has a tested, backend-only OpenAI adapter using strict nullable Structured Outputs,
+  a configurable API key and timeout, and `gpt-5.6-luna` as the default model. No AI vocabulary
+  endpoint or product orchestration exposes the adapter yet.
 
 ## Frontend Architecture and Routes/Views
 
@@ -87,6 +88,9 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
 - Frontend verification documented in `README.md`: `cd frontend && npm run test:unit`, `npm run build`, and `npm run test:e2e`.
 - Database rebuild/seed verification is documented in `README.md` with `docker compose up -d postgres`, Alembic downgrade/upgrade, and `python -m app.seed`.
 - Backend tests cover health, config validation, schema defaults, profiles, vocabulary, learning sessions, quiz selection/submission/completion, weak-word behavior, repeat limits, and answer reveal.
+- OpenAI adapter tests cover strict response-schema requirements, configured SDK request arguments,
+  prompt constraints, request-id retention, typed provider failures, and secret/source-word log
+  redaction without real network calls.
 - Migration tests default to temporary SQLite databases and cover upgrade/downgrade data
   preservation, JSON schema, and normalized-source uniqueness. Setting
   `SLOVNIK_TEST_POSTGRES_ADMIN_URL` enables the same round trip in a newly created disposable
@@ -103,9 +107,9 @@ This audit reflects the code merged in PR #1, "Serbian vocabulary trainer MVP": 
 
 - Real authentication and authorization are deferred.
 - Native mobile apps, audio pronunciation, bulk import, social features, payments, and advanced spaced repetition are not implemented.
-- AI vocabulary persistence is present, but the endpoint, frontend workflow, AI-generation
-  validation/service layer, OpenAI call, and structured-stress editor controls are not implemented
-  yet.
+- AI vocabulary persistence and the focused OpenAI generation adapter are present, but the endpoint,
+  frontend workflow, AI-generation validation/service layer, and structured-stress editor controls
+  are not implemented yet.
 - Weekly quiz uses calendar-week selection plus weak words, not a full scheduling system.
 - Seed data is intentionally tiny and not a production vocabulary corpus.
 - Results are stored client-side in `sessionStorage`; historical quiz analytics UI is not implemented.
