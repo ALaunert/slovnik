@@ -104,6 +104,13 @@ onMounted(loadWords);
               :syllables="word.stress_pattern?.latin_syllables"
               :stressed-index="word.stress_pattern?.stressed_syllable_index"
             />
+            <span
+              v-if="!word.stress_pattern && word.stress_marker"
+              class="muted"
+              data-testid="legacy-stress"
+            >
+              {{ word.stress_marker }}
+            </span>
           </div>
           <span>{{ word.russian_translation }}</span>
           <span>{{ word.cefr_level }} · {{ word.theme }}</span>
