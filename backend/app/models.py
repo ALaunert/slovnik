@@ -1,7 +1,17 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -20,9 +30,28 @@ class VocabularyItem(Base):
     theme: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     usage_register: Mapped[str | None] = mapped_column(String(80))
     stress_marker: Mapped[str | None] = mapped_column(String(160))
+    stress_pattern: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     meaning_notes: Mapped[str | None] = mapped_column(Text)
     example_sentences: Mapped[str | None] = mapped_column(Text)
     example_translations: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AiVocabularyGeneration(Base):
+    __tablename__ = "ai_vocabulary_generations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_word: Mapped[str] = mapped_column(String(160), nullable=False)
+    normalized_source_word: Mapped[str] = mapped_column(
+        String(160), nullable=False, unique=True
+    )
+    generated_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    missing_required_fields: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(40), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
