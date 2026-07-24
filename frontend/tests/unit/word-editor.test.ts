@@ -2,6 +2,11 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
 const routeParams = vi.hoisted(() => ({ value: { id: "7" } }));
+const loadedStressPattern = vi.hoisted(() => ({
+  cyrillic_syllables: ["хва", "ла"],
+  latin_syllables: ["hva", "la"],
+  stressed_syllable_index: 0,
+}));
 
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },
@@ -18,6 +23,7 @@ vi.mock("../../src/api/client", () => ({
     theme: "greetings",
     usage_register: null,
     stress_marker: null,
+    stress_pattern: loadedStressPattern,
     meaning_notes: null,
     example_sentences: null,
     example_translations: null,
@@ -52,9 +58,19 @@ describe("WordEditorView", () => {
     expect(verifyEditorPassword).toHaveBeenCalledWith("dev-editor-password");
     expect(updateVocabularyWord).toHaveBeenCalledWith(
       7,
-      expect.objectContaining({ serbian_latin: "hvala updated" }),
+      expect.objectContaining({
+        serbian_latin: "hvala updated",
+        stress_pattern: loadedStressPattern,
+      }),
       "dev-editor-password",
     );
+    const submittedPattern = vi.mocked(updateVocabularyWord).mock.calls[0][1].stress_pattern;
+    expect(submittedPattern).toEqual(loadedStressPattern);
+    expect(submittedPattern).not.toBe(loadedStressPattern);
+    expect(submittedPattern?.cyrillic_syllables).not.toBe(loadedStressPattern.cyrillic_syllables);
+    expect(submittedPattern?.latin_syllables).not.toBe(loadedStressPattern.latin_syllables);
+    submittedPattern!.cyrillic_syllables[0] = "changed";
+    expect(loadedStressPattern.cyrillic_syllables).toEqual(["хва", "ла"]);
     expect(createVocabularyWord).not.toHaveBeenCalled();
 
     await wrapper.get('input[type="password"]').setValue("changed-password");

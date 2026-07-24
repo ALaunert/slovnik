@@ -103,6 +103,27 @@ def test_editor_rejects_invalid_structured_stress(client, stress_pattern):
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize(
+    "stressed_syllable_index",
+    ["0", True],
+    ids=["string", "boolean"],
+)
+def test_editor_rejects_non_integer_stress_index(client, stressed_syllable_index):
+    response = client.post(
+        "/api/vocabulary",
+        headers={"X-Editor-Password": settings.editor_password},
+        json={
+            **BASE_WORD,
+            "stress_pattern": {
+                **VALID_STRESS,
+                "stressed_syllable_index": stressed_syllable_index,
+            },
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_editor_accepts_canonically_equivalent_stress_reconstruction(client):
     response = client.post(
         "/api/vocabulary",

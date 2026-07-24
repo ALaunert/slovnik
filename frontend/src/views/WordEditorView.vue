@@ -34,6 +34,7 @@ const form = reactive<VocabularyPayload>({
   theme: "",
   usage_register: "",
   stress_marker: "",
+  stress_pattern: null,
   meaning_notes: "",
   example_sentences: "",
   example_translations: "",
@@ -47,6 +48,13 @@ function applyWord(word: VocabularyPayload) {
   form.theme = word.theme;
   form.usage_register = word.usage_register ?? "";
   form.stress_marker = word.stress_marker ?? "";
+  form.stress_pattern = word.stress_pattern
+    ? {
+        cyrillic_syllables: [...word.stress_pattern.cyrillic_syllables],
+        latin_syllables: [...word.stress_pattern.latin_syllables],
+        stressed_syllable_index: word.stress_pattern.stressed_syllable_index,
+      }
+    : null;
   form.meaning_notes = word.meaning_notes ?? "";
   form.example_sentences = word.example_sentences ?? "";
   form.example_translations = word.example_translations ?? "";

@@ -30,7 +30,7 @@ class ProfileRead(BaseModel):
 class StressPattern(BaseModel):
     cyrillic_syllables: list[str] = Field(min_length=1)
     latin_syllables: list[str] = Field(min_length=1)
-    stressed_syllable_index: int = Field(ge=0)
+    stressed_syllable_index: int = Field(ge=0, strict=True)
 
 
 class VocabularyCreate(BaseModel):
