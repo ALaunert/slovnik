@@ -77,13 +77,14 @@ status:
 | Rating | Next interval | Streak | Weak state |
 | --- | --- | --- | --- |
 | Again | 10 minutes (`interval = 0`) | Reset to 0 | Mark weak |
-| Hard | 1 day | Unchanged | Unchanged |
+| Hard | 1 day | Reset to 0 | Unchanged |
 | Good | 2 days initially, then `interval × 2`, capped at 180 days | +1 | Clear weak |
 | Easy | 4 days initially, then `interval × 3`, capped at 365 days | +1 | Clear weak |
 
-Three consecutive Good/Easy ratings set status to `learned`; other reviewed words remain
-`reviewing`. A quiz can still mark a word weak. Because quiz-created weakness has no future
-`next_review_at`, that word becomes reviewable immediately under the compatibility rule.
+Three consecutive Good/Easy ratings set status to `learned`; Again or Hard breaks that consecutive
+streak and other reviewed words remain `reviewing`. A wrong quiz answer marks a word weak and clears
+its `next_review_at`, making it reviewable immediately. A self-rated Again answer remains scheduled
+for its ten-minute relearning delay because weakness alone does not override a future due time.
 
 The constants and transition function live in the learning service and are directly unit tested.
 This version intentionally stores only current scheduling state, not a complete review-event log.
@@ -102,12 +103,20 @@ This version intentionally stores only current scheduling state, not a complete 
 ```
 
 It verifies that the word belongs to the learner's current due progress, applies one scheduling
-transition, commits it, and returns the updated progress row including scheduling fields. Unknown,
-unseen, or not-yet-due words return `400`.
+transition, commits it, and returns `{"progress": <updated progress row>}` including scheduling
+fields. Unknown, unseen, or not-yet-due words return `400`.
+
+If the rating request fails, the frontend reconciles with a fresh review GET before it offers a
+retry. If the current word is absent from the refreshed due queue, the committed rating is treated
+as successful and the UI advances; if it remains present, the revealed card stays in place and the
+learner can retry. This makes a lost success response recoverable without adding an event table or
+idempotency column. If reconciliation also fails, the card stays in place and the next retry repeats
+the same POST-then-GET logic.
 
 The existing batch completion endpoint remains available for compatibility, but the web client no
-longer uses it. Its behavior stays unchanged so this feature does not silently break another
-consumer.
+longer uses it. It preserves its request and response shapes while scheduling each accepted word
+one day ahead, resetting its recall streak, and otherwise retaining the previous status/weak-state
+behavior. This prevents legacy clients from creating an immediately recurring due queue.
 
 The frontend API wrapper adds typed rating and scheduling contracts. `ReviewView.vue` owns reveal,
 save, error, and progress state; the existing `WordCard` remains the single full-answer renderer.
@@ -130,7 +139,9 @@ Backend tests cover:
 - weak-word priority;
 - all four interval transitions;
 - weak-state and learned-status transitions;
+- quiz failures resetting a future review schedule;
 - invalid, unseen, and future-due rating rejection;
+- lost-response reconciliation and legacy batch scheduling;
 - response schema and migration round trip.
 
 Frontend tests cover:
