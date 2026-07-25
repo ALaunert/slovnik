@@ -16,9 +16,12 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
-from app.models import AiVocabularyGenerationReservation
+from app.models import (
+    AiVocabularyGenerationReservation,
+    UserWordProgress,
+)
 from app.schemas import AiFillRequest
-from app.services import ai_vocabulary_service
+from app.services import ai_vocabulary_service, learning_service
 from app.services.openai_vocabulary_client import OpenAiVocabularyResult, RawAiVocabulary
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -684,3 +687,67 @@ def test_postgresql_expired_reservation_has_one_takeover_and_provider_call(
     assert {result.source for result in results} == {"openai", "store"}
     with SessionFactory() as session:
         assert session.get(AiVocabularyGenerationReservation, "uciti") is None
+
+
+def test_postgresql_concurrent_review_grades_accept_exactly_one(
+    postgresql_migration_database,
+):
+    _, engine = postgresql_migration_database
+    SessionFactory = sessionmaker(bind=engine)
+    with SessionFactory() as session:
+        progress = session.get(UserWordProgress, LEGACY_PROGRESS_ID)
+        progress.status = "reviewing"
+        progress.is_weak = False
+        progress.weak_since = None
+        progress.next_review_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        session.commit()
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE FUNCTION delay_active_recall_update()
+                RETURNS trigger AS $$
+                BEGIN
+                    PERFORM pg_sleep(0.25);
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TRIGGER delay_active_recall_update
+                BEFORE UPDATE OF next_review_at ON user_word_progress
+                FOR EACH ROW
+                EXECUTE FUNCTION delay_active_recall_update()
+                """
+            )
+        )
+
+    start = threading.Barrier(2)
+
+    def grade():
+        with SessionFactory() as session:
+            start.wait(timeout=3)
+            try:
+                learning_service.grade_review(
+                    session,
+                    LEGACY_USER_ID,
+                    LEGACY_WORD_ID,
+                    "good",
+                )
+            except ValueError as error:
+                session.rollback()
+                return "rejected", str(error)
+            return "success", None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(grade) for _ in range(2)]
+        results = [future.result(timeout=5) for future in futures]
+
+    assert sorted(result[0] for result in results) == ["rejected", "success"]
+    rejection = next(result for result in results if result[0] == "rejected")
+    assert rejection[1] == "Word is not currently due for review"

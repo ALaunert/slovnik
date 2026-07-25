@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any, Literal, TypedDict
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import UserWordProgress, VocabularyItem
@@ -58,20 +58,6 @@ def _is_review_due(progress: UserWordProgress, now: datetime) -> bool:
     return all(
         value is None or value.date() < today
         for value in (first_seen_at, last_seen_at)
-    )
-
-
-def _review_sort_key(progress: UserWordProgress) -> tuple:
-    next_review_at = _as_utc(progress.next_review_at)
-    last_seen_at = _as_utc(progress.last_seen_at)
-    minimum = datetime.min.replace(tzinfo=timezone.utc)
-    return (
-        not progress.is_weak,
-        next_review_at is not None,
-        next_review_at or minimum,
-        last_seen_at is not None,
-        last_seen_at or minimum,
-        progress.id,
     )
 
 
@@ -187,17 +173,45 @@ def complete_new_words(db: Session, user_id: str, word_ids: list[int]) -> list[U
 def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
     get_or_create_profile(db, user_id)
     now = datetime.now(timezone.utc)
-    progress_rows = list(
+    today_start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+    due_rows = list(
         db.scalars(
             select(UserWordProgress)
             .where(UserWordProgress.user_id == user_id)
             .where(UserWordProgress.status.in_(["seen", "reviewing", "learned"]))
+            .where(
+                or_(
+                    and_(
+                        UserWordProgress.next_review_at.is_not(None),
+                        UserWordProgress.next_review_at <= now,
+                    ),
+                    and_(
+                        UserWordProgress.next_review_at.is_(None),
+                        or_(
+                            UserWordProgress.is_weak.is_(True),
+                            and_(
+                                or_(
+                                    UserWordProgress.first_seen_at.is_(None),
+                                    UserWordProgress.first_seen_at < today_start,
+                                ),
+                                or_(
+                                    UserWordProgress.last_seen_at.is_(None),
+                                    UserWordProgress.last_seen_at < today_start,
+                                ),
+                            ),
+                        ),
+                    ),
+                )
+            )
+            .order_by(
+                UserWordProgress.is_weak.desc(),
+                UserWordProgress.next_review_at.asc().nullsfirst(),
+                UserWordProgress.last_seen_at.asc().nullsfirst(),
+                UserWordProgress.id.asc(),
+            )
+            .limit(20)
         )
     )
-    due_rows = sorted(
-        (progress for progress in progress_rows if _is_review_due(progress, now)),
-        key=_review_sort_key,
-    )[:20]
     selected = [progress.word_id for progress in due_rows]
     if not selected:
         return []
@@ -244,7 +258,7 @@ def grade_review(
         select(UserWordProgress).where(
             UserWordProgress.user_id == user_id,
             UserWordProgress.word_id == word_id,
-        )
+        ).with_for_update()
     )
     if progress is None or progress.status not in {"seen", "reviewing", "learned"}:
         raise ValueError("Word has not been seen by this user")

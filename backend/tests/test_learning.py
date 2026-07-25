@@ -288,25 +288,75 @@ def test_review_queue_is_capped_at_twenty_words(client, db_session):
     ]
     db_session.add_all(words)
     db_session.commit()
-    db_session.add_all(
-        [
-            UserWordProgress(
-                user_id="capped-review",
-                word_id=word.id,
-                status="reviewing",
-                first_seen_at=now - timedelta(days=10),
-                last_seen_at=now - timedelta(days=2),
-                next_review_at=now - timedelta(days=1),
-            )
-            for word in words
-        ]
-    )
+    progress_rows = [
+        UserWordProgress(
+            user_id="capped-review",
+            word_id=word.id,
+            status="reviewing",
+            first_seen_at=now - timedelta(days=10),
+            last_seen_at=now - timedelta(days=2),
+            next_review_at=now - timedelta(days=1),
+            is_weak=word is words[-1],
+            weak_since=now - timedelta(days=1) if word is words[-1] else None,
+        )
+        for word in words
+    ]
+    db_session.add_all(progress_rows)
     db_session.commit()
 
     response = client.get("/api/learning/capped-review/review")
 
     assert response.status_code == 200
-    assert len(response.json()["words"]) == 20
+    returned_ids = [word["id"] for word in response.json()["words"]]
+    assert len(returned_ids) == 20
+    assert words[-1].id in returned_ids
+    assert words[19].id not in returned_ids
+
+
+def test_review_filters_orders_and_limits_progress_in_database(
+    client, db_session, seeded_words, monkeypatch
+):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db_session.add(UserProfile(user_id="sql-review"))
+    db_session.add(
+        UserWordProgress(
+            user_id="sql-review",
+            word_id=seeded_words[0].id,
+            status="reviewing",
+            first_seen_at=now - timedelta(days=10),
+            last_seen_at=now - timedelta(days=2),
+            next_review_at=now - timedelta(days=1),
+        )
+    )
+    db_session.commit()
+    progress_statements = []
+    original_scalars = db_session.scalars
+
+    def capture_scalars(statement, *args, **kwargs):
+        if any(
+            description.get("entity") is UserWordProgress
+            for description in statement.column_descriptions
+        ):
+            progress_statements.append(statement)
+        return original_scalars(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "scalars", capture_scalars)
+
+    response = client.get("/api/learning/sql-review/review")
+
+    assert response.status_code == 200
+    assert len(progress_statements) == 1
+    normalized_sql = " ".join(str(progress_statements[0]).split())
+    assert "user_word_progress.next_review_at <=" in normalized_sql
+    assert "user_word_progress.first_seen_at <" in normalized_sql
+    assert "user_word_progress.last_seen_at <" in normalized_sql
+    assert (
+        "ORDER BY user_word_progress.is_weak DESC, "
+        "user_word_progress.next_review_at ASC NULLS FIRST, "
+        "user_word_progress.last_seen_at ASC NULLS FIRST, "
+        "user_word_progress.id ASC"
+    ) in normalized_sql
+    assert "LIMIT" in normalized_sql
 
 
 def test_review_uses_progress_id_as_stable_final_tie_break(
@@ -515,8 +565,12 @@ def test_review_answer_applies_rating_transition(
 @pytest.mark.parametrize(
     ("rating", "current_interval", "expected_interval"),
     [
+        ("good", 1, 2),
+        ("good", 2, 4),
         ("good", 5, 10),
         ("good", 100, 180),
+        ("easy", 3, 4),
+        ("easy", 4, 12),
         ("easy", 5, 15),
         ("easy", 200, 365),
     ],
@@ -536,6 +590,39 @@ def test_review_rating_uses_multipliers_and_caps(
 
     assert progress.review_interval_days == expected_interval
     assert progress.next_review_at == now + timedelta(days=expected_interval)
+
+
+def test_grade_review_locks_owned_progress_before_due_check(
+    db_session, seeded_words, monkeypatch
+):
+    from app.services.learning_service import grade_review
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db_session.add(UserProfile(user_id="locking-review"))
+    db_session.add(
+        UserWordProgress(
+            user_id="locking-review",
+            word_id=seeded_words[0].id,
+            status="reviewing",
+            first_seen_at=now - timedelta(days=2),
+            last_seen_at=now - timedelta(days=1),
+            next_review_at=now - timedelta(minutes=1),
+        )
+    )
+    db_session.commit()
+    progress_statements = []
+    original_scalar = db_session.scalar
+
+    def capture_scalar(statement, *args, **kwargs):
+        progress_statements.append(statement)
+        return original_scalar(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "scalar", capture_scalar)
+
+    grade_review(db_session, "locking-review", seeded_words[0].id, "good")
+
+    assert len(progress_statements) == 1
+    assert progress_statements[0]._for_update_arg is not None
 
 
 def test_three_consecutive_good_or_easy_reviews_mark_word_learned():
