@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.models import UserProfile, UserWordProgress
+from app.models import UserProfile, UserWordProgress, VocabularyItem
 
 
 STRUCTURED_STRESS = {
@@ -273,6 +273,78 @@ def test_review_orders_null_schedule_then_due_time_then_last_seen(
     ]
 
 
+def test_review_queue_is_capped_at_twenty_words(client, db_session):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db_session.add(UserProfile(user_id="capped-review"))
+    words = [
+        VocabularyItem(
+            serbian_cyrillic=f"ограничење {index}",
+            serbian_latin=f"ogranicenje {index}",
+            russian_translation=f"ограничение {index}",
+            cefr_level="A1",
+            theme="limits",
+        )
+        for index in range(21)
+    ]
+    db_session.add_all(words)
+    db_session.commit()
+    db_session.add_all(
+        [
+            UserWordProgress(
+                user_id="capped-review",
+                word_id=word.id,
+                status="reviewing",
+                first_seen_at=now - timedelta(days=10),
+                last_seen_at=now - timedelta(days=2),
+                next_review_at=now - timedelta(days=1),
+            )
+            for word in words
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/api/learning/capped-review/review")
+
+    assert response.status_code == 200
+    assert len(response.json()["words"]) == 20
+
+
+def test_review_uses_progress_id_as_stable_final_tie_break(
+    client, db_session, seeded_words
+):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    due_at = now - timedelta(days=1)
+    last_seen_at = now - timedelta(days=2)
+    db_session.add(UserProfile(user_id="stable-review"))
+    progress_rows = [
+        UserWordProgress(
+            user_id="stable-review",
+            word_id=seeded_words[1].id,
+            status="reviewing",
+            first_seen_at=now - timedelta(days=10),
+            last_seen_at=last_seen_at,
+            next_review_at=due_at,
+        ),
+        UserWordProgress(
+            user_id="stable-review",
+            word_id=seeded_words[0].id,
+            status="reviewing",
+            first_seen_at=now - timedelta(days=10),
+            last_seen_at=last_seen_at,
+            next_review_at=due_at,
+        ),
+    ]
+    db_session.add_all(progress_rows)
+    db_session.commit()
+
+    response = client.get("/api/learning/stable-review/review")
+
+    assert response.status_code == 200
+    assert [word["id"] for word in response.json()["words"]] == [
+        progress.word_id for progress in sorted(progress_rows, key=lambda row: row.id)
+    ]
+
+
 def test_review_avoids_words_seen_today_when_not_weak(client, db_session, seen_today_progress):
     response = client.get("/api/learning/learner-1/review")
 
@@ -519,6 +591,29 @@ def test_review_answer_rejects_unknown_word(client):
 def test_review_answer_rejects_unseen_word(client, seeded_words):
     response = client.post(
         "/api/learning/learner-1/review/answers",
+        json={"word_id": seeded_words[0].id, "rating": "good"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_review_answer_rejects_owned_progress_with_new_status(
+    client, db_session, seeded_words
+):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db_session.add(UserProfile(user_id="owned-new"))
+    db_session.add(
+        UserWordProgress(
+            user_id="owned-new",
+            word_id=seeded_words[0].id,
+            status="new",
+            next_review_at=now - timedelta(minutes=1),
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/api/learning/owned-new/review/answers",
         json={"word_id": seeded_words[0].id, "rating": "good"},
     )
 
