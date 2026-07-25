@@ -1,11 +1,23 @@
-from datetime import datetime, timezone
-from typing import TypedDict
+from datetime import datetime, time, timedelta, timezone
+from typing import Any, Literal, TypedDict
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import UserWordProgress, VocabularyItem
 from app.services.profile_service import get_or_create_profile
+
+ReviewRating = Literal["again", "hard", "good", "easy"]
+
+AGAIN_DELAY = timedelta(minutes=10)
+HARD_INTERVAL_DAYS = 1
+GOOD_INITIAL_INTERVAL_DAYS = 2
+GOOD_INTERVAL_MULTIPLIER = 2
+GOOD_MAX_INTERVAL_DAYS = 180
+EASY_INITIAL_INTERVAL_DAYS = 4
+EASY_INTERVAL_MULTIPLIER = 3
+EASY_MAX_INTERVAL_DAYS = 365
+LEARNED_REVIEW_STREAK = 3
 
 
 class ReviewWord(TypedDict):
@@ -17,11 +29,89 @@ class ReviewWord(TypedDict):
     theme: str
     usage_register: str | None
     stress_marker: str | None
+    stress_pattern: dict[str, Any] | None
     meaning_notes: str | None
     example_sentences: str | None
     example_translations: str | None
     incorrect_count: int
     is_weak: bool
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _is_review_due(progress: UserWordProgress, now: datetime) -> bool:
+    next_review_at = _as_utc(progress.next_review_at)
+    if next_review_at is not None:
+        return next_review_at <= now
+    if progress.is_weak:
+        return True
+
+    first_seen_at = _as_utc(progress.first_seen_at)
+    last_seen_at = _as_utc(progress.last_seen_at)
+    today = now.date()
+    return all(
+        value is None or value.date() < today
+        for value in (first_seen_at, last_seen_at)
+    )
+
+
+def apply_review_rating(
+    progress: UserWordProgress, rating: ReviewRating, now: datetime
+) -> None:
+    if rating not in {"again", "hard", "good", "easy"}:
+        raise ValueError(f"Unknown review rating: {rating}")
+
+    current_interval = progress.review_interval_days or 0
+    current_streak = progress.review_streak or 0
+    progress.last_seen_at = now
+    progress.status = "reviewing"
+
+    if rating == "again":
+        progress.review_interval_days = 0
+        progress.next_review_at = now + AGAIN_DELAY
+        progress.review_streak = 0
+        progress.is_weak = True
+        progress.weak_since = progress.weak_since or now
+        return
+
+    if rating == "hard":
+        progress.review_interval_days = HARD_INTERVAL_DAYS
+        progress.next_review_at = now + timedelta(days=HARD_INTERVAL_DAYS)
+        progress.review_streak = 0
+        return
+
+    if rating == "good":
+        interval_days = (
+            GOOD_INITIAL_INTERVAL_DAYS
+            if current_interval < GOOD_INITIAL_INTERVAL_DAYS
+            else min(
+                current_interval * GOOD_INTERVAL_MULTIPLIER,
+                GOOD_MAX_INTERVAL_DAYS,
+            )
+        )
+    else:
+        interval_days = (
+            EASY_INITIAL_INTERVAL_DAYS
+            if current_interval < EASY_INITIAL_INTERVAL_DAYS
+            else min(
+                current_interval * EASY_INTERVAL_MULTIPLIER,
+                EASY_MAX_INTERVAL_DAYS,
+            )
+        )
+
+    progress.review_interval_days = interval_days
+    progress.next_review_at = now + timedelta(days=interval_days)
+    progress.review_streak = current_streak + 1
+    progress.is_weak = False
+    progress.weak_since = None
+    if progress.review_streak >= LEARNED_REVIEW_STREAK:
+        progress.status = "learned"
 
 
 def get_daily_new_words(db: Session, user_id: str) -> list[VocabularyItem]:
@@ -72,6 +162,7 @@ def complete_new_words(db: Session, user_id: str, word_ids: list[int]) -> list[U
         if progress.first_seen_at is None:
             progress.first_seen_at = now
         progress.last_seen_at = now
+        progress.next_review_at = now + timedelta(days=1)
         progress_rows.append(progress)
     db.commit()
     for progress in progress_rows:
@@ -81,30 +172,53 @@ def complete_new_words(db: Session, user_id: str, word_ids: list[int]) -> list[U
 
 def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
     get_or_create_profile(db, user_id)
-    today = datetime.now(timezone.utc).date()
-    rows = list(
+    now = datetime.now(timezone.utc)
+    today_start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+    due_rows = list(
         db.scalars(
             select(UserWordProgress)
             .where(UserWordProgress.user_id == user_id)
             .where(UserWordProgress.status.in_(["seen", "reviewing", "learned"]))
-            .order_by(UserWordProgress.is_weak.desc(), UserWordProgress.last_seen_at.asc().nullsfirst())
+            .where(
+                or_(
+                    and_(
+                        UserWordProgress.next_review_at.is_not(None),
+                        UserWordProgress.next_review_at <= now,
+                    ),
+                    and_(
+                        UserWordProgress.next_review_at.is_(None),
+                        or_(
+                            UserWordProgress.is_weak.is_(True),
+                            and_(
+                                or_(
+                                    UserWordProgress.first_seen_at.is_(None),
+                                    UserWordProgress.first_seen_at < today_start,
+                                ),
+                                or_(
+                                    UserWordProgress.last_seen_at.is_(None),
+                                    UserWordProgress.last_seen_at < today_start,
+                                ),
+                            ),
+                        ),
+                    ),
+                )
+            )
+            .order_by(
+                UserWordProgress.is_weak.desc(),
+                UserWordProgress.next_review_at.asc().nullsfirst(),
+                UserWordProgress.last_seen_at.asc().nullsfirst(),
+                UserWordProgress.id.asc(),
+            )
+            .limit(20)
         )
     )
-    selected: list[int] = []
-    for progress in rows:
-        last_seen_date = progress.last_seen_at.date() if progress.last_seen_at else None
-        first_seen_date = progress.first_seen_at.date() if progress.first_seen_at else None
-        if progress.is_weak or last_seen_date is None or last_seen_date < today:
-            if progress.is_weak or first_seen_date != today:
-                selected.append(progress.word_id)
-        if len(selected) >= 20:
-            break
+    selected = [progress.word_id for progress in due_rows]
     if not selected:
         return []
     words_by_id = {
         word.id: word for word in db.scalars(select(VocabularyItem).where(VocabularyItem.id.in_(selected)))
     }
-    progress_by_word_id = {progress.word_id: progress for progress in rows}
+    progress_by_word_id = {progress.word_id: progress for progress in due_rows}
     result: list[ReviewWord] = []
     for word_id in selected:
         word = words_by_id.get(word_id)
@@ -121,6 +235,7 @@ def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
                 "theme": word.theme,
                 "usage_register": word.usage_register,
                 "stress_marker": word.stress_marker,
+                "stress_pattern": word.stress_pattern,
                 "meaning_notes": word.meaning_notes,
                 "example_sentences": word.example_sentences,
                 "example_translations": word.example_translations,
@@ -129,6 +244,45 @@ def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
             }
         )
     return result
+
+
+def get_review_status(db: Session, user_id: str, word_id: int) -> bool:
+    progress = db.scalar(
+        select(UserWordProgress).where(
+            UserWordProgress.user_id == user_id,
+            UserWordProgress.word_id == word_id,
+        )
+    )
+    if progress is None or progress.status not in {"seen", "reviewing", "learned"}:
+        raise ValueError("Word has not been seen by this user")
+    return _is_review_due(progress, datetime.now(timezone.utc))
+
+
+def grade_review(
+    db: Session,
+    user_id: str,
+    word_id: int,
+    rating: ReviewRating,
+) -> UserWordProgress:
+    if db.get(VocabularyItem, word_id) is None:
+        raise ValueError(f"Unknown word id: {word_id}")
+    progress = db.scalar(
+        select(UserWordProgress).where(
+            UserWordProgress.user_id == user_id,
+            UserWordProgress.word_id == word_id,
+        ).with_for_update()
+    )
+    if progress is None or progress.status not in {"seen", "reviewing", "learned"}:
+        raise ValueError("Word has not been seen by this user")
+
+    now = datetime.now(timezone.utc)
+    if not _is_review_due(progress, now):
+        raise ValueError("Word is not currently due for review")
+
+    apply_review_rating(progress, rating, now)
+    db.commit()
+    db.refresh(progress)
+    return progress
 
 
 def complete_review(db: Session, user_id: str, word_ids: list[int]) -> list[UserWordProgress]:
@@ -149,6 +303,8 @@ def complete_review(db: Session, user_id: str, word_ids: list[int]) -> list[User
         if progress.status != "learned":
             progress.status = "reviewing"
         progress.last_seen_at = now
+        progress.next_review_at = now + timedelta(days=1)
+        progress.review_streak = 0
         progress_rows.append(progress)
     db.commit()
     for progress in progress_rows:

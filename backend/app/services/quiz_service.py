@@ -220,6 +220,7 @@ def submit_answer(db: Session, user_id: str, attempt_id: int, word_id: int, ques
         progress.incorrect_count = (progress.incorrect_count or 0) + 1
         progress.is_weak = True
         progress.weak_since = progress.weak_since or now
+        progress.next_review_at = None
     db.add(
         QuizAnswer(
             quiz_attempt_id=attempt_id,

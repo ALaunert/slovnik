@@ -1,4 +1,4 @@
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     editor_password: str = "dev-editor-password"
     environment: str = ""
     cors_origins: list[str] = ["http://localhost:5173"]
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.6-luna"
+    openai_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
 
     model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8", extra="ignore")
 

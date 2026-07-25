@@ -4,6 +4,7 @@ import { computed } from "vue";
 import type { VocabularyWord } from "../api/client";
 import { messages } from "../i18n/messages";
 import { sessionStore } from "../stores/session";
+import StressText from "./StressText.vue";
 
 type ExampleLine = { sentence: string; translation?: string };
 
@@ -26,7 +27,7 @@ function hasDetails(word: VocabularyWord) {
 
 function meta(word: VocabularyWord) {
   const register = word.usage_register ? ` · ${word.usage_register}` : "";
-  const stress = word.stress_marker ? ` · ${word.stress_marker}` : "";
+  const stress = !word.stress_pattern && word.stress_marker ? ` · ${word.stress_marker}` : "";
   return `${word.cefr_level} · ${word.theme}${register}${stress}`;
 }
 </script>
@@ -34,7 +35,19 @@ function meta(word: VocabularyWord) {
 <template>
   <article class="word-card">
     <p class="eyebrow">{{ meta(props.word) }} <span v-if="props.weak" class="badge">{{ copy.weak }}</span></p>
-    <h2>{{ props.word.serbian_cyrillic }} / {{ props.word.serbian_latin }}</h2>
+    <h2>
+      <StressText
+        :word="props.word.serbian_cyrillic"
+        :syllables="props.word.stress_pattern?.cyrillic_syllables"
+        :stressed-index="props.word.stress_pattern?.stressed_syllable_index"
+      />
+      /
+      <StressText
+        :word="props.word.serbian_latin"
+        :syllables="props.word.stress_pattern?.latin_syllables"
+        :stressed-index="props.word.stress_pattern?.stressed_syllable_index"
+      />
+    </h2>
     <p class="translation">{{ props.word.russian_translation }}</p>
     <details v-if="hasDetails(props.word)">
       <summary>{{ copy.details }}</summary>
