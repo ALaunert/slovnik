@@ -246,6 +246,18 @@ def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
     return result
 
 
+def get_review_status(db: Session, user_id: str, word_id: int) -> bool:
+    progress = db.scalar(
+        select(UserWordProgress).where(
+            UserWordProgress.user_id == user_id,
+            UserWordProgress.word_id == word_id,
+        )
+    )
+    if progress is None or progress.status not in {"seen", "reviewing", "learned"}:
+        raise ValueError("Word has not been seen by this user")
+    return _is_review_due(progress, datetime.now(timezone.utc))
+
+
 def grade_review(
     db: Session,
     user_id: str,

@@ -395,6 +395,137 @@ def test_review_uses_progress_id_as_stable_final_tie_break(
     ]
 
 
+def test_review_status_reports_due_for_word_displaced_from_capped_queue(
+    client, db_session
+):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db_session.add(UserProfile(user_id="reconcile-due"))
+    words = [
+        VocabularyItem(
+            serbian_cyrillic=f"провера {index}",
+            serbian_latin=f"provera {index}",
+            russian_translation=f"проверка {index}",
+            cefr_level="A1",
+            theme="reconciliation",
+        )
+        for index in range(21)
+    ]
+    db_session.add_all(words)
+    db_session.commit()
+    target_word = words[-1]
+    db_session.add_all(
+        [
+            UserWordProgress(
+                user_id="reconcile-due",
+                word_id=word.id,
+                status="reviewing",
+                first_seen_at=now - timedelta(days=10),
+                last_seen_at=now - timedelta(days=2),
+                next_review_at=(
+                    now - timedelta(minutes=1)
+                    if word is target_word
+                    else now - timedelta(days=2)
+                ),
+            )
+            for word in words
+        ]
+    )
+    db_session.commit()
+
+    queue_response = client.get("/api/learning/reconcile-due/review")
+    status_response = client.get(
+        f"/api/learning/reconcile-due/review/status/{target_word.id}"
+    )
+
+    assert queue_response.status_code == 200
+    assert target_word.id not in [
+        word["id"] for word in queue_response.json()["words"]
+    ]
+    assert status_response.status_code == 200
+    assert status_response.json() == {"is_due": True}
+
+
+def test_review_status_reports_false_for_future_scheduled_word(
+    client, db_session, seeded_words
+):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db_session.add(UserProfile(user_id="reconcile-future"))
+    db_session.add(
+        UserWordProgress(
+            user_id="reconcile-future",
+            word_id=seeded_words[0].id,
+            status="reviewing",
+            first_seen_at=now - timedelta(days=2),
+            last_seen_at=now - timedelta(days=1),
+            next_review_at=now + timedelta(days=1),
+        )
+    )
+    db_session.commit()
+
+    response = client.get(
+        f"/api/learning/reconcile-future/review/status/{seeded_words[0].id}"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"is_due": False}
+
+
+def test_review_status_rejects_unseen_word(client, seeded_words):
+    response = client.get(
+        f"/api/learning/reconcile-unseen/review/status/{seeded_words[0].id}"
+    )
+
+    assert response.status_code == 400
+
+
+def test_review_status_rejects_progress_owned_by_another_user(
+    client, db_session, seeded_words
+):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db_session.add(UserProfile(user_id="reconcile-owner"))
+    db_session.add(
+        UserWordProgress(
+            user_id="reconcile-owner",
+            word_id=seeded_words[0].id,
+            status="reviewing",
+            next_review_at=now - timedelta(minutes=1),
+        )
+    )
+    db_session.commit()
+
+    response = client.get(
+        f"/api/learning/reconcile-other/review/status/{seeded_words[0].id}"
+    )
+
+    assert response.status_code == 400
+
+
+def test_review_status_rejects_ineligible_progress(
+    client, db_session, seeded_words
+):
+    db_session.add(UserProfile(user_id="reconcile-new"))
+    db_session.add(
+        UserWordProgress(
+            user_id="reconcile-new",
+            word_id=seeded_words[0].id,
+            status="new",
+        )
+    )
+    db_session.commit()
+
+    response = client.get(
+        f"/api/learning/reconcile-new/review/status/{seeded_words[0].id}"
+    )
+
+    assert response.status_code == 400
+
+
+def test_review_status_rejects_non_positive_word_id(client):
+    response = client.get("/api/learning/reconcile-invalid/review/status/0")
+
+    assert response.status_code == 422
+
+
 def test_review_avoids_words_seen_today_when_not_weak(client, db_session, seen_today_progress):
     response = client.get("/api/learning/learner-1/review")
 

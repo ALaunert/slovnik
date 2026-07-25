@@ -170,6 +170,10 @@ class ReviewAnswerRead(BaseModel):
     progress: UserWordProgressRead
 
 
+class ReviewStatusRead(BaseModel):
+    is_due: bool
+
+
 class LearningWordsRead(BaseModel):
     words: list[VocabularyRead]
 
