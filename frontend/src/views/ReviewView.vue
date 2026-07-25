@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 
 import {
+  getReviewStatus,
   getReviewWords,
   submitReviewAnswer,
   type ReviewRating,
@@ -19,10 +20,11 @@ const words = ref<VocabularyWord[]>([]);
 const index = ref(0);
 const error = ref("");
 const isDone = ref(false);
+const loading = ref(true);
 const revealed = ref(false);
 const saving = ref(false);
 const revealButton = ref<HTMLButtonElement | null>(null);
-const ratingGroup = ref<HTMLElement | null>(null);
+const answerRegion = ref<HTMLElement | null>(null);
 const completionStatus = ref<HTMLElement | null>(null);
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 const currentWord = computed(() => words.value[index.value]);
@@ -35,6 +37,7 @@ const ratings = computed<{ rating: ReviewRating; label: string }[]>(() => [
 
 onMounted(async () => {
   if (!sessionStore.userId.value) {
+    loading.value = false;
     await router.push("/");
     return;
   }
@@ -42,6 +45,8 @@ onMounted(async () => {
     words.value = (await getReviewWords(sessionStore.userId.value)).words;
   } catch {
     error.value = copy.value.loadReviewError;
+  } finally {
+    loading.value = false;
   }
 });
 
@@ -50,7 +55,7 @@ async function reveal() {
   error.value = "";
   revealed.value = true;
   await nextTick();
-  ratingGroup.value?.focus();
+  answerRegion.value?.focus();
 }
 
 async function advance() {
@@ -80,8 +85,8 @@ async function rate(rating: ReviewRating) {
     shouldAdvance = true;
   } catch {
     try {
-      const refreshed = await getReviewWords(sessionStore.userId.value);
-      shouldAdvance = !refreshed.words.some((word) => word.id === wordId);
+      const status = await getReviewStatus(sessionStore.userId.value, wordId);
+      shouldAdvance = !status.is_due;
       if (!shouldAdvance) error.value = copy.value.saveReviewError;
     } catch {
       error.value = copy.value.saveReviewError;
@@ -101,7 +106,10 @@ async function rate(rating: ReviewRating) {
       <RouterLink to="/dashboard">{{ copy.backToDashboard }}</RouterLink>
     </header>
     <section class="panel stack">
-      <p v-if="error && words.length === 0" class="error">{{ error }}</p>
+      <p v-if="loading" class="recall-loading muted" role="status" aria-live="polite">
+        {{ copy.loading }}
+      </p>
+      <p v-else-if="error && words.length === 0" class="error">{{ error }}</p>
       <p
         v-else-if="isDone"
         ref="completionStatus"
@@ -124,12 +132,19 @@ async function rate(rating: ReviewRating) {
           </button>
         </article>
         <template v-else>
-          <WordCard :word="currentWord" :weak="Boolean(currentWord.is_weak)" />
-          <p v-if="currentWord.incorrect_count && currentWord.incorrect_count > 0" class="muted">
-            {{ copy.weakHistory }}: {{ currentWord.incorrect_count }}
-          </p>
+          <section
+            ref="answerRegion"
+            class="recall-answer"
+            role="region"
+            :aria-label="copy.answerLabel"
+            tabindex="-1"
+          >
+            <WordCard :word="currentWord" :weak="Boolean(currentWord.is_weak)" />
+            <p v-if="currentWord.incorrect_count && currentWord.incorrect_count > 0" class="muted">
+              {{ copy.weakHistory }}: {{ currentWord.incorrect_count }}
+            </p>
+          </section>
           <div
-            ref="ratingGroup"
             class="recall-rating-area"
             role="group"
             aria-labelledby="recall-rating-guidance"
@@ -148,7 +163,9 @@ async function rate(rating: ReviewRating) {
                 {{ option.label }}
               </button>
             </div>
-            <p v-if="saving" class="recall-saving muted" role="status">{{ copy.savingReview }}</p>
+            <p class="recall-saving muted" role="status" aria-live="polite">
+              {{ saving ? copy.savingReview : "" }}
+            </p>
             <p v-if="error" class="error" role="alert">{{ error }}</p>
           </div>
         </template>

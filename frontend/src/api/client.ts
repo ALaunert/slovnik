@@ -206,6 +206,14 @@ export async function getReviewWords(userId: string): Promise<{ words: Vocabular
   return response.json();
 }
 
+export async function getReviewStatus(userId: string, wordId: number): Promise<{ is_due: boolean }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/learning/${encodeURIComponent(userId)}/review/status/${wordId}`,
+  );
+  if (!response.ok) throw new Error("Failed to load review status");
+  return response.json();
+}
+
 export type ReviewRating = "again" | "hard" | "good" | "easy";
 
 export type LearningProgress = {
