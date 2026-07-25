@@ -1,3 +1,4 @@
+from datetime import datetime
 import unicodedata
 from typing import Annotated, Literal
 
@@ -153,8 +154,24 @@ class UserWordProgressRead(BaseModel):
     correct_count: int
     incorrect_count: int
     is_weak: bool
+    next_review_at: datetime | None
+    review_interval_days: int
+    review_streak: int
 
     model_config = {"from_attributes": True}
+
+
+class ReviewAnswerPayload(BaseModel):
+    word_id: int
+    rating: Literal["again", "hard", "good", "easy"]
+
+
+class ReviewAnswerRead(BaseModel):
+    progress: UserWordProgressRead
+
+
+class ReviewStatusRead(BaseModel):
+    is_due: bool
 
 
 class LearningWordsRead(BaseModel):

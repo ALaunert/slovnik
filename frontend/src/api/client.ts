@@ -206,6 +206,42 @@ export async function getReviewWords(userId: string): Promise<{ words: Vocabular
   return response.json();
 }
 
+export async function getReviewStatus(userId: string, wordId: number): Promise<{ is_due: boolean }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/learning/${encodeURIComponent(userId)}/review/status/${wordId}`,
+  );
+  if (!response.ok) throw new Error("Failed to load review status");
+  return response.json();
+}
+
+export type ReviewRating = "again" | "hard" | "good" | "easy";
+
+export type LearningProgress = {
+  id: number;
+  user_id: string;
+  word_id: number;
+  status: string;
+  correct_count: number;
+  incorrect_count: number;
+  is_weak: boolean;
+  next_review_at: string | null;
+  review_interval_days: number;
+  review_streak: number;
+};
+
+export async function submitReviewAnswer(
+  userId: string,
+  payload: { word_id: number; rating: ReviewRating },
+): Promise<{ progress: LearningProgress }> {
+  const response = await fetch(`${API_BASE_URL}/api/learning/${encodeURIComponent(userId)}/review/answers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("Failed to submit review answer");
+  return response.json();
+}
+
 export async function completeReview(userId: string, wordIds: number[]) {
   const response = await fetch(`${API_BASE_URL}/api/learning/${encodeURIComponent(userId)}/review/complete`, {
     method: "POST",

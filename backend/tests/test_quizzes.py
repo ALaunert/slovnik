@@ -1,5 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
+
+from app.models import UserWordProgress, VocabularyItem
+
 
 def test_start_daily_quiz_returns_supported_question_types(client, completed_learning):
     response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
@@ -21,6 +25,71 @@ def test_submit_incorrect_answer_marks_word_weak(client, started_quiz):
     assert response.status_code == 200
     assert response.json()["is_correct"] is False
     assert response.json()["repeat_word"] is True
+
+
+def test_incorrect_quiz_answer_clears_future_review_schedule(
+    client, db_session, started_quiz
+):
+    question = started_quiz["questions"][0]
+    progress = db_session.scalar(
+        select(UserWordProgress).where(
+            UserWordProgress.user_id == "learner-1",
+            UserWordProgress.word_id == question["word_id"],
+        )
+    )
+    progress.next_review_at = (
+        datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=5)
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers",
+        json={
+            "word_id": question["word_id"],
+            "question_type": question["question_type"],
+            "answer": "wrong",
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.refresh(progress)
+    assert progress.next_review_at is None
+
+
+def test_correct_quiz_answer_preserves_future_review_schedule(
+    client, db_session, started_quiz
+):
+    question = started_quiz["questions"][0]
+    progress = db_session.scalar(
+        select(UserWordProgress).where(
+            UserWordProgress.user_id == "learner-1",
+            UserWordProgress.word_id == question["word_id"],
+        )
+    )
+    future_review = (
+        datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=5)
+    )
+    progress.next_review_at = future_review
+    db_session.commit()
+    word = db_session.get(VocabularyItem, question["word_id"])
+    answer = {
+        "sr_to_ru_choice": word.russian_translation,
+        "ru_to_sr_typing": word.serbian_latin,
+        "remembered_forgot_self_check": "remembered",
+    }[question["question_type"]]
+
+    response = client.post(
+        f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers",
+        json={
+            "word_id": question["word_id"],
+            "question_type": question["question_type"],
+            "answer": answer,
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.refresh(progress)
+    assert progress.next_review_at == future_review
 
 
 def test_complete_daily_quiz_returns_score(client, started_quiz):
