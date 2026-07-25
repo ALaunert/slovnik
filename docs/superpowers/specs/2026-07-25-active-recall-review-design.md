@@ -59,6 +59,11 @@ The queue remains capped at 20 cards. Weak cards keep priority, then overdue/uns
 ordered by due time and last exposure. Answer details are deliberately hidden until reveal so they
 cannot become accidental cues.
 
+The initial request shows an announced loading state without flashing an empty queue. Reveal moves
+focus to the answer region before the rating controls, advancing moves focus to the next reveal
+button, and completion is announced and focused. At 390px, maximum bounded unbroken cue, answer,
+metadata, and rating content must not create document-level horizontal overflow.
+
 ## Scheduling Rules
 
 `user_word_progress` gains:
@@ -102,16 +107,16 @@ This version intentionally stores only current scheduling state, not a complete 
 }
 ```
 
-It verifies that the word belongs to the learner's current due progress, applies one scheduling
-transition, commits it, and returns `{"progress": <updated progress row>}` including scheduling
-fields. Unknown, unseen, or not-yet-due words return `400`.
+It locks the learner-owned progress row, rechecks that it is due while holding the lock, applies one
+scheduling transition, commits it, and returns `{"progress": <updated progress row>}` including
+scheduling fields. Unknown, unseen, or not-yet-due words return `400`.
 
-If the rating request fails, the frontend reconciles with a fresh review GET before it offers a
-retry. If the current word is absent from the refreshed due queue, the committed rating is treated
-as successful and the UI advances; if it remains present, the revealed card stays in place and the
-learner can retry. This makes a lost success response recoverable without adding an event table or
-idempotency column. If reconciliation also fails, the card stays in place and the next retry repeats
-the same POST-then-GET logic.
+`GET /api/learning/{user_id}/review/status/{word_id}` returns the precise uncapped due state for one
+owned, review-eligible word. If the rating request fails, the frontend calls this endpoint before it
+offers a retry. `is_due: false` treats the lost response as a committed success and advances;
+`is_due: true` retains the revealed card and ratings. This stays correct even when the word would be
+displaced from the capped review queue. If reconciliation also fails, the card stays in place and
+the next retry repeats the same POST-then-status-GET logic.
 
 The existing batch completion endpoint remains available for compatibility, but the web client no
 longer uses it. It preserves its request and response shapes while scheduling each accepted word
@@ -146,13 +151,16 @@ Backend tests cover:
 
 Frontend tests cover:
 
+- the loading state without a premature empty state;
 - the Serbian answer being absent before reveal;
 - reveal showing the existing word card;
 - ratings being persisted one card at a time;
 - navigation only after successful persistence;
 - retry behavior after a failed save;
-- lost-response reconciliation;
-- localized rating copy and completion state.
+- precise per-word lost-response reconciliation;
+- localized rating copy and completion state;
+- focus movement through answer, next cue, and completion;
+- actual mobile layout without horizontal overflow for maximum bounded unbroken content.
 
 The final gate is backend Ruff and pytest, frontend unit tests and production build, then Playwright
 coverage of the review path at desktop and mobile widths.

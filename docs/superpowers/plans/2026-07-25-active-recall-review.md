@@ -9,7 +9,8 @@ review schedule.
 
 **Architecture:** Extend each `UserWordProgress` row with current scheduling state, keep transition
 rules in `learning_service.py`, and add one singular rating endpoint. The Vue review route saves each
-rating before advancing and reconciles an ambiguous network failure by refreshing the due queue.
+rating before advancing and reconciles an ambiguous network failure through the precise uncapped
+per-word status endpoint.
 
 **Tech Stack:** FastAPI, SQLAlchemy 2, Alembic, Pydantic, pytest, Vue 3, TypeScript, Vitest,
 Playwright.
@@ -273,11 +274,14 @@ Mock `getReviewWords` and `submitReviewAnswer`. Verify:
 - Show answer reveals `WordCard` and all four localized ratings;
 - clicking a rating posts `{word_id, rating}`, disables duplicate submission, then advances;
 - the last successful rating shows the completion state;
-- a rejected POST followed by a refreshed queue that still contains the word keeps the revealed card
-  and error in place;
-- a rejected POST followed by a refreshed queue without the word advances as a reconciled success;
-- a rejected POST followed by a rejected refresh clears the saving state, keeps the revealed card,
-  and permits a retry;
+- a rejected POST followed by `GET /review/status/{word_id}` returning `is_due: true` keeps the
+  revealed card and error in place, including when a capped review queue could omit the word;
+- a rejected POST followed by `GET /review/status/{word_id}` returning `is_due: false` advances as a
+  reconciled success;
+- a rejected POST followed by a rejected status request clears the saving state, keeps the revealed
+  card, and permits a retry;
+- initial loading does not flash an empty state, and focus moves to the revealed answer, next reveal
+  button, and final completion status;
 - Serbian UI uses localized prompt, reveal, rating, and error copy.
 
 - [ ] **Step 2: Run the unit test and verify RED**
@@ -311,8 +315,9 @@ export type LearningProgress = {
 };
 ```
 
-Implement `submitReviewAnswer(userId, { word_id, rating })` against `/review/answers`. Keep the
-legacy `completeReview` wrapper available.
+Implement `submitReviewAnswer(userId, { word_id, rating })` against `/review/answers` and
+`getReviewStatus(userId, wordId)` against `/review/status/{word_id}`. Keep the legacy
+`completeReview` wrapper available.
 
 - [ ] **Step 4: Implement reveal, rating, persistence, and reconciliation**
 
@@ -321,12 +326,14 @@ before reveal and the existing `WordCard` afterward. On rating:
 
 1. post the rating;
 2. advance only after success;
-3. on failure, refresh the due queue;
-4. advance if the current word is absent, otherwise retain the revealed card and show the error;
-5. if refresh also fails, retain the same revealed card, show the save error, and clear `saving` in
-   a `finally` path so the learner can retry.
+3. on failure, request the precise status of that word;
+4. advance when `is_due` is false, otherwise retain the revealed card and show the error;
+5. if the status request also fails, retain the same revealed card, show the save error, and clear
+   `saving` in a `finally` path so the learner can retry.
 
-Reset reveal/error state when advancing. Disable reveal/rating controls during save.
+Reset reveal/error state when advancing. Disable reveal/rating controls during save. Show an
+announced loading state until the initial queue settles, avoid a premature empty state, and move
+focus to the answer region, next reveal button, or completion status as the flow advances.
 
 - [ ] **Step 5: Add localized copy and focused styles**
 
@@ -371,16 +378,21 @@ git commit -m "feat: add active recall review flow"
 - Create: `frontend/tests/e2e/active-recall.spec.ts`
 - Modify: `docs/product-state.md`
 - Modify: `docs/testing/mvp-manual-test.md`
+- Modify: `docs/superpowers/specs/2026-07-25-active-recall-review-design.md`
+- Modify: `docs/superpowers/plans/2026-07-25-active-recall-review.md`
 
 - [ ] **Step 1: Write a failing mocked Playwright scenario**
 
-Mock profile, review GET, and review answer POST. At desktop and mobile widths verify:
+Seed the established localStorage user session, then mock review GET and review answer POST. At
+desktop and mobile widths verify:
 
 - Serbian answer text is absent before reveal;
 - answer and rating controls appear after reveal;
 - the posted rating has the expected shape;
 - the next Russian prompt appears only after the response;
-- the page has no horizontal overflow.
+- loading does not flash an empty state and focus follows reveal, advance, and completion;
+- maximum bounded unbroken cue/answer content at 390x844 produces no actual document-level
+  horizontal overflow before reveal, after reveal, or around rating controls.
 
 - [ ] **Step 2: Run the E2E test and verify RED**
 
@@ -408,7 +420,9 @@ Document:
 - test coverage and fresh verification counts;
 - full event history/FSRS as deferred scope.
 
-Update the manual flow with one Again and one Good rating plus a reload/due-queue check.
+Update the manual flow with hidden-answer, one Again and one Good rating, reload/due-queue, precise
+lost-response reconciliation, focus, and mobile overflow checks. Align this plan and the reviewed
+design with the final status endpoint and acceptance criteria.
 
 - [ ] **Step 5: Run complete fresh verification**
 
@@ -431,7 +445,9 @@ Expected: every command exits 0; only documented environment-dependent backend s
 
 ```bash
 git add frontend/tests/e2e/active-recall.spec.ts docs/product-state.md \
-  docs/testing/mvp-manual-test.md
+  docs/testing/mvp-manual-test.md \
+  docs/superpowers/specs/2026-07-25-active-recall-review-design.md \
+  docs/superpowers/plans/2026-07-25-active-recall-review.md
 git commit -m "test: cover active recall journey"
 ```
 

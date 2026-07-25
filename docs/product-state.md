@@ -6,8 +6,8 @@ Last audited: 2026-07-25
 
 Slovnik is a Serbian vocabulary trainer MVP for Russian-speaking learners. It has a FastAPI backend, Postgres persistence, Alembic migrations, and a Vue 3/Vite frontend. The app supports lightweight `userId` profile access, a shared vocabulary pool, per-user learning progress, daily new-word and review sessions, daily and weekly quizzes, weak-word tracking, a password-gated vocabulary editor with manual and AI-assisted fill, and Russian/Serbian UI copy.
 
-This audit reflects the current product implementation on the AI vocabulary fill feature branch,
-built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
+This audit reflects the current product implementation, including AI vocabulary fill and
+reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
 
 ## Implemented User-Facing Capabilities
 
@@ -23,7 +23,9 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
   in the vocabulary list and the shared new-word/review card. The legacy free-form stress marker
   remains metadata fallback when structured stress is absent.
 - Daily new-word session selects unseen words at the learner's preferred level up to `daily_new_word_count`; completion records per-user progress.
-- Review session selects weak words and previously seen/reviewing/learned words that are due, includes weak metadata, and marks reviewed words as `reviewing` unless already `learned`.
+- Review is productive Russian-to-Serbian recall: each due card initially exposes only the Russian
+  cue, level, and theme; reveal shows the Serbian answer and details; and one Again, Hard, Good, or
+  Easy rating must be saved before the learner advances.
 - Daily and weekly quizzes use three question types: Serbian-to-Russian multiple choice, Russian-to-Serbian typing, and remembered/forgot self-check with answer reveal.
 - Incorrect quiz answers mark words weak and can be repeated once per question. Quiz completion is blocked until required repeats are answered.
 - Weekly quiz includes words touched this calendar week plus weak words; correct weekly answers clear weak status.
@@ -39,7 +41,7 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
   - `GET /api/health`
   - `POST /api/profiles`, `PATCH /api/profiles/{user_id}`
   - `GET /api/vocabulary`, `GET /api/vocabulary/themes`, `GET /api/vocabulary/{word_id}`, `POST /api/vocabulary`, `PUT /api/vocabulary/{word_id}`, `POST /api/vocabulary/editor/verify`, `POST /api/vocabulary/ai-fill`
-  - `GET /api/learning/{user_id}/new-words`, `POST /api/learning/{user_id}/new-words/complete`, `GET /api/learning/{user_id}/review`, `POST /api/learning/{user_id}/review/complete`
+  - `GET /api/learning/{user_id}/new-words`, `POST /api/learning/{user_id}/new-words/complete`, `GET /api/learning/{user_id}/review`, `GET /api/learning/{user_id}/review/status/{word_id}`, `POST /api/learning/{user_id}/review/answers`, `POST /api/learning/{user_id}/review/complete`
   - `POST /api/quizzes/{user_id}/start`, `POST /api/quizzes/{user_id}/{attempt_id}/answers`, `GET /api/quizzes/{user_id}/{attempt_id}/questions/{word_id}/{question_type}/answer`, `POST /api/quizzes/{user_id}/{attempt_id}/complete`
 - Business logic lives in focused modules under `backend/app/services/`, including
   `ai_vocabulary_service.py` for duplicate/store/generation orchestration and
@@ -55,6 +57,10 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
 - Manual vocabulary create/update accepts optional structured stress with non-empty, aligned
   Cyrillic/Latin syllable arrays, a valid zero-based stress index, and NFC-equivalent exact
   reconstruction of both Serbian spellings. The legacy `stress_marker` contract remains supported.
+- `learning_service.py` owns the lightweight review scheduler and SQL due query. A singular rating
+  locks the progress row with `SELECT ... FOR UPDATE`, rechecks due state while holding the lock,
+  applies one transition, and commits it, so concurrent ratings cannot both apply to the same due
+  state on PostgreSQL.
 - `backend/app/seed.py` seeds three sample A1 words only.
 - The backend has a tested, backend-only OpenAI adapter using strict nullable Structured Outputs,
   a configurable API key and timeout, and `gpt-5.6-luna` as the default model. Product errors use
@@ -70,6 +76,8 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
 - Route-level views live in `frontend/src/views/`; reusable display components live in `frontend/src/components/`.
 - `WordEditorView.vue` owns the AI request, partial-patch, duplicate, toast, and in-memory undo
   workflow; `StressEditor.vue` owns aligned syllable entry, selection, validation, and preview.
+- `ReviewView.vue` owns initial loading/error/empty states, answer reveal, per-card saving, focus
+  movement, completion, and lost-response reconciliation through the precise per-word status API.
 - `frontend/src/i18n/messages.ts` contains Russian and Serbian UI strings.
 
 ## Data Model and Persistence
@@ -91,6 +99,32 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
   `ai_vocabulary_generation_reservations` without rewriting the existing `0002` revision.
   Reservations use the normalized source as their primary key and retain an owner token and expiry
   for crash recovery.
+- Migration `20260725_0004_active_recall_schedule.py` adds nullable `next_review_at`, non-null
+  `review_interval_days` and `review_streak` counters defaulted to zero, and an index on
+  `next_review_at` without backfilling legacy review dates.
+- New-word completion schedules the first review one day later. Review ratings update the current
+  scheduling state as follows:
+  - Again: ten minutes, stored interval `0`, streak reset, mark weak.
+  - Hard: one day, streak reset, preserve weak state.
+  - Good: two days initially, otherwise double the current interval up to 180 days; increment the
+    streak and clear weak state.
+  - Easy: four days initially, otherwise triple the current interval up to 365 days; increment the
+    streak and clear weak state.
+- Three consecutive Good/Easy ratings set status to `learned`; Again and Hard reset that streak and
+  put the word in `reviewing`. An incorrect quiz answer marks the word weak and clears
+  `next_review_at`, making it immediately eligible; a correct quiz answer does not alter its
+  schedule.
+- The review queue is filtered in SQL to `seen`, `reviewing`, or `learned` rows that are due.
+  Explicit schedules are due at `next_review_at <= now`. Legacy null schedules are due when weak or
+  when both first and last exposure are null or predate today. Results are capped at 20 and ordered
+  by weak first, then due time (null first), last exposure (null first), and stable progress-row ID.
+- `POST /api/learning/{user_id}/review/answers` rejects unknown, unseen, and future-due words with
+  `400` and returns the updated progress row.
+  `GET /api/learning/{user_id}/review/status/{word_id}` returns an uncapped precise `is_due` result
+  for lost-response reconciliation. The compatibility batch
+  `/api/learning/{user_id}/review/complete` endpoint remains; each accepted word is scheduled one
+  day ahead, its recall streak is reset, and its prior weak-state and learned-state behavior is
+  preserved.
 - Clearing `VocabularyItem.stress_pattern` stores SQL `NULL`; JSON values are replaced wholesale
   rather than tracked for in-place mutation.
 - Vocabulary content is global; profiles, progress, quiz attempts, answers, and weak-word state are scoped by `user_id`.
@@ -112,7 +146,10 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
   setuptools discovers only `app*`, and the dev dependency remains on Ruff `0.6.x`.
 - Frontend verification documented in `README.md`: `cd frontend && npm run test:unit`, `npm run build`, and `npm run test:e2e`.
 - Database rebuild/seed verification is documented in `README.md` with `docker compose up -d postgres`, Alembic downgrade/upgrade, and `python -m app.seed`.
-- Backend tests cover health, config validation, schema defaults, profiles, vocabulary, learning sessions, quiz selection/submission/completion, weak-word behavior, repeat limits, and answer reveal.
+- Backend tests cover health, config validation, schema defaults, profiles, vocabulary, learning
+  sessions, SQL due filtering/order/cap, every interval transition and cap, row-lock serialization,
+  precise status reconciliation, quiz schedule reset, compatibility batch scheduling, quiz
+  selection/submission/completion, weak-word behavior, repeat limits, and answer reveal.
 - OpenAI adapter tests cover strict response-schema requirements, configured SDK request arguments,
   prompt constraints, request-id retention, typed provider failures, and secret/source-word log
   redaction without real network calls.
@@ -131,27 +168,33 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
 - Frontend unit tests cover app shell localization, session persistence, dashboard
   settings/localization, vocabulary API helpers, quiz repeat/self-check behavior, AI fill and undo,
   route/password request races, duplicate navigation, partial-field highlighting, localized
-  feedback, accessibility, and manual structured-stress editing.
+  feedback, accessibility, manual structured-stress editing, and the active-recall API/view,
+  including initial loading, reveal-first hiding, save gating, precise status reconciliation,
+  focus movement, completion, localization, and long-content constraints.
 - Structured-stress coverage includes manual API create/update persistence and validation,
   canonical-equivalent Unicode reconstruction, legacy marker compatibility, full-syllable
   rendering, script-specific syllable arrays, invalid-pattern fallback, and HTML-safe text output.
-- Playwright e2e covers the basic user-id-to-dashboard path and a mocked AI editor flow at
-  1280x900 and 390x844. The editor scenario covers unlock, generated and stored drafts, full-syllable
-  stress, save, undo, partial fill, timeout, duplicate action, and horizontal-overflow checks without
-  a real OpenAI request.
-- Verified on 2026-07-25: backend Ruff passed; backend tests passed with `175 passed, 2 skipped`;
-  frontend unit tests passed with `68 passed`; production build passed; all three Playwright tests
-  passed, including the AI editor scenario at desktop and mobile viewports.
+- Playwright e2e covers the basic user-id-to-dashboard path, a mocked AI editor flow, and a mocked
+  active-recall journey at 1280x900 and 390x844. Recall coverage proves answer details stay absent
+  before reveal, all four ratings appear afterward, the next cue waits for the singular POST
+  response, JSON payloads are exact, loading/focus/completion states work, and maximum bounded
+  unbroken content creates no mobile horizontal overflow. No e2e scenario calls a real backend or
+  OpenAI.
+- Verified on 2026-07-25: backend Ruff passed; backend tests passed with `218 passed, 3 skipped`;
+  frontend unit tests passed with `83 passed`; the production build passed; and all six Playwright
+  tests passed.
 - Manual MVP flow is in `docs/testing/mvp-manual-test.md`.
 
 ## Known Limitations / Deferred Scope
 
 - Real authentication and authorization are deferred.
-- Native mobile apps, audio pronunciation, bulk import, social features, payments, and advanced spaced repetition are not implemented.
+- Native mobile apps, audio pronunciation, bulk import, social features, and payments are not implemented.
+- The current deterministic scheduler does not retain review events or fit FSRS parameters.
+  Review-history analytics, desired-retention controls, and workload forecasting remain deferred.
 - AI fill v1 supports one Serbian word per request and strict normalized equality only. It has no
   batch input, regenerate action, Russian-to-Serbian card creation, morphology/fuzzy matching,
   generation review queue, or generation-store administration UI.
-- Weekly quiz uses calendar-week selection plus weak words, not a full scheduling system.
+- Weekly quiz still uses calendar-week selection plus weak words rather than the review scheduler.
 - Seed data is intentionally tiny and not a production vocabulary corpus.
 - Results are stored client-side in `sessionStorage`; historical quiz analytics UI is not implemented.
 - Vocabulary deletion, duplicate detection, import/export, and advanced content governance are not implemented.
@@ -171,9 +214,16 @@ built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
   AI generation schema.
 - `backend/alembic/versions/20260725_0003_ai_fill_reservations.py`: concurrent generation
   reservation schema.
+- `backend/alembic/versions/20260725_0004_active_recall_schedule.py`: persisted review scheduling
+  state and due-time index.
+- `backend/app/services/learning_service.py`: due query, interval transitions, row locking, and
+  compatibility review completion.
+- `backend/app/services/quiz_service.py`: incorrect-quiz schedule reset.
 - `frontend/src/router.ts`: frontend route map.
 - `frontend/src/api/client.ts`: typed frontend API wrapper.
-- `frontend/src/views/`: user-facing workflows.
+- `frontend/src/views/ReviewView.vue`: reveal-first review, rating persistence, focus, and
+  reconciliation.
+- `frontend/tests/e2e/active-recall.spec.ts`: desktop/mobile active-recall journey and layout checks.
 - `frontend/src/i18n/messages.ts`: UI copy.
 - `docs/superpowers/plans/2026-07-02-serbian-vocabulary-trainer-mvp.md`: implementation plan.
 - `docs/testing/mvp-manual-test.md`: manual test script.
