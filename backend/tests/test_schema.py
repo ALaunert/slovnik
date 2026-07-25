@@ -8,8 +8,10 @@ from app.models import (
     AiVocabularyGeneration,
     AiVocabularyGenerationReservation,
     UserProfile,
+    UserWordProgress,
     VocabularyItem,
 )
+from app.schemas import UserWordProgressRead
 
 
 def test_can_create_vocabulary_item(db_session):
@@ -174,3 +176,36 @@ def test_can_create_user_profile(db_session):
     saved = db_session.get(UserProfile, "learner-1")
     assert saved is not None
     assert saved.daily_new_word_count == 5
+
+
+def test_user_word_progress_has_active_recall_defaults(db_session):
+    profile = UserProfile(user_id="recall-learner")
+    word = VocabularyItem(
+        serbian_cyrillic="учити",
+        serbian_latin="uciti",
+        russian_translation="учить",
+        cefr_level="A1",
+        theme="education",
+    )
+    db_session.add_all([profile, word])
+    db_session.flush()
+
+    progress = UserWordProgress(user_id=profile.user_id, word_id=word.id)
+    db_session.add(progress)
+    db_session.commit()
+
+    assert progress.next_review_at is None
+    assert progress.review_interval_days == 0
+    assert progress.review_streak == 0
+    assert UserWordProgressRead.model_validate(progress).model_dump() == {
+        "id": progress.id,
+        "user_id": profile.user_id,
+        "word_id": word.id,
+        "status": "new",
+        "correct_count": 0,
+        "incorrect_count": 0,
+        "is_weak": False,
+        "next_review_at": None,
+        "review_interval_days": 0,
+        "review_streak": 0,
+    }

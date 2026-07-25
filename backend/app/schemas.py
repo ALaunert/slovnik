@@ -1,3 +1,4 @@
+from datetime import datetime
 import unicodedata
 from typing import Annotated, Literal
 
@@ -153,6 +154,9 @@ class UserWordProgressRead(BaseModel):
     correct_count: int
     incorrect_count: int
     is_weak: bool
+    next_review_at: datetime | None
+    review_interval_days: int
+    review_streak: int
 
     model_config = {"from_attributes": True}
 

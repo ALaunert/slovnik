@@ -106,6 +106,13 @@ class UserWordProgress(Base):
     incorrect_count: Mapped[int] = mapped_column(Integer, default=0)
     is_weak: Mapped[bool] = mapped_column(Boolean, default=False)
     weak_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_review_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    review_interval_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    review_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     word: Mapped[VocabularyItem] = relationship()
 

@@ -25,6 +25,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 POSTGRES_ADMIN_URL_ENV = "SLOVNIK_TEST_POSTGRES_ADMIN_URL"
 LEGACY_WORD_ID = 1001
 LEGACY_STRESS_MARKER = "ra-DI-ti"
+LEGACY_PROGRESS_ID = 2001
+LEGACY_USER_ID = "legacy-learner"
 
 
 def build_alembic_config(database_url, monkeypatch):
@@ -68,12 +70,127 @@ def seed_legacy_vocabulary(engine):
         )
 
 
+def seed_legacy_progress(engine):
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO user_profiles (
+                    user_id,
+                    preferred_level,
+                    daily_new_word_count,
+                    ui_language
+                ) VALUES (
+                    :user_id,
+                    :preferred_level,
+                    :daily_new_word_count,
+                    :ui_language
+                )
+                """
+            ),
+            {
+                "user_id": LEGACY_USER_ID,
+                "preferred_level": "A1",
+                "daily_new_word_count": 5,
+                "ui_language": "ru",
+            },
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO user_word_progress (
+                    id,
+                    user_id,
+                    word_id,
+                    status,
+                    correct_count,
+                    incorrect_count,
+                    is_weak
+                ) VALUES (
+                    :id,
+                    :user_id,
+                    :word_id,
+                    :status,
+                    :correct_count,
+                    :incorrect_count,
+                    :is_weak
+                )
+                """
+            ),
+            {
+                "id": LEGACY_PROGRESS_ID,
+                "user_id": LEGACY_USER_ID,
+                "word_id": LEGACY_WORD_ID,
+                "status": "reviewing",
+                "correct_count": 3,
+                "incorrect_count": 2,
+                "is_weak": True,
+            },
+        )
+
+
 def read_legacy_stress_marker(engine):
     with engine.connect() as connection:
         return connection.scalar(
             text("SELECT stress_marker FROM vocabulary_items WHERE id = :word_id"),
             {"word_id": LEGACY_WORD_ID},
         )
+
+
+def read_legacy_progress(engine, *, include_schedule):
+    schedule_columns = (
+        ", next_review_at, review_interval_days, review_streak"
+        if include_schedule
+        else ""
+    )
+    with engine.connect() as connection:
+        return connection.execute(
+            text(
+                f"""
+                SELECT status, correct_count, incorrect_count, is_weak
+                    {schedule_columns}
+                FROM user_word_progress
+                WHERE id = :progress_id
+                """
+            ),
+            {"progress_id": LEGACY_PROGRESS_ID},
+        ).mappings().one()
+
+
+def assert_active_recall_schedule_schema(engine):
+    inspector = inspect(engine)
+    progress_columns = {
+        column["name"]: column
+        for column in inspector.get_columns("user_word_progress")
+    }
+    progress_indexes = {
+        index["name"] for index in inspector.get_indexes("user_word_progress")
+    }
+
+    assert progress_columns["next_review_at"]["nullable"] is True
+    assert progress_columns["review_interval_days"]["nullable"] is False
+    assert progress_columns["review_streak"]["nullable"] is False
+    for counter_name in ("review_interval_days", "review_streak"):
+        default = str(progress_columns[counter_name]["default"]).split("::", 1)[0]
+        assert default.strip("'()") == "0"
+    assert "ix_user_word_progress_next_review_at" in progress_indexes
+
+
+def assert_active_recall_schedule_absent(engine):
+    inspector = inspect(engine)
+    progress_columns = {
+        column["name"] for column in inspector.get_columns("user_word_progress")
+    }
+    progress_indexes = {
+        index["name"] for index in inspector.get_indexes("user_word_progress")
+    }
+
+    assert {
+        "next_review_at",
+        "review_interval_days",
+        "review_streak",
+    }.isdisjoint(progress_columns)
+    assert "ix_user_word_progress_next_review_at" not in progress_indexes
 
 
 def assert_unique_generation_winner_survives(engine):
@@ -123,6 +240,7 @@ def migration_database(tmp_path, monkeypatch):
     command.upgrade(config, "20260702_0001")
     initial_engine = create_engine(database_url)
     seed_legacy_vocabulary(initial_engine)
+    seed_legacy_progress(initial_engine)
     initial_engine.dispose()
     command.upgrade(config, "head")
 
@@ -162,6 +280,7 @@ def postgresql_migration_database(monkeypatch):
         initial_engine = create_engine(test_database_url)
         try:
             seed_legacy_vocabulary(initial_engine)
+            seed_legacy_progress(initial_engine)
         finally:
             initial_engine.dispose()
         command.upgrade(config, "head")
@@ -341,6 +460,23 @@ def test_upgrade_adds_ai_vocabulary_persistence_schema(migration_database):
     assert_unique_generation_winner_survives(engine)
 
 
+def test_upgrade_adds_active_recall_schedule_and_preserves_legacy_progress(
+    migration_database,
+):
+    _, engine = migration_database
+
+    assert_active_recall_schedule_schema(engine)
+    assert dict(read_legacy_progress(engine, include_schedule=True)) == {
+        "status": "reviewing",
+        "correct_count": 3,
+        "incorrect_count": 2,
+        "is_weak": True,
+        "next_review_at": None,
+        "review_interval_days": 0,
+        "review_streak": 0,
+    }
+
+
 def test_upgrade_from_existing_ai_fill_revision_adds_reservations(
     tmp_path,
     monkeypatch,
@@ -365,6 +501,21 @@ def test_upgrade_from_existing_ai_fill_revision_adds_reservations(
         )
     finally:
         engine.dispose()
+
+
+def test_downgrade_removes_active_recall_schedule(migration_database):
+    config, engine = migration_database
+
+    engine.dispose()
+    command.downgrade(config, "20260725_0003")
+
+    assert_active_recall_schedule_absent(engine)
+    assert dict(read_legacy_progress(engine, include_schedule=False)) == {
+        "status": "reviewing",
+        "correct_count": 3,
+        "incorrect_count": 2,
+        "is_weak": True,
+    }
 
 
 def test_downgrade_to_initial_schema_preserves_legacy_stress(migration_database):
@@ -401,6 +552,27 @@ def test_postgresql_migration_round_trip(postgresql_migration_database):
     assert isinstance(vocabulary_columns["stress_pattern"]["type"], JSON)
     assert read_legacy_stress_marker(engine) == LEGACY_STRESS_MARKER
     assert_unique_generation_winner_survives(engine)
+    assert_active_recall_schedule_schema(engine)
+    assert dict(read_legacy_progress(engine, include_schedule=True)) == {
+        "status": "reviewing",
+        "correct_count": 3,
+        "incorrect_count": 2,
+        "is_weak": True,
+        "next_review_at": None,
+        "review_interval_days": 0,
+        "review_streak": 0,
+    }
+
+    engine.dispose()
+    command.downgrade(config, "20260725_0003")
+
+    assert_active_recall_schedule_absent(engine)
+    assert dict(read_legacy_progress(engine, include_schedule=False)) == {
+        "status": "reviewing",
+        "correct_count": 3,
+        "incorrect_count": 2,
+        "is_weak": True,
+    }
 
     engine.dispose()
     command.downgrade(config, "20260702_0001")
