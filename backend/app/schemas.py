@@ -161,6 +161,15 @@ class UserWordProgressRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ReviewAnswerPayload(BaseModel):
+    word_id: int
+    rating: Literal["again", "hard", "good", "easy"]
+
+
+class ReviewAnswerRead(BaseModel):
+    progress: UserWordProgressRead
+
+
 class LearningWordsRead(BaseModel):
     words: list[VocabularyRead]
 
