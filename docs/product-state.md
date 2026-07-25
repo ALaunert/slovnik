@@ -180,7 +180,7 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   response, JSON payloads are exact, loading/focus/completion states work, and maximum bounded
   unbroken content creates no mobile horizontal overflow. No e2e scenario calls a real backend or
   OpenAI.
-- Verified on 2026-07-25: backend Ruff passed; backend tests passed with `218 passed, 3 skipped`;
+- Verified on 2026-07-25: backend Ruff passed; PostgreSQL-enabled backend tests passed with `221 passed`;
   frontend unit tests passed with `83 passed`; the production build passed; and all six Playwright
   tests passed.
 - Manual MVP flow is in `docs/testing/mvp-manual-test.md`.
