@@ -141,7 +141,7 @@ Backend tests cover:
 - weak-state and learned-status transitions;
 - quiz failures resetting a future review schedule;
 - invalid, unseen, and future-due rating rejection;
-- lost-response reconciliation and legacy batch scheduling;
+- legacy batch scheduling;
 - response schema and migration round trip.
 
 Frontend tests cover:
@@ -151,6 +151,7 @@ Frontend tests cover:
 - ratings being persisted one card at a time;
 - navigation only after successful persistence;
 - retry behavior after a failed save;
+- lost-response reconciliation;
 - localized rating copy and completion state.
 
 The final gate is backend Ruff and pytest, frontend unit tests and production build, then Playwright
