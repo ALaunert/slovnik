@@ -81,6 +81,24 @@ label { display: grid; gap: 6px; color: #334247; font-weight: 600; }
 .session-progress progress { width: 100%; height: 10px; }
 .control-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .badge { display: inline-block; border-radius: 999px; padding: 2px 7px; background: #f3d2c1; color: #7a3d25; font-size: 0.75rem; }
+.recall-cue { display: grid; gap: 14px; min-height: 250px; place-content: center; justify-items: center; padding: 24px; border: 1px solid #d8dfdc; border-radius: 8px; background: #fbfcfa; text-align: center; }
+.recall-cue .eyebrow, .recall-cue h2, .recall-instruction { margin: 0; }
+.recall-cue h2 { color: #21484c; font-size: clamp(1.5rem, 5vw, 2.25rem); overflow-wrap: anywhere; }
+.recall-reveal { justify-self: center; }
+.recall-rating-area { display: grid; gap: 10px; }
+.recall-rating-area p { margin: 0; }
+.recall-ratings { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.recall-ratings button { min-width: 0; height: auto; white-space: normal; overflow-wrap: anywhere; }
+.recall-saving { min-height: 1.25rem; }
+
+@media (max-width: 760px) {
+  .recall-cue { min-height: 220px; padding: 20px 14px; }
+  .recall-ratings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 420px) {
+  .recall-ratings { grid-template-columns: 1fr; }
+}
 
 .empty-state { border: 1px dashed #b9c7c3; border-radius: 8px; padding: 18px; background: #fbfcfa; }
 .empty-state h2 { margin: 0; font-size: 1.1rem; }
