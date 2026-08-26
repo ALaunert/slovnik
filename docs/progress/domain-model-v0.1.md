@@ -14,6 +14,8 @@ Updated: 2026-08-26
 | Approve relations, invariants, assistant flow and AI boundary | Approved | User confirmation on 2026-08-26 |
 | Write Domain Model v0.1 | Done | `docs/superpowers/specs/2026-08-26-domain-model-v0.1-design.md` |
 | Independent self-review | Done | Research/MVP/current-state passes recorded below |
+| Formal ADR review | Done | Accepted ADR in `docs/adr/ADR-language-assistant-domain-model-2026-08-26.md` |
+| Backend foundation SDD | Draft | Four phases in `docs/sdd/SDD-backend-language-assistant-foundation-2026-08-26.md` |
 | Production code or UI work | Not started | Explicitly outside current task |
 
 ## Durable decisions
@@ -67,7 +69,8 @@ into a new design/SDD or be explicitly rejected with a recorded reason.
 | Authentication and authorization | Orthogonal to learning domain redesign | Product prepares multi-user or public deployment | Identity/access context |
 | Native mobile and UI redesign | Explicitly outside Domain Model task | Separate UX/product scope is approved | Dedicated UX/implementation specs |
 
-## Next expected artifact
+## Next expected step
 
-After user review, create a Data Model or SDD/implementation plan. Do not start production code from
-this document alone.
+Review and accept the backend foundation SDD. After acceptance, create an executable implementation
+plan for P1; do not start production code from the Domain Model or a draft SDD alone. Initiative-wide
+status and all mandatory follow-ups are mirrored in `docs/progress/PROGRESS.md`.
