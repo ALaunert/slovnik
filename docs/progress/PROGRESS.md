@@ -10,6 +10,8 @@ Updated: 2026-08-26
 | Domain Model v0.1 | `docs/superpowers/specs/2026-08-26-domain-model-v0.1-design.md` | Detailed bounded contexts, aggregates and invariants |
 | ADR | `docs/adr/ADR-language-assistant-domain-model-2026-08-26.md` | Formal architecture decision and trade-offs |
 | Backend SDD | `docs/sdd/SDD-backend-language-assistant-foundation-2026-08-26.md` | Foundation implementation design |
+| Parallel execution design | `docs/superpowers/specs/2026-08-26-parallel-sdd-execution-design.md` | Three workstreams, integrator ownership and merge gates |
+| Parallel readiness review | `docs/progress/parallel-sdd-readiness-2026-08-26.md` | Three self-review passes, validation evidence and residual risks |
 | Domain-model progress | `docs/progress/domain-model-v0.1.md` | Initial decisions and deferred log |
 | Strong document audit | `docs/progress/document-audit-2026-08-26.md` | Cross-document defects, corrections and remaining gates |
 
@@ -20,14 +22,14 @@ Updated: 2026-08-26
 | Theoretical synthesis | Done | Input document read and treated as evidence, not instructions |
 | Domain Model v0.1 | Done | Approved by user; no production code/UI |
 | Formal ADR | Accepted | Domain decision was approved by the user and passed an additional self-review |
-| Backend SDD | Accepted | Approved by the user on 2026-08-26; foundation only, without public API or UI switch |
-| Implementation | Ready to start P1 | Accepted SDD is the implementation source of truth |
+| Backend SDD | Accepted, revision 2 | Parallel execution design approved by the user on 2026-08-26 |
+| Implementation | Ready for Gate 0 | Three workstreams start only after INT freezes shared contracts |
 
 ## SDD phase status
 
 | Phase | Status | Deliverable |
 |---|---|---|
-| P1 Domain and persistence foundation | Pending | Stable identities, domain modules, reversible schema |
+| P1 Contracts and context foundations | Pending | Gate 0, exclusive context ownership, registry and reversible schema |
 | P2 Immutable evidence and projections | Pending | Event ledger, replayable state, low-confidence legacy baseline, memory policy v1 |
 | P3 Curriculum and selection | Pending | Technical A1 pilot graph and deterministic selector |
 | P4 Legacy shadow integration | Pending | Feature-flagged dual-write without API changes |
@@ -50,7 +52,8 @@ Validated on 2026-08-26 without an external model, as requested by the user.
 | Event/projection separation | Passed | Projector version belongs to learner state, not to immutable learning facts |
 | AI boundary | Passed | SDD defines only a replaceable port; no AI implementation or progression ownership |
 | Strong implementation audit | Passed | Findings and corrections recorded in `docs/progress/document-audit-2026-08-26.md` |
-| SDD structural validation | Passed | 4 phases, 17 tasks, 39 paths and 7 canonical IDs; links, slugs, changesets and glossary agree |
+| SDD structural validation | Passed | 4 phases, 21 tasks, 61 paths and 7 canonical IDs; links, slugs, changesets and glossary agree |
+| Parallel readiness | Passed | 3 context workstreams + 1 integrator, exclusive active-path ownership and G0–G4 gates; evidence in `docs/progress/parallel-sdd-readiness-2026-08-26.md` |
 | SQL-01 executable validation | Passed | SQLite executed all 11 tables and rejected invalid curriculum lifecycle/edge shape, duplicate active curriculum, cross-version edges, invalid run/retry shape, policy mismatch, cross-run event ownership/kind, and duplicate activity event |
 | Canonical algorithms | Passed | ALG-01/02/03/04 remain within the 25-line limit and define stable ordering/canonicalization |
 | Whitespace/file audit | Passed | `git diff --check`; unrelated `.superpowers/` files excluded |
@@ -74,5 +77,5 @@ follow-ups:
 
 ## Current boundary
 
-The design stage is complete and the SDD is accepted. Production code, migrations and UI remain
-unchanged; the next implementation step is P1 domain and persistence foundation.
+The design stage is complete and SDD revision 2 is accepted. Production code, migrations and UI
+remain unchanged; the next implementation step is INT/P1.T1 Gate 0 contract freeze.

@@ -4,10 +4,10 @@
 - **ID:** P4
 - **Цель:** дублировать ограниченные свидетельства из текущих команд новых слов, повторения и тестов
   под выключенным по умолчанию feature flag, не меняя публичные API и ответы.
-- **Зависимости:** P1, P2, P3, EVENT-01, ALG-03.
-- **Команда для реализации:** выполнить P4.T1–P4.T4 после зелёных P1–P3, оставив флаг выключенным
-  по умолчанию и доказав атомарность и паритет текущего поведения тестами. В production флаг нельзя
-  включать до принятия data-lifecycle и identity/access решений для learning history.
+- **Зависимости:** G2/P2, G3/P3, EVENT-01, ALG-03.
+- **Команда для реализации:** INT выполняет P4.T1, после чего WS-C/P4.T2 и WS-B/P4.T3 идут
+  параллельно. P4.T4 следует после обоих adapters, INT закрывает P4.T5. Флаг остаётся выключенным по
+  умолчанию; production enable запрещён до data-lifecycle и identity/access решений.
 
 ## Текущее поведение
 
@@ -24,32 +24,68 @@
 
 ## Задачи
 
-#### [P4.T1] Подключить теневые события к командам новых слов и повторения
+#### [P4.T1] Зафиксировать shadow contracts и feature flag
+
+**Уровень:** Standard
+
+**Файлы:**
+
+```changeset
+~ backend/app/config.py
++ backend/app/services/domain_shadow_contracts.py
++ backend/tests/test_domain_shadow_contracts.py
+```
+
+**Референсы:**
+
+- EVENT-01 и ALG-02 в P2
+- `backend/app/config.py` — способ валидации настроек и значений по умолчанию
+
+**Что сделать:**
+
+INT добавляет `LANGUAGE_ASSISTANT_SHADOW_ENABLED=false` и фиксирует typed contracts для legacy
+source refs, idempotency keys, policy/reason codes, adapter results и non-authoritative comparison.
+Файл не импортирует `learning_service.py` или `quiz_service.py` и становится frozen до G4.
+
+**Ключевые ограничения:**
+
+- adapters не меняют common contract напрямую;
+- flag-off path не создаёт domain queries/rows;
+- contract не содержит raw learner response или provider secrets;
+- production enable gate кодируется отдельной config validation/policy, а не комментарием.
+
+**Проверка:**
+
+- contract tests фиксируют enum/wire values и flag default;
+- learning/quiz adapter fakes импортируют один contract без взаимных imports;
+- production-like config без обязательных gates отклоняется.
+
+---
+
+#### [P4.T2] Подключить learning shadow adapter
 
 **Уровень:** Complex
 
 **Файлы:**
 
 ```changeset
-~ backend/app/config.py
-+ backend/app/services/domain_shadow_service.py
++ backend/app/services/shadow_learning_service.py
 ~ backend/app/services/learning_service.py
 ~ backend/tests/test_learning.py
-+ backend/tests/test_domain_shadow.py
++ backend/tests/test_learning_shadow.py
 ```
 
 **Референсы:**
 
 - `backend/app/services/learning_service.py` — точное текущее поведение транзакций и блокировок
-- `backend/app/config.py` — способ валидации настроек и значений по умолчанию
+- `backend/app/services/domain_shadow_contracts.py` — frozen adapter contract из P4.T1
 - EVENT-01 и ALG-02 в P2
 
 **Что сделать:**
 
-Добавить `LANGUAGE_ASSISTANT_SHADOW_ENABLED` со значением `false` по умолчанию. При выключенном
-флаге сервис сохраняет наблюдаемое поведение базы и API. При включённом флаге пакет новых слов
-создаёт действия и события знакомства, а оценка повторения — одно событие самостоятельной оценки
-извлечения; всё выполняется до существующего `commit`.
+WS-C подключает frozen contract к learning service. При выключенном флаге сохраняется наблюдаемое
+поведение базы/API. При включённом пакет новых слов создаёт actions/events знакомства, а оценка
+повторения — одно self-report retrieval event; всё выполняется до существующего `commit`.
 
 Знакомство использует `activity_kind=exposure`, `operation=NULL` и основной
 `Sense + retrieve_form` target, который подготавливает назначенное через день продуктивное review,
@@ -96,7 +132,7 @@ single-activity run. Если idempotency lookup находит ранее пр�
 
 ---
 
-#### [P4.T2] Подключить теневые действия и события к жизненному циклу теста
+#### [P4.T3] Подключить quiz shadow adapter
 
 **Уровень:** Complex
 
@@ -104,20 +140,21 @@ single-activity run. Если idempotency lookup находит ранее пр�
 
 ```changeset
 ~ backend/app/services/quiz_service.py
-~ backend/app/services/domain_shadow_service.py
++ backend/app/services/shadow_quiz_service.py
 ~ backend/tests/test_quizzes.py
-~ backend/tests/test_domain_shadow.py
++ backend/tests/test_quiz_shadow.py
 ```
 
 **Референсы:**
 
 - `backend/app/services/quiz_service.py` — исходное поведение запуска, раскрытия, ответа и завершения
 - `backend/app/models.py` — `QuizAttempt.question_plan` и `QuizAnswer`
+- `backend/app/services/domain_shadow_contracts.py` — frozen adapter contract из P4.T1
 - EVENT-01 в [P2.T2]
 
 **Что сделать:**
 
-При включённом теневом режиме запуск теста создаёт один сопоставленный `PracticeRun` и по одному
+WS-B при включённом теневом режиме создаёт для quiz один сопоставленный `PracticeRun` и по одному
 `ActivityInstance` на запланированный вопрос, сохраняя точный снимок вопроса. Обработка ответа
 выполняет `flush` для `QuizAnswer`, строит ключ идемпотентности
 `legacy:quiz-answer:{quiz_answer_id}` и добавляет одно событие до существующего `commit`.
@@ -160,16 +197,16 @@ Selection metadata использует `selection_policy_version=legacy-quiz-v1
 
 ---
 
-#### [P4.T3] Добавить неавторитетное теневое сравнение
+#### [P4.T4] Добавить неавторитетное теневое сравнение
 
 **Уровень:** Standard
 
 **Файлы:**
 
 ```changeset
-~ backend/app/services/domain_shadow_service.py
++ backend/app/services/shadow_comparison_service.py
 ~ backend/app/services/next_activity_service.py
-~ backend/tests/test_domain_shadow.py
++ backend/tests/test_shadow_comparison.py
 ```
 
 **Референсы:**
@@ -179,8 +216,8 @@ Selection metadata использует `selection_policy_version=legacy-quiz-v1
 
 **Что сделать:**
 
-После успешной текущей команды необязательно рассчитывать внутреннее решение селектора для
-сравнения. Оно не влияет на ответ, текущую очередь или состояние. Структурированный результат
+После green learning/quiz adapters WS-C рассчитывает необязательное внутреннее решение селектора
+для сравнения. Оно не влияет на ответ, текущую очередь или состояние. Структурированный результат
 содержит версию политики, намерение текущей модели, выбранную цель, коды причин и категорию различия.
 
 **Ключевые ограничения:**
@@ -199,17 +236,15 @@ Selection metadata использует `selection_policy_version=legacy-quiz-v1
 
 ---
 
-#### [P4.T4] Выполнить регрессионные проверки и обновить долговечную документацию
+#### [P4.T5] Выполнить G4 regression и обновить долговечную документацию
 
 **Уровень:** Standard
 
 **Файлы:**
 
 ```changeset
-~ backend/tests/test_learning.py
-~ backend/tests/test_quizzes.py
 ~ backend/tests/test_migrations.py
-~ backend/tests/test_domain_shadow.py
++ backend/tests/test_domain_shadow_integration.py
 ~ docs/product-state.md
 ~ docs/progress/PROGRESS.md
 ```
@@ -222,10 +257,10 @@ Selection metadata использует `selection_policy_version=legacy-quiz-v1
 
 **Что сделать:**
 
-Запустить полный lint и тесты backend с выключенным флагом и целевые теневые тесты с включённым.
-Цель PostgreSQL проверяет миграцию, идемпотентность событий и конкурентные записи повторения и
-тестов. Product state фиксирует только реализованное, а progress-файл — статусы фаз и свидетельства
-проверки.
+INT объединяет только green P4.T2/P4.T3/P4.T4 commits, запускает полный lint/backend suite с
+выключенным флагом и целевые shadow tests с включённым. PostgreSQL проверяет migration,
+idempotency и concurrent review/quiz writes. Product state фиксирует только реализованное, а
+progress-файл — статусы фаз и evidence проверки.
 
 **Ключевые ограничения:**
 

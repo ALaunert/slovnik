@@ -1,12 +1,13 @@
-# SDD-backend, фаза P1: доменная модель и основа хранения
+# SDD-backend, фаза P1: контракты и контекстные foundations
 
 - Родительский документ: [`SDD-backend-language-assistant-foundation-2026-08-26.md`](SDD-backend-language-assistant-foundation-2026-08-26.md)
 - **ID:** P1
-- **Цель:** создать чистые доменные типы, стабильные идентификаторы, ORM-маппинги и обратимую схему
-  рядом с текущими таблицами.
+- **Цель:** зафиксировать shared contracts, создать context-owned domain/ORM/repository modules и
+  собрать их в одну обратимую схему рядом с текущими таблицами.
 - **Зависимости:** нет.
-- **Команда для реализации:** выполнить P1.T1–P1.T4 по порядку, не подключая новую модель к
-  публичным маршрутам и не меняя текущее поведение.
+- **Команда для реализации:** INT выполняет P1.T1 Gate 0. После freeze параллельно стартуют P1.T2,
+  P1.T3, P1.T5 и P1.T6; P1.T4 следует за P1.T3. INT объединяет результаты только в P1.T7, не
+  подключая новую модель к публичным маршрутам и не меняя текущее поведение.
 
 ## Текущее поведение
 
@@ -16,7 +17,7 @@
 
 ## Задачи
 
-#### [P1.T1] Зафиксировать доменные типы и канонический TargetSpec
+#### [P1.T1] Зафиксировать Gate 0 shared contracts и канонический TargetSpec
 
 **Уровень:** Complex
 
@@ -24,12 +25,9 @@
 
 ```changeset
 + backend/app/domain/__init__.py
-+ backend/app/domain/catalog.py
-+ backend/app/domain/curriculum.py
-+ backend/app/domain/practice.py
-+ backend/app/domain/progress.py
++ backend/app/domain/shared.py
 + backend/app/domain/target.py
-+ backend/app/domain/ports.py
++ backend/tests/test_domain_contracts.py
 ```
 
 **Референсы:**
@@ -41,20 +39,16 @@
 
 **Что сделать:**
 
-Создать неизменяемые объекты-значения и типы состояния агрегатов без импортов из FastAPI, SQLAlchemy
-или OpenAI SDK. `TargetSpec` является единственным каноническим способом адресовать знание ученика.
-Доменные enum сериализуются стабильными строчными значениями wire-формата. Идентификатор
-опубликованного контента не переиспользуется после вывода из обращения.
-
-`LearnerProfile` в foundation является pure-domain view над существующим `UserProfile`: L1=`ru`,
-requested outcome level=`preferred_level`, new-target daily budget=`daily_new_word_count`. Новая
-таблица профиля не создаётся.
+Создать integrator-owned shared enums/value objects и `TargetSpec` без импортов из FastAPI,
+SQLAlchemy или OpenAI SDK. `TargetSpec` является единственным каноническим способом адресовать
+знание ученика. Доменные enum сериализуются стабильными строчными значениями wire-формата.
+Gate 0 фиксирует public import paths, wire values, serialization и change protocol для WS-A/B/C.
 
 **Ключевые ограничения:**
 
 - доменный слой зависит только от стандартной библиотеки Python;
+- после G0 workstream не меняет `shared.py`, `target.py` или package exports напрямую;
 - у одного действия MVP одна основная `TargetSpec`;
-- `Form` поддерживает поверхностные реализации слов и MWE;
 - обычные vocabulary activities используют `Sense + recognize_meaning/retrieve_form`; ожидаемая
   `Form` входит в activity snapshot, а не создаёт отдельный learner state для каждой письменности;
 - `Form + retrieve_form` допустим только для явно form-specific задания с condition, которое
@@ -102,23 +96,24 @@ reject target_key longer than 255 characters
 - модульные тесты доказывают детерминированность ключа при другом порядке JSON-полей и
   NFC-эквивалентных строках;
 - невалидные enum, UUID, float/NaN и NFC-colliding condition keys отклоняются до сохранения;
+- contract tests побайтово фиксируют wire values/public imports для трёх workstreams;
 - доменные модули импортируются без инициализации настроек приложения и базы.
 
 ---
 
-#### [P1.T2] Добавить ORM-маппинги и обратимую схему
+#### [P1.T2] Подготовить integrator-owned registry и migration shell
 
 **Уровень:** Complex
 
 **Файлы:**
 
 ```changeset
-+ backend/app/domain_models.py
++ backend/app/domain_models/__init__.py
++ backend/app/repositories/__init__.py
 ~ backend/app/db.py
 ~ backend/alembic/env.py
 + backend/alembic/versions/20260826_0005_domain_foundation.py
 ~ backend/tests/conftest.py
-~ backend/tests/test_migrations.py
 ```
 
 **Референсы:**
@@ -130,13 +125,15 @@ reject target_key longer than 255 characters
 
 **Что сделать:**
 
-Добавить ORM-маппинги в отдельный модуль и импортировать их в метаданные времени выполнения, тестов
-и Alembic. Одна миграция создаёт основную схему; понижение удаляет только новые таблицы и индексы в
-обратном порядке зависимостей. Существующие таблицы и данные не меняются.
+Создать integrator-owned registry shell и единственную migration revision. До P1.T7 registry не
+импортирует ещё не смерженные context modules и сохраняет green main; подключение всех context ORM
+к runtime/test/Alembic metadata и окончательный round trip выполняются в P1.T7.
 
 **Ключевые ограничения:**
 
 - PostgreSQL — промышленная цель, SQLite — цель тестовой совместимости; MySQL не поддерживается;
+- только INT изменяет registry, migration, `db.py`, Alembic env и shared fixtures;
+- WS-A/B/C добавляют ORM только в собственные context files и не создают Alembic revisions;
 - строки UUID генерируются прикладным слоем, значения базы по умолчанию не расходятся между диалектами;
 - поля JSON используют переносимый тип SQLAlchemy `JSON`, а не специфичный для PostgreSQL `JSONB`;
 - полиморфный `target_id` проверяется прикладным слоем, потому что один внешний ключ не может
@@ -394,45 +391,42 @@ CREATE INDEX ix_learner_target_states_due ON learner_target_states(learner_id, m
 
 **Проверка:**
 
-- полный цикл миграции проходит на временной SQLite и одноразовой PostgreSQL;
-- повышение с ревизии `20260725_0004` побайтово сохраняет проверяемые поля текущих строк;
-- понижение удаляет только 11 новых таблиц и их индексы;
-- schema tests доказывают curriculum/lifecycle и one-active constraints, same-version prerequisite
-  FK, run/activity lifecycle/retry shape, policy consistency, same-run retry, согласованность event
-  ownership/target/kind, one-event-per-activity и exposure/exercise CHECK;
-- `Base.metadata.create_all` видит текущие и доменные маппинги.
+- SQL-01 исполняется standalone validator на SQLite и создаёт 11 таблиц;
+- migration shell имеет единственного owner и корректную связь с revision `20260725_0004`;
+- registry shell не ссылается на отсутствующие context modules и не ломает current metadata setup;
+- отрицательные logical-DDL tests фиксируют lifecycle, ownership, retry, policy и edge constraints.
 
 ---
 
-#### [P1.T3] Реализовать репозитории и начальную загрузку текущего контента
+#### [P1.T3] Реализовать WS-A Language Catalog foundation
 
 **Уровень:** Standard
 
 **Файлы:**
 
 ```changeset
-+ backend/app/repositories/__init__.py
-+ backend/app/repositories/domain.py
++ backend/app/domain/catalog.py
++ backend/app/domain_models/catalog.py
++ backend/app/repositories/catalog.py
 + backend/app/services/domain_bootstrap_service.py
-~ backend/app/seed.py
++ backend/tests/test_domain_catalog.py
 ```
 
 **Референсы:**
 
 - `backend/app/services/vocabulary_service.py` — текущий способ работы с `Session` и запросами
 - `backend/app/seed.py` — текущая точка входа детерминированных начальных данных
-- `backend/app/models.py` — исходные сущности текущей модели
 
 **Что сделать:**
 
-Модуль репозитория реализует узкие операции по владению агрегатами, не возвращая ORM-объекты в
-доменные политики. Начальная загрузка идемпотентно сопоставляет каждый подходящий `VocabularyItem`
-с одной лексической единицей, одним смыслом по умолчанию и одной словарной или фиксированной формой.
-Текущие CEFR и тема сохраняются как метаданные загрузки для P3, а не истина контента.
+WS-A создаёт `LexicalUnit`, `Sense`, `Form`, context ORM/repository и идемпотентный bootstrap
+текущего `VocabularyItem`. Репозиторий не возвращает ORM-объекты в domain. Текущие CEFR и тема
+сохраняются как bootstrap metadata для P3, а не истина контента.
 
 **Ключевые ограничения:**
 
 - повторная загрузка не создаёт новые стабильные ID для уже сопоставленного словарного элемента;
+- `Form` поддерживает surface realization слов и MWE, но не создаёт лишние paradigms;
 - автоопределение WORD/MWE консервативно: неоднозначная запись остаётся WORD и помечается для редактора;
 - структурированное ударение переносится без вывода; текущий текстовый маркер остаётся резервной аннотацией;
 - примеры сохраняются как неразобранная текущая нагрузка;
@@ -446,14 +440,129 @@ CREATE INDEX ix_learner_target_states_due ON learner_target_states(learner_id, m
 
 ---
 
-#### [P1.T4] Покрыть тестами доменную основу и схему
+#### [P1.T4] Реализовать WS-A Curriculum foundation
 
 **Уровень:** Standard
 
 **Файлы:**
 
 ```changeset
-+ backend/tests/test_domain_catalog.py
++ backend/app/domain/curriculum.py
++ backend/app/domain_models/curriculum.py
++ backend/app/repositories/curriculum.py
++ backend/tests/test_curriculum_contracts.py
+```
+
+**Референсы:**
+
+- DTO-01 и SQL-01 в P1
+
+**Что сделать:**
+
+WS-A создаёт draft/published aggregate types, context ORM и repository operations для
+`CurriculumVersion`, nodes и prerequisite edges. Publication behavior и frontier остаются P3.T1.
+
+**Ключевые ограничения:**
+
+- context file не импортирует Practice или Learner Progress implementation;
+- target references используют только DTO-01 и repository-level resolver contract;
+- WS-A не редактирует migration или ORM registry.
+
+**Проверка:**
+
+- aggregate tests отклоняют duplicate node, self-edge и invalid lifecycle transition;
+- repository tests сохраняют draft graph без публикации;
+- модуль импортируется с fake target resolver без WS-B/WS-C.
+
+---
+
+#### [P1.T5] Реализовать WS-B Practice & History foundation
+
+**Уровень:** Complex
+
+**Файлы:**
+
+```changeset
++ backend/app/domain/practice.py
++ backend/app/domain/practice_ports.py
++ backend/app/domain_models/practice.py
++ backend/app/repositories/practice.py
++ backend/tests/test_practice_contracts.py
+```
+
+**Референсы:**
+
+- DTO-01 и EVENT-01 registry в parent SDD
+
+**Что сделать:**
+
+WS-B создаёт чистые state types для `PracticeRun`, `ActivityInstance`, bounded submission/evaluation,
+response-evaluator port, context ORM и repository primitives. Lifecycle services и event ingestion
+реализуются в P2.T1–P2.T2.
+
+**Ключевые ограничения:**
+
+- один activity имеет один primary DTO-01 target;
+- persisted snapshot и enum wire values соответствуют SQL-01/EVENT-01;
+- WS-B не редактирует migration, registry или progress projection files.
+
+**Проверка:**
+
+- contract tests проверяют exposure/exercise shape и terminal/retry states;
+- ORM mapping отражает composite ownership keys SQL-01;
+- context импортируется без WS-A/WS-C implementations.
+
+---
+
+#### [P1.T6] Реализовать WS-C Learner Progress foundation
+
+**Уровень:** Complex
+
+**Файлы:**
+
+```changeset
++ backend/app/domain/progress.py
++ backend/app/domain/memory_policy.py
++ backend/app/domain_models/progress.py
++ backend/app/repositories/progress.py
++ backend/tests/test_progress_contracts.py
+```
+
+**Референсы:**
+
+- DTO-01 и SQL-01 в P1
+
+**Что сделать:**
+
+WS-C создаёт `LearnerProfile` view, frozen baseline/state types, memory-policy interface, context ORM
+и repository primitives. В MVP `LearnerProfile` адаптирует `UserProfile`: L1=`ru`, requested level
+=`preferred_level`, daily budget=`daily_new_word_count`; отдельная profile table не создаётся.
+
+**Ключевые ограничения:**
+
+- state keyed только learner + canonical target key;
+- baseline и current projection fields не смешиваются;
+- WS-C не редактирует Practice repository, migration или registry.
+
+**Проверка:**
+
+- contract tests фиксируют neutral/legacy baseline и cursor invariants;
+- ORM mapping отражает sparse unique state и due index;
+- context работает с fake event source без WS-B implementation.
+
+---
+
+#### [P1.T7] Собрать G1 foundation integration gate
+
+**Уровень:** Standard
+
+**Файлы:**
+
+```changeset
+~ backend/app/domain/__init__.py
+~ backend/app/domain_models/__init__.py
+~ backend/alembic/versions/20260826_0005_domain_foundation.py
+~ backend/tests/conftest.py
 ~ backend/tests/test_migrations.py
 ```
 
@@ -464,24 +573,27 @@ CREATE INDEX ix_learner_target_states_due ON learner_target_states(learner_id, m
 
 **Что сделать:**
 
-Добавить сфокусированные модульные и интеграционные тесты инвариантов агрегатов, канонизации
-TargetSpec, начального сопоставления и сохранности миграции. Не дублировать сквозные текущие тесты.
+INT объединяет context modules без переноса ownership: обновляет package/ORM registry, завершает
+единственную migration и запускает schema/contract integration. Workstream branches merge-ready
+только после локальных tests; незелёные branches для «разблокировки» не мержатся.
 
 **Ключевые ограничения:**
 
 - тестовые фикстуры импортируют новые маппинги до `Base.metadata.create_all`;
+- повышение с revision `20260725_0004` побайтово сохраняет проверяемые legacy fields;
+- понижение удаляет только 11 новых tables/indexes;
 - цель PostgreSQL не пропускает ошибки переданной конфигурации;
 - междиалектные проверки сравнивают семантическую схему, а не представление типов диалекта.
 
 **Проверка:**
 
 - `ruff check .`;
-- целевые доменные и миграционные тесты на SQLite;
+- все P1 context/contract tests и `Base.metadata.create_all` на SQLite;
 - полный цикл миграции PostgreSQL с `SLOVNIK_TEST_POSTGRES_ADMIN_URL`.
 
 ## Проверка фазы
 
-**Автотесты:** доменные модульные тесты, интеграционные тесты репозитория и начальной загрузки,
-полный цикл миграции SQLite и PostgreSQL.
+**Автотесты:** shared contract tests, context unit/repository tests, bootstrap idempotency, metadata
+registry и полный цикл migration SQLite/PostgreSQL.
 
 **Откат:** понизить ревизию `20260826_0005`; текущие таблицы и API остаются без изменений.

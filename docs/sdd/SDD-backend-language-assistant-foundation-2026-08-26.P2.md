@@ -5,8 +5,9 @@
 - **Цель:** записывать идемпотентные неизменяемые свидетельства и строить проекцию компетенции и
   памяти на уровне цели через версионированную политику.
 - **Зависимости:** P1, DTO-01, SQL-01.
-- **Команда для реализации:** выполнить P2.T1–P2.T5 после зелёной P1, сохранив события фактами,
-  проекции пересчитываемыми, а текущий прогресс — только низкоуверенной начальной точкой.
+- **Команда для реализации:** после G1 WS-B выполняет P2.T1→P2.T2, а WS-C параллельно выполняет
+  P2.T3→P2.T4. INT запускает P2.T5 только после обоих tracks; события остаются фактами, проекции —
+  пересчитываемыми, текущий прогресс — только low-confidence baseline.
 
 ## Текущее поведение
 
@@ -24,8 +25,8 @@
 
 ```changeset
 ~ backend/app/domain/practice.py
-~ backend/app/domain/ports.py
-~ backend/app/repositories/domain.py
+~ backend/app/domain/practice_ports.py
+~ backend/app/repositories/practice.py
 + backend/app/services/practice_service.py
 ```
 
@@ -80,7 +81,7 @@
 
 ```changeset
 ~ backend/app/domain/practice.py
-~ backend/app/repositories/domain.py
+~ backend/app/repositories/practice.py
 + backend/app/services/learning_event_service.py
 + backend/tests/test_learning_events.py
 ```
@@ -204,8 +205,8 @@ idempotency key, event ID, server timestamps, latency и полученное ev
 
 ```changeset
 ~ backend/app/domain/progress.py
-+ backend/app/domain/policies.py
-~ backend/app/repositories/domain.py
+~ backend/app/domain/memory_policy.py
+~ backend/app/repositories/progress.py
 + backend/app/services/learner_projection_service.py
 + backend/tests/test_projection.py
 ```
@@ -299,7 +300,7 @@ commit event, activity transition and state atomically
 
 ```changeset
 + backend/app/services/legacy_progress_bootstrap_service.py
-~ backend/app/repositories/domain.py
+~ backend/app/repositories/progress.py
 + backend/tests/test_legacy_progress_bootstrap.py
 ~ backend/tests/test_projection.py
 ```
@@ -348,7 +349,7 @@ commit event, activity transition and state atomically
 - due/weak/null-schedule сценарии совпадают с текущей семантикой срока;
 - null-schedule row, показанная сегодня, не попадает в ACQUIRE и становится due на следующий день;
 - bootstrap не создаёт события и не открывает HARD-зависимость;
-- native-event state сохраняется без изменений;
+- state с `evidence_count > 0` сохраняется без изменений;
 - два запуска побайтово стабильны для неизменившихся источников.
 
 ---
@@ -372,13 +373,14 @@ commit event, activity transition and state atomically
 
 **Что сделать:**
 
-Добавить сценарии отката транзакции, конфликта идемпотентности, порядка replay, принадлежности
-разным ученикам и конкуренции PostgreSQL. Проверить, что сбой проектора откатывает изменение события
-и действия.
+INT объединяет только green WS-B/WS-C commits и добавляет сценарии отката транзакции, конфликта
+идемпотентности, порядка replay, принадлежности разным ученикам и конкуренции PostgreSQL. Проверить,
+что сбой проектора откатывает изменение события и действия.
 
 **Ключевые ограничения:**
 
 - тесты не используют паузы как механизм корректности;
+- до P2.T5 WS-B не редактирует projection tests, а WS-C — event tests;
 - конкурентная синхронизация строится на барьерах и событиях;
 - ошибки переданной конфигурации PostgreSQL завершают тест ошибкой, а не пропуском.
 

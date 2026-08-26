@@ -16,7 +16,7 @@ Updated: 2026-08-26
 | Independent self-review | Done | Research/MVP/current-state passes recorded below |
 | Strong implementation-level document audit | Done | `docs/progress/document-audit-2026-08-26.md` |
 | Formal ADR review | Done | Accepted ADR in `docs/adr/ADR-language-assistant-domain-model-2026-08-26.md` |
-| Backend foundation SDD | Accepted | Approved by the user on 2026-08-26; four phases in `docs/sdd/SDD-backend-language-assistant-foundation-2026-08-26.md` |
+| Backend foundation SDD | Accepted, revision 2 | Three workstreams + integrator design in `docs/superpowers/specs/2026-08-26-parallel-sdd-execution-design.md` |
 | Production code or UI work | Not started | Explicitly outside current task |
 
 ## Durable decisions
@@ -76,5 +76,5 @@ into a new design/SDD or be explicitly rejected with a recorded reason.
 
 ## Next expected step
 
-Start P1 domain and persistence foundation from the accepted backend SDD. Initiative-wide status
-and all mandatory follow-ups are mirrored in `docs/progress/PROGRESS.md`.
+Start INT/P1.T1 Gate 0 contract freeze from accepted SDD revision 2; only then launch WS-A/B/C.
+Initiative-wide status and all mandatory follow-ups are mirrored in `docs/progress/PROGRESS.md`.

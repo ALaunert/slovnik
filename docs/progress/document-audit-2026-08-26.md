@@ -63,7 +63,7 @@ inconsistent. The audit corrected those defects without adding production code, 
 
 ## Remaining implementation gates
 
-- The backend SDD was accepted by the user on 2026-08-26; P1 may start.
+- SDD revision 2 was accepted by the user on 2026-08-26; Gate 0 may start before WS-A/B/C.
 - Production shadow writes require a retention/export/delete or anonymization decision.
 - Production shadow writes also require real auth or an explicit trusted/non-public deployment constraint.
 - A public unified assistant requires an LBS migration audit, backend API contract, frontend SDD,
@@ -87,7 +87,7 @@ inconsistent. The audit corrected those defects without adding production code, 
 
 ## Verification
 
-Structural validation covers 4 phases, 17 tasks, 39 paths and 7 canonical IDs. SQL-01 executes on
+Structural validation covers 4 phases, 21 tasks, 61 paths and 7 canonical IDs. SQL-01 executes on
 SQLite with all 11 tables and negative checks for curriculum lifecycle/edge shape, active-version
 uniqueness, cross-version edges, run/activity lifecycle and policy consistency, same-run retry,
 event ownership/target/kind and event uniqueness. All canonical algorithms remain within 25 lines.

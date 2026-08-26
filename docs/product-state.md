@@ -25,6 +25,8 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   `docs/progress/domain-model-v0.1.md`.
 - A formally accepted ADR and an accepted backend-only foundation SDD were added on 2026-08-26. They
   remain design artifacts: no migrations, domain runtime, public APIs, or UI changes have been implemented.
+  SDD revision 2 is prepared for three context-owned workstreams plus one integrator with explicit
+  contract and merge gates.
   A strong implementation-level audit is recorded in `docs/progress/document-audit-2026-08-26.md`;
   initiative-wide status and mandatory follow-ups are tracked in `docs/progress/PROGRESS.md`.
 
@@ -245,6 +247,10 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - `frontend/tests/e2e/active-recall.spec.ts`: desktop/mobile active-recall journey and layout checks.
 - `frontend/src/i18n/messages.ts`: UI copy.
 - `docs/superpowers/plans/2026-07-02-serbian-vocabulary-trainer-mvp.md`: implementation plan.
+- `docs/superpowers/specs/2026-08-26-parallel-sdd-execution-design.md`: ownership, waves and merge
+  gates for parallel foundation development.
+- `docs/progress/parallel-sdd-readiness-2026-08-26.md`: self-review evidence and residual delivery
+  risks for the parallel SDD.
 - `docs/testing/mvp-manual-test.md`: manual test script.
 
 ## Maintenance Instructions for Future Agents

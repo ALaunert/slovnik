@@ -4,9 +4,10 @@
 - **ID:** P3
 - **Цель:** публиковать валидированный pilot программы A1 и выбирать внутреннее следующее действие через
   объяснимую детерминированную политику.
-- **Зависимости:** P1, P2, DTO-01, ALG-02.
-- **Команда для реализации:** выполнить P3.T1–P3.T4 после зелёной P2, сохранив программу
-  курированной, выбор детерминированным, а результат селектора — внутренним и немутирующим.
+- **Зависимости:** G1/P1, DTO-01 и frozen ALG-02 interface; P3.T4 integration зависит от P2.T5.
+- **Команда для реализации:** после G1 WS-A выполняет P3.T1→P3.T3, пока WS-C после своего P2 track
+  выполняет P3.T2 с fake curriculum/projection ports. INT выполняет P3.T4 только после P2.T5;
+  программа остаётся curated, выбор — deterministic, результат — internal/non-mutating.
 
 ## Текущее поведение
 
@@ -24,8 +25,8 @@
 
 ```changeset
 ~ backend/app/domain/curriculum.py
-~ backend/app/domain/policies.py
-~ backend/app/repositories/domain.py
++ backend/app/domain/curriculum_policy.py
+~ backend/app/repositories/curriculum.py
 + backend/app/services/curriculum_service.py
 + backend/tests/test_curriculum.py
 ```
@@ -91,8 +92,8 @@ mark Beta-подобной оценки `(1 + success) / (2 + success + failure)
 **Файлы:**
 
 ```changeset
-~ backend/app/domain/ports.py
-~ backend/app/domain/policies.py
++ backend/app/domain/selection_ports.py
++ backend/app/domain/selection_policy.py
 + backend/app/services/next_activity_service.py
 + backend/tests/test_next_activity.py
 ```
@@ -263,13 +264,14 @@ exclude activity/run IDs, timestamps, selection metadata and learner ID
 
 **Что сделать:**
 
-Покрыть состояния программы, циклы, разрешение целей, выбор намерения, компоненты оценки,
-разрешение равенства, разделение памяти и компетенции, причины отсутствия действия. Тесты должны
-проверять коды причин, а не только выбранный ID.
+INT объединяет green WS-A/WS-C commits после P2.T5 и покрывает состояния программы, циклы,
+разрешение целей, выбор намерения, rank components, разделение памяти и компетенции, причины
+отсутствия действия. Тесты проверяют коды причин, а не только выбранный ID.
 
 **Ключевые ограничения:**
 
 - тестовые сценарии используют фиксированное время UTC;
+- до P3.T4 WS-A не редактирует selector tests, а WS-C — curriculum tests;
 - нет зависимости от случайного порядка строк базы;
 - нет реальных вызовов AI и сети;
 - версии политик проверяются в каждой фикстуре решения и проекции.

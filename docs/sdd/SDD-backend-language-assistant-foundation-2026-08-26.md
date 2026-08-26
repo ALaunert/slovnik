@@ -3,14 +3,16 @@ type: sdd
 status: accepted
 platform: backend
 date: 2026-08-26
+revision: 2
 adr: ../adr/ADR-language-assistant-domain-model-2026-08-26.md
 prd: ../superpowers/specs/2026-08-26-domain-model-v0.1-design.md
+execution_design: ../superpowers/specs/2026-08-26-parallel-sdd-execution-design.md
 ux: []
 lbs: []
 related_sdd: []
 phases:
   - id: P1
-    title: Доменная модель и основа хранения
+    title: Контракты и контекстные foundations
   - id: P2
     title: Неизменяемые свидетельства и проекции ученика
   - id: P3
@@ -38,6 +40,8 @@ open_questions: []
 - UX: нет; frontend и UI не входят в этот SDD
 - LBS: нет; основа создаётся рядом с текущей моделью, без переключения существующих потребителей
 - Progress: [`../progress/PROGRESS.md`](../progress/PROGRESS.md)
+- Parallel execution design: [`../superpowers/specs/2026-08-26-parallel-sdd-execution-design.md`](../superpowers/specs/2026-08-26-parallel-sdd-execution-design.md)
+- Revision 2 approved by the user on 2026-08-26 for three workstreams plus one integrator.
 
 ## 1. Обзор
 
@@ -53,8 +57,8 @@ SDD создаёт серверную основу для четырёх утв�
 **Затронутые модули:**
 
 - `backend/app/domain/` — новые агрегаты, объекты-значения, политики и порты;
-- `backend/app/domain_models.py` — ORM-маппинги новой модели;
-- `backend/app/repositories/domain.py` — операции хранения и контроль владения строками;
+- `backend/app/domain_models/` — context-owned ORM-маппинги и integrator-owned registry;
+- `backend/app/repositories/` — context-owned операции хранения и контроль владения строками;
 - `backend/app/services/` — начальная загрузка, запись событий, проекции, выбор и теневые адаптеры;
 - `backend/alembic/` — создание схемы и обратимая миграция;
 - `backend/tests/` — доменные, миграционные, интеграционные и конкурентные тесты, тесты replay.
@@ -105,14 +109,60 @@ SDD создаёт серверную основу для четырёх утв�
 
 | Фаза | ID | Название | Результат |
 |---|---|---|---|
-| 1 | P1 | [Доменная модель и основа хранения](SDD-backend-language-assistant-foundation-2026-08-26.P1.md) | Стабильные идентификаторы каталога и целей, новая схема рядом с текущей моделью |
+| 1 | P1 | [Контракты и контекстные foundations](SDD-backend-language-assistant-foundation-2026-08-26.P1.md) | Frozen contracts, context-owned modules и новая схема рядом с текущей моделью |
 | 2 | P2 | [Неизменяемые свидетельства и проекции ученика](SDD-backend-language-assistant-foundation-2026-08-26.P2.md) | Идемпотентные события и low-confidence baseline дают replay-состояние на уровне цели |
 | 3 | P3 | [Граница учебной программы и выбор действия](SDD-backend-language-assistant-foundation-2026-08-26.P3.md) | Валидированный pilot A1 и детерминированный выбор работают только внутри backend |
 | 4 | P4 | [Теневая интеграция с текущей моделью](SDD-backend-language-assistant-foundation-2026-08-26.P4.md) | Текущие new/review/quiz-сценарии дублируют свидетельства под feature flag без изменения API |
 
-Фазы выполняются последовательно. P1 создаёт схему и доменную основу для остальных. P2 должна быть
-завершена до P3, потому что селектор читает проекции ученика. P4 включается только после прохождения
+Capability gates остаются последовательными: G0 contracts → G1 foundation → G2 evidence/projection
+→ G3 curriculum/selection → G4 shadow. Реализация внутри gates параллельна: после G0 три workstream
+работают по exclusive paths. P3 pure-domain selector можно разрабатывать с fakes параллельно P2,
+но интегрировать только после зелёного projection contract. P4 включается только после
 миграционных, replay- и конкурентных тестов P1–P3 на PostgreSQL.
+
+### 3.1. Parallel execution topology
+
+| Workstream | Владелец | Основная цепочка |
+|---|---|---|
+| WS-A | Language Catalog + Curriculum | P1.T3 → P1.T4 → P3.T1 → P3.T3 |
+| WS-B | Practice & History | P1.T5 → P2.T1 → P2.T2 → P4.T3 |
+| WS-C | Learner Progress + Selection | P1.T6 → P2.T3 → P2.T4 → P3.T2 → P4.T2 → P4.T4 (после P4.T3) |
+| INT | Shared integration | P1.T1 → P1.T2 → P1.T7 → P2.T5 → P3.T4 → P4.T1 → P4.T5 (после P4.T2–T4) |
+
+```mermaid
+flowchart LR
+    G0["G0 contract freeze"]
+    A["WS-A Catalog/Curriculum"]
+    B["WS-B Practice/History"]
+    C["WS-C Progress/Selection"]
+    G1["G1 foundation integration"]
+    G23["G2/G3 evidence + selection"]
+    L["P4 learning adapter"]
+    Q["P4 quiz adapter"]
+    C4["P4 shadow comparison"]
+    G4["G4 shadow regression"]
+
+    G0 --> A
+    G0 --> B
+    G0 --> C
+    A --> G1
+    B --> G1
+    C --> G1
+    G1 --> G23
+    G23 --> L
+    G23 --> Q
+    L --> C4
+    Q --> C4
+    C4 --> G4
+```
+
+**Ownership rules:**
+
+- один tracked path принадлежит только одному активному workstream;
+- shared contracts, package registries, migration, общие fixtures и docs меняет только INT;
+- изменение frozen contract оформляется отдельным contract-change commit с impact list до rebase;
+- branch не merge-ready без локальных task tests и соответствующего gate;
+- worktree каждого потока располагается вне repository tree.
 
 ## 4. Архитектурный поток
 
@@ -145,45 +195,67 @@ flowchart TB
 ## 5. Глоссарий путей
 
 ```text
-backend/app/config.py                                      (~)
-backend/app/db.py                                          (~)
-backend/app/domain/__init__.py                             (+)
-backend/app/domain/catalog.py                              (+)
-backend/app/domain/curriculum.py                           (+)
-backend/app/domain/policies.py                             (+)
-backend/app/domain/ports.py                                (+)
-backend/app/domain/practice.py                             (+)
-backend/app/domain/progress.py                             (+)
-backend/app/domain/target.py                               (+)
-backend/app/domain_models.py                               (+)
-backend/app/repositories/__init__.py                       (+)
-backend/app/repositories/domain.py                         (+)
-backend/app/services/curriculum_service.py                 (+)
-backend/app/services/domain_bootstrap_service.py           (+)
-backend/app/services/domain_shadow_service.py              (+)
-backend/app/services/learning_event_service.py             (+)
-backend/app/services/learner_projection_service.py         (+)
-backend/app/services/legacy_progress_bootstrap_service.py  (+)
-backend/app/services/learning_service.py                    (~)
-backend/app/services/next_activity_service.py              (+)
-backend/app/services/practice_service.py                   (+)
-backend/app/services/quiz_service.py                        (~)
-backend/app/seed.py                                         (~)
-backend/alembic/env.py                                      (~)
-backend/alembic/versions/20260826_0005_domain_foundation.py (+)
-backend/tests/conftest.py                                   (~)
-backend/tests/test_curriculum.py                            (+)
-backend/tests/test_domain_catalog.py                        (+)
-backend/tests/test_domain_shadow.py                         (+)
-backend/tests/test_learning_events.py                       (+)
-backend/tests/test_legacy_progress_bootstrap.py             (+)
-backend/tests/test_learning.py                              (~)
-backend/tests/test_migrations.py                            (~)
-backend/tests/test_next_activity.py                         (+)
-backend/tests/test_projection.py                            (+)
-backend/tests/test_quizzes.py                               (~)
-docs/product-state.md                                       (~)
-docs/progress/PROGRESS.md                                   (~)
+backend/alembic/env.py                                           (~)
+backend/alembic/versions/20260826_0005_domain_foundation.py      (+)
+backend/app/config.py                                            (~)
+backend/app/db.py                                                (~)
+backend/app/domain/__init__.py                                   (+)
+backend/app/domain/catalog.py                                    (+)
+backend/app/domain/curriculum.py                                 (+)
+backend/app/domain/curriculum_policy.py                          (+)
+backend/app/domain/memory_policy.py                              (+)
+backend/app/domain/practice.py                                   (+)
+backend/app/domain/practice_ports.py                             (+)
+backend/app/domain/progress.py                                   (+)
+backend/app/domain/selection_policy.py                           (+)
+backend/app/domain/selection_ports.py                            (+)
+backend/app/domain/shared.py                                     (+)
+backend/app/domain/target.py                                     (+)
+backend/app/domain_models/__init__.py                            (+)
+backend/app/domain_models/catalog.py                             (+)
+backend/app/domain_models/curriculum.py                          (+)
+backend/app/domain_models/practice.py                            (+)
+backend/app/domain_models/progress.py                            (+)
+backend/app/repositories/__init__.py                             (+)
+backend/app/repositories/catalog.py                              (+)
+backend/app/repositories/curriculum.py                           (+)
+backend/app/repositories/practice.py                             (+)
+backend/app/repositories/progress.py                             (+)
+backend/app/seed.py                                              (~)
+backend/app/services/curriculum_service.py                       (+)
+backend/app/services/domain_bootstrap_service.py                 (+)
+backend/app/services/domain_shadow_contracts.py                  (+)
+backend/app/services/learner_projection_service.py               (+)
+backend/app/services/learning_event_service.py                   (+)
+backend/app/services/learning_service.py                         (~)
+backend/app/services/legacy_progress_bootstrap_service.py        (+)
+backend/app/services/next_activity_service.py                    (+)
+backend/app/services/practice_service.py                         (+)
+backend/app/services/quiz_service.py                             (~)
+backend/app/services/shadow_comparison_service.py                (+)
+backend/app/services/shadow_learning_service.py                  (+)
+backend/app/services/shadow_quiz_service.py                      (+)
+backend/tests/conftest.py                                        (~)
+backend/tests/test_curriculum.py                                 (+)
+backend/tests/test_curriculum_contracts.py                       (+)
+backend/tests/test_domain_catalog.py                             (+)
+backend/tests/test_domain_contracts.py                           (+)
+backend/tests/test_domain_shadow_contracts.py                    (+)
+backend/tests/test_domain_shadow_integration.py                  (+)
+backend/tests/test_learning.py                                   (~)
+backend/tests/test_learning_events.py                            (+)
+backend/tests/test_learning_shadow.py                            (+)
+backend/tests/test_legacy_progress_bootstrap.py                  (+)
+backend/tests/test_migrations.py                                 (~)
+backend/tests/test_next_activity.py                              (+)
+backend/tests/test_practice_contracts.py                         (+)
+backend/tests/test_progress_contracts.py                         (+)
+backend/tests/test_projection.py                                 (+)
+backend/tests/test_quiz_shadow.py                                (+)
+backend/tests/test_quizzes.py                                    (~)
+backend/tests/test_shadow_comparison.py                          (+)
+docs/product-state.md                                            (~)
+docs/progress/PROGRESS.md                                        (~)
 ```
 
 ## 6. Открытые вопросы
