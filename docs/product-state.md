@@ -9,6 +9,21 @@ Slovnik is a Serbian vocabulary trainer MVP for Russian-speaking learners. It ha
 This audit reflects the current product implementation, including AI vocabulary fill and
 reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
 
+## Approved Design Direction (Not Implemented)
+
+- On 2026-08-26, Domain Model v0.1 was approved for evolving Slovnik from separate vocabulary,
+  review, and quiz modes into an adaptive language-learning assistant.
+- The approved direction is a modular monolith with four bounded contexts: Language Catalog,
+  Curriculum, Practice & History, and Learner Progress. The next-activity orchestrator combines
+  curriculum constraints, learner evidence, and memory risk; it is not an AI chat agent.
+- AI may later provide candidate exercises or evaluate ambiguous answers through replaceable ports.
+  It cannot own curriculum progression, select learning truth, or update learner state directly.
+- The runtime implementation described below has not yet migrated to this model. `VocabularyItem`,
+  `UserWordProgress`, the existing review scheduler, quizzes, routes, and APIs remain unchanged.
+- The approved design and its explicit deferred log are in
+  `docs/superpowers/specs/2026-08-26-domain-model-v0.1-design.md` and
+  `docs/progress/domain-model-v0.1.md`.
+
 ## Implemented User-Facing Capabilities
 
 - User entry screen creates or loads a profile by `userId`; the last `userId` and UI language are stored in browser localStorage.
