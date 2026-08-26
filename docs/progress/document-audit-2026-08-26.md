@@ -63,7 +63,7 @@ inconsistent. The audit corrected those defects without adding production code, 
 
 ## Remaining implementation gates
 
-- The backend SDD remains Draft and requires explicit acceptance before implementation.
+- The backend SDD was accepted by the user on 2026-08-26; P1 may start.
 - Production shadow writes require a retention/export/delete or anonymization decision.
 - Production shadow writes also require real auth or an explicit trusted/non-public deployment constraint.
 - A public unified assistant requires an LBS migration audit, backend API contract, frontend SDD,

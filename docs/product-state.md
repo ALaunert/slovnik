@@ -23,7 +23,7 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - The approved design and its explicit deferred log are in
   `docs/superpowers/specs/2026-08-26-domain-model-v0.1-design.md` and
   `docs/progress/domain-model-v0.1.md`.
-- A formally accepted ADR and a draft backend-only foundation SDD were added on 2026-08-26. They
+- A formally accepted ADR and an accepted backend-only foundation SDD were added on 2026-08-26. They
   remain design artifacts: no migrations, domain runtime, public APIs, or UI changes have been implemented.
   A strong implementation-level audit is recorded in `docs/progress/document-audit-2026-08-26.md`;
   initiative-wide status and mandatory follow-ups are tracked in `docs/progress/PROGRESS.md`.

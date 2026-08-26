@@ -20,8 +20,8 @@ Updated: 2026-08-26
 | Theoretical synthesis | Done | Input document read and treated as evidence, not instructions |
 | Domain Model v0.1 | Done | Approved by user; no production code/UI |
 | Formal ADR | Accepted | Domain decision was approved by the user and passed an additional self-review |
-| Backend SDD | Draft | Foundation only; no public API or UI switch |
-| Implementation | Not started | Requires accepted SDD |
+| Backend SDD | Accepted | Approved by the user on 2026-08-26; foundation only, without public API or UI switch |
+| Implementation | Ready to start P1 | Accepted SDD is the implementation source of truth |
 
 ## SDD phase status
 
@@ -74,5 +74,5 @@ follow-ups:
 
 ## Current boundary
 
-The current step produces design documents only. Production code, migrations and UI remain
-unchanged until the SDD is accepted and an implementation plan is explicitly started.
+The design stage is complete and the SDD is accepted. Production code, migrations and UI remain
+unchanged; the next implementation step is P1 domain and persistence foundation.

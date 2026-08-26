@@ -1,6 +1,6 @@
 ---
 type: sdd
-status: draft
+status: accepted
 platform: backend
 date: 2026-08-26
 adr: ../adr/ADR-language-assistant-domain-model-2026-08-26.md
@@ -31,7 +31,7 @@ open_questions: []
 
 # SDD-backend: Основа языкового ассистента
 
-> **Статус:** Draft
+> **Статус:** Accepted
 
 - ADR: [`../adr/ADR-language-assistant-domain-model-2026-08-26.md`](../adr/ADR-language-assistant-domain-model-2026-08-26.md)
 - PRD: [`../superpowers/specs/2026-08-26-domain-model-v0.1-design.md`](../superpowers/specs/2026-08-26-domain-model-v0.1-design.md)
