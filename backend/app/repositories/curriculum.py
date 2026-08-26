@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy import exists, select, update
 from sqlalchemy.orm import Session
 
 from app.domain.curriculum import (
@@ -125,6 +125,10 @@ class CurriculumRepository:
         self._target_resolver = target_resolver
 
     def add(self, version: CurriculumVersion) -> None:
+        if version.status is not CurriculumStatus.DRAFT:
+            raise ValueError(
+                "only draft curriculum versions can be added directly"
+            )
         self._session.add(_version_record(version))
 
     def get(self, version_id: str) -> CurriculumVersion | None:
@@ -144,3 +148,57 @@ class CurriculumRepository:
 
     def target_is_published(self, target: TargetSpec) -> bool:
         return self._target_resolver.is_published(target)
+
+    def get_active_by_code(self, curriculum_code: str) -> CurriculumVersion | None:
+        record = self._session.scalar(
+            select(CurriculumVersionRecord).where(
+                CurriculumVersionRecord.curriculum_code == curriculum_code,
+                CurriculumVersionRecord.status == CurriculumStatus.ACTIVE.value,
+            )
+        )
+        return _version_value(record) if record is not None else None
+
+    def retire_if_active(self, version_id: str, retired_at: datetime) -> bool:
+        result = self._session.execute(
+            update(CurriculumVersionRecord)
+            .where(
+                CurriculumVersionRecord.id == version_id,
+                CurriculumVersionRecord.status == CurriculumStatus.ACTIVE.value,
+            )
+            .values(
+                status=CurriculumStatus.RETIRED.value,
+                retired_at=retired_at,
+            )
+        )
+        return result.rowcount == 1
+
+    def activate_if_draft(self, version_id: str, published_at: datetime) -> bool:
+        result = self._session.execute(
+            update(CurriculumVersionRecord)
+            .where(
+                CurriculumVersionRecord.id == version_id,
+                CurriculumVersionRecord.status == CurriculumStatus.DRAFT.value,
+            )
+            .values(
+                status=CurriculumStatus.ACTIVE.value,
+                published_at=published_at,
+            )
+        )
+        return result.rowcount == 1
+
+    def active_references_target(self, target: TargetSpec) -> bool:
+        return bool(
+            self._session.scalar(
+                select(
+                    exists().where(
+                        CurriculumNodeRecord.curriculum_version_id
+                        == CurriculumVersionRecord.id,
+                        CurriculumNodeRecord.target_kind
+                        == target.target_kind.value,
+                        CurriculumNodeRecord.target_id == target.target_id,
+                        CurriculumVersionRecord.status
+                        == CurriculumStatus.ACTIVE.value,
+                    )
+                )
+            )
+        )

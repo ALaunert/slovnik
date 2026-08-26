@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
@@ -141,6 +142,26 @@ class PrerequisiteEdge:
             raise ValueError("a curriculum node cannot be a prerequisite of itself")
 
 
+def _revalidate_node(node: CurriculumNode) -> CurriculumNode:
+    return CurriculumNode(
+        id=node.id,
+        curriculum_version_id=node.curriculum_version_id,
+        target=node.target,
+        priority=node.priority,
+        outcome_code=node.outcome_code,
+    )
+
+
+def _revalidate_edge(edge: PrerequisiteEdge) -> PrerequisiteEdge:
+    return PrerequisiteEdge(
+        id=edge.id,
+        curriculum_version_id=edge.curriculum_version_id,
+        prerequisite_node_id=edge.prerequisite_node_id,
+        dependent_node_id=edge.dependent_node_id,
+        kind=edge.kind,
+    )
+
+
 @dataclass(frozen=True)
 class CurriculumVersion:
     id: str
@@ -217,6 +238,62 @@ class CurriculumVersion:
     def add_prerequisite(self, edge: PrerequisiteEdge) -> CurriculumVersion:
         self._require_draft()
         return replace(self, prerequisites=(*self.prerequisites, edge))
+
+    def publish(
+        self,
+        *,
+        published_at: datetime,
+        target_is_published: Callable[[TargetSpec], bool],
+    ) -> CurriculumVersion:
+        self._require_draft()
+        if not callable(target_is_published):
+            raise ValueError("target_is_published must be callable")
+        snapshot = self._validated_publication_snapshot()
+        snapshot._require_published_targets(target_is_published)
+        snapshot._require_acyclic_hard_graph()
+        return replace(
+            snapshot,
+            status=CurriculumStatus.ACTIVE,
+            published_at=_utc(published_at),
+        )
+
+    def _validated_publication_snapshot(self) -> CurriculumVersion:
+        return CurriculumVersion(
+            id=self.id,
+            curriculum_code=self.curriculum_code,
+            version_number=self.version_number,
+            created_at=self.created_at,
+            nodes=tuple(_revalidate_node(node) for node in self.nodes),
+            prerequisites=tuple(
+                _revalidate_edge(edge) for edge in self.prerequisites
+            ),
+        )
+
+    def _require_published_targets(
+        self, target_is_published: Callable[[TargetSpec], bool]
+    ) -> None:
+        if any(not target_is_published(node.target) for node in self.nodes):
+            raise ValueError("every curriculum node must reference a published target")
+
+    def _require_acyclic_hard_graph(self) -> None:
+        outgoing = {node.id: [] for node in self.nodes}
+        incoming_count = {node.id: 0 for node in self.nodes}
+        for edge in self.prerequisites:
+            if edge.kind is not PrerequisiteKind.HARD:
+                continue
+            outgoing[edge.prerequisite_node_id].append(edge.dependent_node_id)
+            incoming_count[edge.dependent_node_id] += 1
+        ready = [node_id for node_id, count in incoming_count.items() if count == 0]
+        visited = 0
+        while ready:
+            node_id = ready.pop()
+            visited += 1
+            for dependent_id in outgoing[node_id]:
+                incoming_count[dependent_id] -= 1
+                if incoming_count[dependent_id] == 0:
+                    ready.append(dependent_id)
+        if visited != len(self.nodes):
+            raise ValueError("HARD prerequisite graph must be acyclic")
 
     def _require_draft(self) -> None:
         if self.status is not CurriculumStatus.DRAFT:
