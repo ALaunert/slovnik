@@ -463,6 +463,67 @@ class PracticeRun:
             raise ValueError("Activity must belong to its PracticeRun")
         if activity.selection.policy_version != self.selection_policy_version:
             raise ValueError("Activity must inherit the run selection policy version")
+        if activity.selected_at < self.started_at:
+            raise ValueError("Activity cannot be selected before its run started")
+
+    def validate_new_activity(self, activity: ActivityInstance) -> None:
+        self.validate_activity(activity)
+        if activity.status is not ActivityStatus.PENDING:
+            raise ValueError("New practice activity must be pending")
+        if activity.retry_of_activity_instance_id is not None:
+            raise ValueError("Retries must use create_retry")
+
+    def _validate_activities(self, activities: tuple[ActivityInstance, ...]) -> None:
+        for activity in activities:
+            self.validate_activity(activity)
+
+    def _validate_end_time(
+        self,
+        activities: tuple[ActivityInstance, ...],
+        ended_at: datetime,
+    ) -> None:
+        _require_aware_timestamp(ended_at, "PracticeRun ended_at")
+        if any(
+            ended_at < (activity.terminal_at or activity.selected_at)
+            for activity in activities
+        ):
+            raise ValueError("Practice run end cannot precede its activities")
+
+    def complete(
+        self,
+        activities: tuple[ActivityInstance, ...],
+        ended_at: datetime,
+    ) -> PracticeRun:
+        if self.status.is_terminal:
+            raise ValueError("Practice run is already terminal")
+        if not activities:
+            raise ValueError("Practice run requires at least one activity")
+        self._validate_activities(activities)
+        if any(activity.status is not ActivityStatus.COMPLETED for activity in activities):
+            raise ValueError("Practice run can complete only when all activities are completed")
+        self._validate_end_time(activities, ended_at)
+        return replace(self, status=PracticeRunStatus.COMPLETED, ended_at=ended_at)
+
+    def abandon(
+        self,
+        activities: tuple[ActivityInstance, ...],
+        ended_at: datetime,
+    ) -> tuple[PracticeRun, tuple[ActivityInstance, ...]]:
+        if self.status.is_terminal:
+            raise ValueError("Practice run is already terminal")
+        self._validate_activities(activities)
+        self._validate_end_time(activities, ended_at)
+        cancelled = tuple(
+            activity.cancel(ended_at)
+            for activity in activities
+            if activity.status is ActivityStatus.PENDING
+        )
+        abandoned = replace(
+            self,
+            status=PracticeRunStatus.ABANDONED,
+            ended_at=ended_at,
+        )
+        return abandoned, cancelled
 
 
 @dataclass(frozen=True)
@@ -554,6 +615,34 @@ class ActivityInstance:
             raise ValueError("Retry must use the next attempt number")
         if self.sequence_number <= parent.sequence_number:
             raise ValueError("Retry must follow its parent in run sequence")
+
+    def retry(
+        self,
+        *,
+        retry_id: str,
+        sequence_number: int,
+        selected_at: datetime,
+    ) -> ActivityInstance:
+        if self.status is not ActivityStatus.COMPLETED:
+            raise ValueError("Retry parent must be completed")
+        parent_terminal_at = self.terminal_at
+        if parent_terminal_at is None:
+            raise ValueError("Completed retry parent requires terminal_at")
+        _require_aware_timestamp(selected_at, "Retry selected_at")
+        if selected_at < parent_terminal_at:
+            raise ValueError("Retry cannot be selected before its parent completed")
+        retry = replace(
+            self,
+            id=retry_id,
+            sequence_number=sequence_number,
+            retry_of_activity_instance_id=self.id,
+            attempt_number=self.attempt_number + 1,
+            status=ActivityStatus.PENDING,
+            selected_at=selected_at,
+            terminal_at=None,
+        )
+        retry.validate_retry_of(self)
+        return retry
 
     def complete(self, terminal_at: datetime) -> ActivityInstance:
         return self._terminalize(ActivityStatus.COMPLETED, terminal_at)

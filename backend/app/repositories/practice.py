@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
+from typing import TypeVar
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.domain.practice import (
@@ -16,6 +18,9 @@ from app.domain.practice import (
 from app.domain_models.practice import ActivityInstanceModel, PracticeRunModel
 
 
+_RowT = TypeVar("_RowT")
+
+
 def _to_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc) if value is not None else None
 
@@ -26,6 +31,12 @@ def _from_db_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _flush_if_supported(session: Session) -> None:
+    flush = getattr(session, "flush", None)
+    if flush is not None:
+        flush()
 
 
 class PracticeRepository:
@@ -40,12 +51,76 @@ class PracticeRepository:
         row = self._session.get(ActivityInstanceModel, activity_id)
         return _activity_to_domain(row) if row is not None else None
 
+    def lock_run(self, run_id: str) -> PracticeRun | None:
+        row = self._session.scalar(
+            select(PracticeRunModel)
+            .where(PracticeRunModel.id == run_id)
+            .with_for_update()
+        )
+        return _run_to_domain(row) if row is not None else None
+
+    def lock_activity(self, activity_id: str) -> ActivityInstance | None:
+        row = self._session.scalar(
+            select(ActivityInstanceModel)
+            .where(ActivityInstanceModel.id == activity_id)
+            .with_for_update()
+        )
+        return _activity_to_domain(row) if row is not None else None
+
+    def list_activities(self, run_id: str) -> tuple[ActivityInstance, ...]:
+        rows = self._session.scalars(_activities_for_run(run_id))
+        return tuple(_activity_to_domain(row) for row in rows)
+
+    def lock_activities(self, run_id: str) -> tuple[ActivityInstance, ...]:
+        rows = self._session.scalars(_activities_for_run(run_id).with_for_update())
+        return tuple(_activity_to_domain(row) for row in rows)
+
+    def next_sequence_number(self, run_id: str) -> int:
+        current = self._session.scalar(
+            select(func.max(ActivityInstanceModel.sequence_number)).where(
+                ActivityInstanceModel.practice_run_id == run_id
+            )
+        )
+        return (current or 0) + 1
+
     def add_run(self, run: PracticeRun) -> None:
         self._session.add(_run_to_row(run))
+        _flush_if_supported(self._session)
 
     def add_activity(self, run: PracticeRun, activity: ActivityInstance) -> None:
         run.validate_activity(activity)
         self._session.add(_activity_to_row(activity))
+        _flush_if_supported(self._session)
+
+    def update_run(self, run: PracticeRun) -> None:
+        row = _require_row(
+            self._session.get(PracticeRunModel, run.id),
+            "Practice run",
+        )
+        row.status = run.status.value
+        row.ended_at = _to_utc(run.ended_at)
+
+    def update_activity(self, activity: ActivityInstance) -> None:
+        row = _require_row(
+            self._session.get(ActivityInstanceModel, activity.id),
+            "Practice activity",
+        )
+        row.status = activity.status.value
+        row.terminal_at = _to_utc(activity.terminal_at)
+
+
+def _require_row(row: _RowT | None, label: str) -> _RowT:
+    if row is None:
+        raise ValueError(f"{label} not found")
+    return row
+
+
+def _activities_for_run(run_id: str):
+    return (
+        select(ActivityInstanceModel)
+        .where(ActivityInstanceModel.practice_run_id == run_id)
+        .order_by(ActivityInstanceModel.sequence_number)
+    )
 
 
 def _run_to_row(run: PracticeRun) -> PracticeRunModel:
