@@ -1,6 +1,6 @@
 # Slovnik Domain Model v0.1
 
-> **Статус:** Draft document; design approved; not implemented
+> **Статус:** Design approved; strengthened after implementation-level audit; not implemented
 
 - Дата: 2026-08-26
 - Scope: MVP адаптивного ассистента по изучению сербского языка
@@ -30,6 +30,8 @@ curriculum, progression, learner state или memory policy.
 6. HARD prerequisites отвечают за валидность activity; SOFT prerequisites влияют на ranking.
 7. MVP материализует только знания и измерения, которые использует реально существующий сценарий.
 8. AI-output считается недоверенным кандидатом и проходит те же доменные проверки, что curated content.
+9. Для lexical form–meaning learning capability привязана к `Sense`; конкретная ожидаемая `Form`
+   является частью activity snapshot. Это не позволяет раздробить одно знание по орфографиям.
 
 ## 3. Рассмотренные варианты
 
@@ -68,7 +70,8 @@ flowchart LR
     Progress --> Assistant
     Assistant --> Practice
     Practice --> Progress
-    AiProvider -->|"candidate or evaluation"| Practice
+    AiProvider -->|"candidate"| Assistant
+    AiProvider -->|"evaluation"| Practice
 ```
 
 ### 4.1. Language Catalog
@@ -99,7 +102,7 @@ response, фиксирует evaluation и создаёт immutable evidence. Н
 | Language Catalog | `LexicalUnit` | `Sense`, `Form` | Целостность lexical entry и реально преподаваемых representations |
 | Language Catalog | `Construction` | — | Самостоятельный form–meaning pattern сербского языка |
 | Curriculum | `CurriculumVersion` | `CurriculumNode`, `PrerequisiteEdge` | Целостность опубликованного curriculum graph |
-| Practice & History | `PracticeRun` | `ActivityInstance`, `Submission` | Последовательность activities и lifecycle учебного запуска |
+| Practice & History | `PracticeRun` | `ActivityInstance` | Последовательность activities и lifecycle учебного запуска |
 | Practice & History | `LearningEvent` | — | Immutable evidence одного значимого encounter |
 | Learner Progress | `LearnerProfile` | — | Учебные цели и preferences learner |
 | Learner Progress | `LearnerTargetState` | — | Проекция evidence и memory для одного `TargetSpec` |
@@ -134,14 +137,18 @@ construction. В MVP construction содержит только необходи
 зафиксировать abandonment. Это устраняет нынешние эфемерные new/review sessions.
 
 - `ActivityInstance` хранит один primary target и snapshot показанного задания.
-- `Submission` хранит попытку learner до превращения результата в immutable evidence.
+- `ResponseSubmission` — bounded value object команды; отдельной identity/lifecycle у него нет, а
+  принятый результат атомарно становится immutable evidence.
+- Retry создаёт новый `ActivityInstance`, связанный с исходным, поэтому одна activity не имеет двух
+  конкурирующих финальных ответов.
 - В MVP один activity elicites один primary `TargetSpec`; incidental targets не обновляют state.
 
 ### 5.5. `LearningEvent`
 
 Append-only факт учебного взаимодействия. Он фиксирует learner, target, activity intent,
-operation, modality, cues, первый и итоговый response, evaluation, hints, latency, feedback и
-policy/scorer versions в той полноте, в которой эти данные реально наблюдались.
+optional operation для exercise, modality, cues, первый и итоговый response, evaluation, hints,
+latency, feedback, selection reason и policy/generator/scorer versions в той полноте, в которой
+эти данные реально наблюдались. У exposure нет фиктивных cognitive operation и scorer metadata.
 
 Отсутствующие legacy-данные остаются unknown. Synthetic history из старых counters не создаётся.
 
@@ -150,14 +157,23 @@ policy/scorer versions в той полноте, в которой эти дан
 Хранит только learning concerns: целевой уровень/цели, L1, темп и допустимые preferences. Identity,
 authentication, roles и billing находятся вне этой domain model.
 
+В MVP отдельная persisted сущность не вводится: существующий `UserProfile` служит legacy adapter,
+русский L1 является product assumption, а `preferred_level` и `daily_new_word_count` дают начальные
+goal/pace inputs. Расширение профиля происходит только при появлении использующего их сценария.
+
 ### 5.7. `LearnerTargetState`
 
-Sparse projection с ключом `Learner + TargetSpec`. Создаётся только после появления evidence.
+Sparse projection с ключом `Learner + TargetSpec`. Создаётся после появления native evidence либо
+как явно помеченный low-confidence legacy bootstrap seed без synthetic events.
 
+- Frozen projection baseline бывает neutral или legacy bootstrap; он хранится отдельно от текущих
+  counters/schedule внутри того же state и не меняется после первого native event.
 - `CompetenceEstimate` описывает наблюдаемую capability и uncertainty.
+- Replayable competence high-water mark поддерживает монотонность curriculum readiness без
+  постоянного `mastered` флага.
 - `MemoryState` описывает current retrievability, schedule и policy version.
 - `EvidenceSummary` хранит компактные counters/recency для explainability, но не заменяет events.
-- State можно перестроить из `LearningEvent` с выбранной projection policy.
+- State можно перестроить из frozen baseline и `LearningEvent` с выбранной projection policy.
 
 ## 6. Value objects
 
@@ -180,12 +196,13 @@ Sparse projection с ключом `Learner + TargetSpec`. Создаётся т�
 
 ### Practice & History
 
-- `ActivitySpec`: target, operation, input/output modality, cue/support policy, stimulus snapshot,
-  scoring policy и feedback policy.
+- `ActivitySpec`: target, activity kind, optional operation для exercise, input/output modality,
+  cue/support policy, stimulus snapshot, scoring policy и feedback policy.
 - `LearningIntent`: `ACQUIRE | REVIEW | STRENGTHEN | ASSESS`.
 - `Evaluation`: outcome, optional partial score/error tags и confidence.
 - `EvaluationSource`: `DETERMINISTIC | SELF_REPORT | MODEL_ASSISTED`.
 - `SelectionMetadata`: intent, policy version и selection reason.
+- `ResponseSubmission`: activity ID, bounded response и idempotency key.
 - `IdempotencyKey`.
 
 ### Learner Progress
@@ -195,6 +212,14 @@ Sparse projection с ключом `Learner + TargetSpec`. Создаётся т�
 - `MemoryState`.
 - `EvidenceSummary`.
 - `PolicyVersion`.
+
+MVP compatibility для `TargetSpec`:
+
+- `Sense + RECOGNIZE_MEANING + WRITTEN`;
+- `Sense + RETRIEVE_FORM + WRITTEN`; ожидаемая `Form` хранится в `ActivitySpec`;
+- `Construction + APPLY_CONSTRUCTION + WRITTEN`;
+- `Form + RETRIEVE_FORM` разрешён только для явно form-specific activity, а не для обычного
+  vocabulary recall. Новые сочетания добавляются вместе с измеряющим их сценарием и policy version.
 
 ## 7. MVP taxonomies
 
@@ -252,6 +277,7 @@ flowchart LR
 
 - `CurriculumNode` ссылается на content через stable `TargetRef`, но не владеет content.
 - `ActivityInstance` ссылается на один primary `TargetSpec` и сохраняет content snapshot.
+- Повторная попытка ссылается на исходный `ActivityInstance`, но является новым экземпляром.
 - `LearningEvent` ссылается на learner, activity и target, не на mutable current content.
 - `LearnerTargetState` соответствует ровно одному learner и одному `TargetSpec`.
 
@@ -318,6 +344,8 @@ replaceable.
 3. Создаются только реально преподаваемые forms.
 4. Stable content identity не переиспользуется для другого meaning.
 5. Referenced published content не удаляется физически; оно versioned или retired.
+5a. Target, на который ссылается active curriculum, нельзя retired до активации версии программы
+    без этой ссылки; historical snapshots остаются разрешимыми после retirement.
 
 ### Curriculum
 
@@ -331,22 +359,30 @@ replaceable.
 
 11. MVP activity имеет один primary elicited target.
 12. `ActivityInstance` сохраняет stimulus и версии generator/scorer.
+12a. Один `ActivityInstance` принимает не более одного итогового submission/event; retry создаёт
+     новый связанный экземпляр.
 13. `LearningEvent` immutable и idempotent.
-14. Event фиксирует только реально elicited capability.
+14. Evaluated response фиксирует и может credit только реально elicited capability; exposure может
+    подготавливать объявленный target, но не является evidence выполнения capability.
 15. Recognition не создаёт productive evidence.
 16. Exposure не считается retrieval.
 17. Self-rating не превращается в objective correctness.
 18. Повторная обработка одного submission не обновляет state дважды.
 19. Model-assisted evaluation сохраняет provenance и confidence; projection policy явно решает,
     какой evidence credit ей разрешён.
+19a. Selection policy version/reasons сохраняются рядом с immutable activity/event; propensity
+     допускается как nullable future field, но не выдумывается для deterministic v1.
 
 ### Learner Progress
 
-20. `LearnerTargetState` является replayable projection событий.
+20. `LearnerTargetState` является replayable projection frozen neutral/legacy baseline и событий;
+    legacy seed не маскируется под event evidence и не меняется после первого native event.
 21. Competence и memory schedule не объединяются в один mastery score.
 22. Overdue/weak memory state не отзывает curriculum unlock.
 23. В canonical domain нет permanent `known`, `mastered` или word-level `weak` truth.
 24. State update содержит projection policy version.
+24a. Application-level immutability событий не отменяет отдельный административный lifecycle
+     удаления или обезличивания данных ученика.
 
 ### AI boundary
 
@@ -361,7 +397,8 @@ replaceable.
 - Создание `PracticeRun` фиксирует curriculum/policy version и начальные selection constraints.
 - Обработка submission идемпотентно переводит activity, добавляет `LearningEvent` и обновляет нужную
   projection. В MVP это может быть одна database transaction модульного монолита.
-- Исторической истиной остаётся `LearningEvent`; learner projection должна быть rebuildable.
+- Исторической истиной остаётся `LearningEvent`; projection должна быть rebuildable от frozen
+  neutral/legacy baseline, а legacy seed — иметь явно указанную ссылку и fingerprint источника.
 - Concurrent state updates сериализуются на уровне одного learner/target, а не всего learner.
 
 ## 12. Migration from current Slovnik
@@ -375,7 +412,8 @@ replaceable.
 4. Старые example blobs сохранить как legacy content; не выдумывать отсутствующую разметку.
 5. `UserWordProgress` преобразовать в low-confidence bootstrap projection и отдельный memory seed.
 6. Historical new/review events не синтезировать: их невозможно достоверно восстановить.
-7. `QuizAnswer` импортировать только как partial evidence с явно unknown latency/cues/policy metadata.
+7. До удаления legacy quiz history отдельным migration SDD решить импорт `QuizAnswer`: допустим
+   только partial evidence с явно unknown latency/cues/policy metadata; foundation его не выдумывает.
 8. Начать dual-write новых `LearningEvent` и shadow learner projections.
 9. Сравнить shadow projections с текущим поведением, затем переключить selection на новый orchestrator.
 10. Legacy endpoints временно оставить facade над ограниченными learning intents.
@@ -431,7 +469,7 @@ AI generation cache/reservations остаются optional editorial subsystem �
 entities описать:
 
 1. Written recognition одного lexical sense.
-2. Russian-to-Serbian retrieval конкретной form.
+2. Russian-to-Serbian retrieval формы из конкретного lexical sense; ожидаемая form зафиксирована в activity.
 3. Применение базовой A1 construction в curated context.
 4. Review того же target другим exercise operation.
 5. Immutable фиксацию response/evaluation и replay learner state.

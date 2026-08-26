@@ -2,7 +2,7 @@
 
 - Родительский документ: [`SDD-backend-language-assistant-foundation-2026-08-26.md`](SDD-backend-language-assistant-foundation-2026-08-26.md)
 - **ID:** P3
-- **Цель:** публиковать валидированную программу A1 и выбирать внутреннее следующее действие через
+- **Цель:** публиковать валидированный pilot программы A1 и выбирать внутреннее следующее действие через
   объяснимую детерминированную политику.
 - **Зависимости:** P1, P2, DTO-01, ALG-02.
 - **Команда для реализации:** выполнить P3.T1–P3.T4 после зелёной P2, сохранив программу
@@ -40,21 +40,33 @@
 **Что сделать:**
 
 Черновик программы разрешает редакционные изменения. Транзакция публикации валидирует ссылки на
-цели, дубли ключей целей, коды результатов, принадлежность рёбер и ацикличность HARD-графа.
+цели, дубли ключей целей, коды результатов, принадлежность рёбер, отсутствие self-edge/двух типов
+одного ребра и ацикличность HARD-графа.
 Активация новой версии атомарно переводит прежнюю активную версию той же программы в состояние
-`retired`. Активные и выведенные из употребления версии неизменяемы.
+`retired`. После публикации graph/content неизменяемы; единственная разрешённая мутация lifecycle —
+`active -> retired` при активации следующей версии.
+
+`outcome_code` имеет формат `<CEFR>.<stable-code>`, например `A1.location.basic`; префикс валиден
+по A1→C2 и не является difficulty или memory field.
 
 Граница возвращает `available`, `not_yet_ready` и коды причин. Готовность HARD-предусловия v1
 означает, что для предшествующего `TargetSpec` существует состояние из нативных событий как минимум
-с одним детерминированным успехом и Beta-подобной оценкой
-`(1 + success) / (2 + success + failure) >= 0.6`. SOFT-рёбра добавляют признак готовности, но никогда
-не исключают кандидата.
+с одним детерминированным успехом и replayable `competence_peak >= 0.6`. Peak является high-water
+mark Beta-подобной оценки `(1 + success) / (2 + success + failure)`: последующее забывание или
+ошибка повышает review/strengthen priority, но не закрывает уже открытый branch. SOFT-рёбра добавляют
+признак готовности, но никогда не исключают кандидата.
 
 **Ключевые ограничения:**
 
-- на `curriculum_code` существует ровно одна активная версия; инвариант обеспечивает сервис
-  публикации под блокировкой;
+- на `curriculum_code` существует ровно одна активная версия; инвариант обеспечивает partial unique
+  index, а сервис ставит старой версии `status=retired`/`retired_at` до вставки новой active row с
+  обязательным `published_at`;
+- `priority` лежит в `0..100`, где большее значение означает более высокий curriculum priority;
 - выведенная программа остаётся разрешимой для исторических запусков и событий;
+- версия программы является cumulative graph и может содержать outcome codes разных CEFR levels;
+  CEFR не хранится одним полем версии;
+- порядок outcome envelope фиксирован `A1 < A2 < B1 < B2 < C1 < C2`; он фильтрует coverage,
+  но не используется как item difficulty;
 - отсутствие состояния ученика означает отсутствие свидетельств, а не нулевое постоянное mastery;
 - цель повторения, уже использованная учеником, не блокируется снова из-за текущего просроченного
   состояния памяти;
@@ -62,10 +74,13 @@
 
 **Проверка:**
 
-- публикация отклоняет отсутствующую или выведенную цель, дубликат узла и HARD-цикл;
+- публикация отклоняет отсутствующую/неопубликованную цель, дубликат узла и HARD-цикл;
+- retirement target, всё ещё используемого active curriculum, отклоняется до активации replacement;
 - SOFT-цикл разрешён и никогда не блокирует границу;
 - транзакция публикации оставляет одну активную версию при конкуренции PostgreSQL;
+- конкурентная первая публикация без существующей active row также оставляет одного победителя;
 - временное забывание меняет приоритет повторения, но не доступность границы.
+- последующая deterministic failure не уменьшает `competence_peak` и не закрывает branch.
 
 ---
 
@@ -95,8 +110,23 @@
 `ActivityValidityPolicy` повторно проверяет цель, HARD-ограничения, контракт ограниченного ответа и
 оценивания, а также нагрузку вне основной цели. Реализации на AI нет, существует только порт.
 
+Foundation не выдумывает calibrated `P(success)`. Для lexical activity допустимо `0` unglossed
+non-target lexical/construction items. Для construction complete/transform допустим максимум один
+unknown SOFT lexical item только с явным gloss; unready HARD target всегда отклоняется. Остальной
+difficulty feature vector сохраняется для reason metadata, но не входит в rank до валидации.
+
+Daily acquisition count v1 использует UTC calendar day, потому что текущий профиль не хранит
+timezone: это число distinct `target_key` с первым completed `ACQUIRE` activity/event в интервале
+`[00:00 UTC, next 00:00 UTC)`. Retry и несколько activities одной цели не расходуют бюджет повторно;
+legacy baseline в счётчик не входит.
+
 Селектор возвращает решение с намерением, выбранными целью и действием, полными кодами причин и
 версией политики. Он не создаёт событие и не меняет состояние ученика.
+
+Selection reason codes v1 для созданного activity: `due_review`, `weak_competence`, `new_target`,
+`assessment_gap`. Decision codes при отсутствии activity: `daily_acquire_budget_reached`,
+`no_active_curriculum`, `empty_frontier`, `no_valid_candidate`. Rank components возвращаются
+отдельными typed fields, а не одной необъяснимой суммой.
 
 **Ключевые ограничения:**
 
@@ -104,8 +134,8 @@
 - у кандидата ровно одна основная цель;
 - в основе обязателен детерминированный оценщик;
 - в v1 нет случайного исследования; равенство разрешается по ключу цели и отпечатку действия;
-- единого скаляра `difficulty` нет: кандидат отдельно предоставляет поддерживаемый вектор признаков
-  и эвристику ожидаемого успеха;
+- единого скаляра `difficulty` и оценки expected success в v1 нет: кандидат предоставляет только
+  поддерживаемый вектор наблюдаемых признаков;
 - пустое допустимое множество возвращает явную причину `no_activity`, а не произвольный fallback.
 
 ##### Канонический блок: ALG-03 (ALG) (NORMATIVE)
@@ -113,18 +143,43 @@
 > NORMATIVE. Алгоритм задаёт порядок решения `selector-v1` и стабильное разрешение равенства.
 
 ```text
-load active curriculum and learner target states
-frontier = nodes passing target validity and HARD readiness
-if any frontier state is due now: intent = REVIEW
-else if any seen frontier target has failure_weight > success_weight: intent = STRENGTHEN
-else if any frontier target has no native deterministic evidence: intent = ACQUIRE
-else: intent = ASSESS
-build curated candidates for targets matching intent
+load learner profile, active curriculum and learner target states
+frontier = nodes at/below requested CEFR outcome passing target validity and HARD readiness
+review_nodes = frontier states with memory_due_at <= now
+weak_nodes = frontier states with failure_weight > success_weight
+acquire_nodes = frontier without native deterministic evidence and without a future memory hold
+remove acquire_nodes when today's acquired-target count reaches profile daily budget
+assess_nodes = frontier with native deterministic evidence
+if review_nodes not empty: intent=REVIEW; eligible=review_nodes
+else if weak_nodes not empty: intent=STRENGTHEN; eligible=weak_nodes
+else if acquire_nodes not empty: intent=ACQUIRE; eligible=acquire_nodes
+else if assess_nodes not empty: intent=ASSESS; eligible=assess_nodes
+else: return no_activity with budget/frontier reason code
+build curated candidates for eligible targets
 discard candidates failing ActivityValidityPolicy
-score = review_urgency + weakness + curriculum_priority + skill_deficit
-        + soft_readiness + context_novelty - mismatch - repetition_penalty
-sort by score descending, then target_key, then activity_fingerprint
-return top candidate plus component scores and policy_version='selector-v1'
+for each candidate compute repetition_count_7d and activity_fingerprint
+rank key REVIEW = (memory_due_at ASC, priority DESC, repetition_count_7d ASC)
+rank key STRENGTHEN = ((failure_weight-success_weight) DESC, priority DESC, repetition_count_7d ASC)
+rank key ACQUIRE = (priority DESC, soft_ready_count DESC, repetition_count_7d ASC)
+rank key ASSESS = (uncertainty DESC, last_evidence_at NULLS FIRST, priority DESC)
+append target_key and activity_fingerprint ASC to every rank key
+return first candidate plus rank components, stable reason codes and policy_version='selector-v1'
+```
+
+##### Канонический блок: ALG-04 (ALG) (NORMATIVE)
+
+> NORMATIVE. Алгоритм задаёт стабильный `activity_fingerprint-v1` для tie-break и repetition history.
+
+```text
+payload = {
+    schema_version, target_key, activity_kind, operation,
+    input_modality, output_modality, cue_policy,
+    stimulus_snapshot, feedback_policy_version,
+    generator_kind, generator_version, scorer_kind, scorer_version
+}
+normalize and serialize payload with the canonical JSON profile from ALG-01
+activity_fingerprint = SHA256(payload as UTF-8).hexdigest()
+exclude activity/run IDs, timestamps, selection metadata and learner ID
 ```
 
 **Проверка:**
@@ -132,13 +187,20 @@ return top candidate plus component scores and policy_version='selector-v1'
 - просроченное повторение опережает освоение нового;
 - слабое место опережает освоение с равным приоритетом, не обходя HARD-ограничения;
 - готовность SOFT влияет только на оценку;
+- future legacy/bootstrap memory hold не приводит к повторному ACQUIRE до срока;
+- дневной лимит блокирует только ACQUIRE, но никогда не review/strengthen;
 - кандидат MCQ нацелен на распознавание, но никогда на извлечение;
 - детерминированный порядок стабилен между запусками и не зависит от порядка строк базы;
+- semantically equal activity specs имеют одинаковый ALG-04 fingerprint независимо от JSON key order;
 - пустой или невалидный каталог возвращает `no_activity` с кодами причин.
+- достигнутый daily budget не мешает выбрать due review.
+- две ACQUIRE activities одной цели в один UTC-day расходуют одну единицу бюджета.
+- unseen target никогда не получает ASSESS как обход daily acquisition budget.
+- candidate за пределами non-target burden bounds отклоняется, а не получает произвольный penalty.
 
 ---
 
-#### [P3.T3] Создать начальную курированную программу A1 из текущего контента
+#### [P3.T3] Создать технический pilot A1 из текущего контента
 
 **Уровень:** Standard
 
@@ -158,22 +220,25 @@ return top candidate plus component scores and policy_version='selector-v1'
 
 **Что сделать:**
 
-Расширить детерминированную команду начальной загрузки: она создаёт черновик программы
-`serbian-from-russian` версии 1 для CEFR A1. Каждый подходящий текущий элемент A1 добавляет
-курированные узлы распознавания и извлечения для сопоставленных смысла и формы. Узлы конструкций и
-рёбра предусловий берутся только из явных начальных данных; AI и порядок тем их не выводят.
+Расширить детерминированную команду начальной загрузки: она создаёт черновик технического pilot
+`serbian-from-russian` версии 1 с A1 outcome codes. Каждый подходящий текущий элемент A1 добавляет
+два узла для одного `Sense`: `recognize_meaning` и `retrieve_form`; ожидаемая citation `Form`
+хранится в activity snapshot. Узлы конструкций и рёбра предусловий берутся только из явных
+начальных данных; AI и порядок тем их не выводят.
 
 **Ключевые ограничения:**
 
 - текущий CEFR — ассоциация начальной загрузки, а не постоянное свойство контента;
 - загрузка идемпотентна по коду и версии программы и стабильному сопоставлению цели;
 - публикация происходит только после валидации; частично невалидная загрузка остаётся черновиком;
+- текущие три seed-слова являются техническим fixture, а не заявлением о покрытии курса A1;
 - контент A2–C2 и полные парадигмы не генерируются.
 
 **Проверка:**
 
 - повторная загрузка оставляет одну версию и стабильные ID узлов;
 - узлы распознавания и извлечения используют разные ключи целей;
+- оба lexical узла адресуют один Sense с разными capabilities, а не Sense и Form;
 - явные HARD/SOFT-рёбра сохраняются после публикации и чтения;
 - невалидная ссылка на конструкцию блокирует публикацию без частичной активации.
 

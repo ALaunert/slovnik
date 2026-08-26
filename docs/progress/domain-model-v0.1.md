@@ -14,6 +14,7 @@ Updated: 2026-08-26
 | Approve relations, invariants, assistant flow and AI boundary | Approved | User confirmation on 2026-08-26 |
 | Write Domain Model v0.1 | Done | `docs/superpowers/specs/2026-08-26-domain-model-v0.1-design.md` |
 | Independent self-review | Done | Research/MVP/current-state passes recorded below |
+| Strong implementation-level document audit | Done | `docs/progress/document-audit-2026-08-26.md` |
 | Formal ADR review | Done | Accepted ADR in `docs/adr/ADR-language-assistant-domain-model-2026-08-26.md` |
 | Backend foundation SDD | Draft | Four phases in `docs/sdd/SDD-backend-language-assistant-foundation-2026-08-26.md` |
 | Production code or UI work | Not started | Explicitly outside current task |
@@ -36,8 +37,8 @@ Completed on 2026-08-26 without an external model, as requested by the user.
 | Pass | Result | Corrections made |
 |---|---|---|
 | Theoretical consistency | Passed | Kept content, curriculum, activity/history, competence and memory semantically separate; made `TargetSpec` explicit in the relation graph |
-| MVP/YAGNI | Passed | Kept four contexts and seven aggregate roots; retained embedded examples and only four active exercise operations |
-| Current-product compatibility | Passed | Preserved stable legacy mappings, low-confidence progress bootstrap and partial quiz evidence without inventing history |
+| MVP/YAGNI | Passed | Kept four contexts and seven aggregate roots, removed identity-less `Submission` entity, retained embedded examples and only four active exercise operations |
+| Current-product compatibility | Passed | Preserved stable mappings and low-confidence progress bootstrap; historical quiz import is explicitly deferred instead of inventing missing metadata |
 | AI boundary | Passed | Added explicit `MODEL_ASSISTED` evaluation provenance/confidence and prohibited direct state mutation |
 
 The review also generalized `WordForm` to MVP entity `Form`, so one aggregate can represent both
@@ -66,7 +67,11 @@ into a new design/SDD or be explicitly rejected with a recorded reason.
 | Automatic prerequisite discovery | Expert A1 graph is sufficient | Learner path data reveals systematic sequencing failures | Curriculum tooling |
 | Unrestricted AI exercise generation | Linguistic validity and scoring cannot be guaranteed | Validated constrained generation pipeline and safe fallback exist | `ActivityCandidateProvider` adapter |
 | Production AI response evaluator | Not required to establish core domain | A free-response scenario cannot be scored deterministically | `ResponseEvaluator` adapter |
-| Authentication and authorization | Orthogonal to learning domain redesign | Product prepares multi-user or public deployment | Identity/access context |
+| Learning-history retention/export/delete or anonymization | Product policy is not part of the domain core, but events contain learner data | Before production shadow writes are enabled | Privacy/data lifecycle ADR or SDD |
+| Curated A1 content/curriculum pack | Existing three-word seed is only a technical fixture | Before claiming A1 coverage or public next-activity rollout | Curriculum/content specification |
+| Historical `QuizAnswer` import | Additive foundation can start from future dual-write; importing partial old evidence complicates memory seeding | Before legacy quiz retirement or historical analytics | Migration SDD after LBS |
+| Learner-local timezone/day boundary | Current profile has no timezone; selector-v1 uses an explicit UTC day | Before local-time reminders, travel-aware planning or multi-region rollout | LearnerProfile extension + selection policy version |
+| Authentication and authorization | Orthogonal to learning domain redesign | Before production shadow history or any public unified flow, unless deployment is explicitly constrained as trusted/non-public | Identity/access context |
 | Native mobile and UI redesign | Explicitly outside Domain Model task | Separate UX/product scope is approved | Dedicated UX/implementation specs |
 
 ## Next expected step

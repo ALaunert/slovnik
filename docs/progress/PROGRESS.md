@@ -11,6 +11,7 @@ Updated: 2026-08-26
 | ADR | `docs/adr/ADR-language-assistant-domain-model-2026-08-26.md` | Formal architecture decision and trade-offs |
 | Backend SDD | `docs/sdd/SDD-backend-language-assistant-foundation-2026-08-26.md` | Foundation implementation design |
 | Domain-model progress | `docs/progress/domain-model-v0.1.md` | Initial decisions and deferred log |
+| Strong document audit | `docs/progress/document-audit-2026-08-26.md` | Cross-document defects, corrections and remaining gates |
 
 ## Workflow status
 
@@ -28,7 +29,7 @@ Updated: 2026-08-26
 |---|---|---|
 | P1 Domain and persistence foundation | Pending | Stable identities, domain modules, reversible schema |
 | P2 Immutable evidence and projections | Pending | Event ledger, replayable state, low-confidence legacy baseline, memory policy v1 |
-| P3 Curriculum and selection | Pending | Published A1 graph and deterministic selector |
+| P3 Curriculum and selection | Pending | Technical A1 pilot graph and deterministic selector |
 | P4 Legacy shadow integration | Pending | Feature-flagged dual-write without API changes |
 
 ## Contract registry
@@ -44,11 +45,14 @@ Validated on 2026-08-26 without an external model, as requested by the user.
 
 | Check | Result | Durable correction |
 |---|---|---|
-| ADR boundary and alternatives | Passed | ADR accepted; sensitive-history lifecycle recorded as a mandatory precondition for free-form input |
+| ADR boundary and alternatives | Passed | Four-context decision remains accepted; SDD errata correct detail without changing the core decision |
 | ADR-to-SDD traceability | Passed | Added explicit low-confidence legacy progress bootstrap without synthetic events |
 | Event/projection separation | Passed | Projector version belongs to learner state, not to immutable learning facts |
 | AI boundary | Passed | SDD defines only a replaceable port; no AI implementation or progression ownership |
-| SDD structural validation | Passed | 4 phases, 17 tasks, 38 paths and 6 canonical IDs; links, slugs, changesets and glossary agree |
+| Strong implementation audit | Passed | Findings and corrections recorded in `docs/progress/document-audit-2026-08-26.md` |
+| SDD structural validation | Passed | 4 phases, 17 tasks, 39 paths and 7 canonical IDs; links, slugs, changesets and glossary agree |
+| SQL-01 executable validation | Passed | SQLite executed all 11 tables and rejected invalid curriculum lifecycle/edge shape, duplicate active curriculum, cross-version edges, invalid run/retry shape, policy mismatch, cross-run event ownership/kind, and duplicate activity event |
+| Canonical algorithms | Passed | ALG-01/02/03/04 remain within the 25-line limit and define stable ordering/canonicalization |
 | Whitespace/file audit | Passed | `git diff --check`; unrelated `.superpowers/` files excluded |
 
 Runtime tests were not run because this step changes design documentation only.
@@ -62,9 +66,11 @@ follow-ups:
 |---|---|---|
 | LBS audit of current new/review/quiz behavior | Switching legacy consumers or deleting legacy services | LBS files + migration SDD |
 | Frontend activity runner and unified assistant flow | Any public next-activity API rollout | Frontend SDD + backend API contract SDD |
-| Free-form response retention/export/deletion policy | Storing conversation-like or personally identifying responses | Privacy/data lifecycle ADR or SDD |
+| Learning-history retention/export/delete or anonymization | Enabling P4 shadow writes in production | Privacy/data lifecycle ADR or SDD |
+| Curated A1 content and curriculum pack | Claiming A1 coverage or exposing the unified next-activity flow | Content/curriculum specification and editorial workflow |
+| Historical `QuizAnswer` import | Retiring legacy quiz tables or using old answers as analytical evidence | Migration SDD after LBS audit |
 | Production AI generator/evaluator | Enabling model-assisted candidate/evaluation in runtime | AI provider validation SDD |
-| Real authentication and authorization | Public or multi-user deployment | Identity/access ADR and SDD |
+| Real authentication or explicit trusted-deployment constraint | Enabling P4 shadow writes in production or any public unified flow | Identity/access ADR and SDD |
 
 ## Current boundary
 

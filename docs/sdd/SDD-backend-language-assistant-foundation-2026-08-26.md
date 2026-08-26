@@ -77,6 +77,16 @@ SDD создаёт серверную основу для четырёх утв�
   были атомарны;
 - публичные схемы ответов и маршруты остаются неизменными.
 
+## Errata vs ADR
+
+| ADR-ref | В ADR | В SDD | Почему расхождение |
+|---|---|---|---|
+| §3, Learner Progress | State появляется только после evidence | Допускается явно помеченный `legacy_bootstrap` без synthetic events | Это уже требуется §3 Migration policy; SDD делает исключение исполнимым |
+| §8, AI data flow | AI adapter показан только возле Practice | Candidate port подключён к selector, evaluator port — к Practice | Исправление направления зависимости без изменения AI boundary |
+| §3, Practice & History | Retry lifecycle не уточнён | Каждый retry является новым связанным `ActivityInstance` | Сохраняет инвариант «один activity — один принятый event» при текущих quiz repeats |
+| §3, Practice & History | `Submission` назван owned entity | В MVP это bounded `ResponseSubmission` value object команды | У него нет отдельной identity/lifecycle или persisted table; принятый результат атомарно становится event |
+| §6, Risk 7 | Data lifecycle обязателен до free-form input | Production shadow history также gated этим решением | Даже bounded answer и learner ID уже являются learner data |
+
 ## 2. Реестр идентификаторов
 
 | ID | Тип | Определён | NORMATIVE? |
@@ -87,6 +97,7 @@ SDD создаёт серверную основу для четырёх утв�
 | EVENT-01 | domain event | [P2.T2] § «Канонический блок: EVENT-01» | да |
 | ALG-02 | algorithm | [P2.T3] § «Канонический блок: ALG-02» | да |
 | ALG-03 | algorithm | [P3.T2] § «Канонический блок: ALG-03» | да |
+| ALG-04 | algorithm | [P3.T2] § «Канонический блок: ALG-04» | да |
 
 ## 3. План реализации
 
@@ -95,8 +106,8 @@ SDD создаёт серверную основу для четырёх утв�
 | Фаза | ID | Название | Результат |
 |---|---|---|---|
 | 1 | P1 | [Доменная модель и основа хранения](SDD-backend-language-assistant-foundation-2026-08-26.P1.md) | Стабильные идентификаторы каталога и целей, новая схема рядом с текущей моделью |
-| 2 | P2 | [Неизменяемые свидетельства и проекции ученика](SDD-backend-language-assistant-foundation-2026-08-26.P2.md) | Идемпотентные события и низкоуверенный legacy-baseline дают replay-состояние на уровне цели |
-| 3 | P3 | [Граница учебной программы и выбор действия](SDD-backend-language-assistant-foundation-2026-08-26.P3.md) | Опубликованная программа A1 и детерминированный выбор работают только внутри backend |
+| 2 | P2 | [Неизменяемые свидетельства и проекции ученика](SDD-backend-language-assistant-foundation-2026-08-26.P2.md) | Идемпотентные события и low-confidence baseline дают replay-состояние на уровне цели |
+| 3 | P3 | [Граница учебной программы и выбор действия](SDD-backend-language-assistant-foundation-2026-08-26.P3.md) | Валидированный pilot A1 и детерминированный выбор работают только внутри backend |
 | 4 | P4 | [Теневая интеграция с текущей моделью](SDD-backend-language-assistant-foundation-2026-08-26.P4.md) | Текущие new/review/quiz-сценарии дублируют свидетельства под feature flag без изменения API |
 
 Фазы выполняются последовательно. P1 создаёт схему и доменную основу для остальных. P2 должна быть
@@ -116,6 +127,8 @@ flowchart TB
     Curriculum["Published curriculum"]
     Selector["Next activity service"]
     Catalog["Language catalog"]
+    AiCandidate["Optional candidate port"]
+    AiEvaluator["Optional evaluator port"]
 
     Legacy --> Flag
     Flag -->|"enabled"| Recorder
@@ -125,6 +138,8 @@ flowchart TB
     Curriculum --> Selector
     State --> Selector
     Catalog --> Selector
+    AiCandidate -.-> Selector
+    AiEvaluator -.-> Recorder
 ```
 
 ## 5. Глоссарий путей
@@ -151,6 +166,7 @@ backend/app/services/learner_projection_service.py         (+)
 backend/app/services/legacy_progress_bootstrap_service.py  (+)
 backend/app/services/learning_service.py                    (~)
 backend/app/services/next_activity_service.py              (+)
+backend/app/services/practice_service.py                   (+)
 backend/app/services/quiz_service.py                        (~)
 backend/app/seed.py                                         (~)
 backend/alembic/env.py                                      (~)
@@ -172,6 +188,7 @@ docs/progress/PROGRESS.md                                   (~)
 
 ## 6. Открытые вопросы
 
-Открытых вопросов, блокирующих реализацию, нет. Переключение UI, промышленный AI-оценщик, политика
-хранения и удаления свободных ответов, а также паритет с текущим поведением относятся к следующим
-SDD и записаны в `docs/progress/PROGRESS.md`.
+Открытых вопросов, блокирующих реализацию P1–P3 и выключенного P4, нет. Production-включение shadow,
+identity/access, переключение UI, промышленный AI-оценщик, политика жизненного цикла learning
+history и паритет с текущим поведением относятся к следующим SDD и записаны в
+`docs/progress/PROGRESS.md`.

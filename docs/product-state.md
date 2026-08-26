@@ -1,6 +1,6 @@
 # Slovnik Product State
 
-Last audited: 2026-07-25
+Last audited: 2026-08-26 (runtime implementation last verified: 2026-07-25)
 
 ## Product Summary
 
@@ -25,7 +25,8 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   `docs/progress/domain-model-v0.1.md`.
 - A formally accepted ADR and a draft backend-only foundation SDD were added on 2026-08-26. They
   remain design artifacts: no migrations, domain runtime, public APIs, or UI changes have been implemented.
-  Initiative-wide status and mandatory follow-ups are tracked in `docs/progress/PROGRESS.md`.
+  A strong implementation-level audit is recorded in `docs/progress/document-audit-2026-08-26.md`;
+  initiative-wide status and mandatory follow-ups are tracked in `docs/progress/PROGRESS.md`.
 
 ## Implemented User-Facing Capabilities
 
