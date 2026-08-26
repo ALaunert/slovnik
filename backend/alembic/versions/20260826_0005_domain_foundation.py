@@ -545,7 +545,7 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "learner_id",
             "target_key",
-            name="uq_learner_target_state_target",
+            name="uq_learner_target_states_learner_target",
         ),
     )
     op.create_index(

@@ -1,5 +1,8 @@
+import json
 import logging
 import os
+import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -30,6 +33,62 @@ LEGACY_WORD_ID = 1001
 LEGACY_STRESS_MARKER = "ra-DI-ti"
 LEGACY_PROGRESS_ID = 2001
 LEGACY_USER_ID = "legacy-learner"
+DOMAIN_TABLES = {
+    "language_lexical_units",
+    "language_senses",
+    "language_forms",
+    "language_constructions",
+    "curriculum_versions",
+    "curriculum_nodes",
+    "curriculum_prerequisites",
+    "practice_runs",
+    "activity_instances",
+    "learning_events",
+    "learner_target_states",
+}
+LEGACY_METADATA_TABLES = {
+    "ai_vocabulary_generation_reservations",
+    "ai_vocabulary_generations",
+    "quiz_answers",
+    "quiz_attempts",
+    "user_profiles",
+    "user_word_progress",
+    "vocabulary_items",
+}
+DOMAIN_INDEX_DEFINITIONS = {
+    "language_senses": {
+        "ix_language_senses_lexical_unit": (("lexical_unit_id",), False),
+    },
+    "language_forms": {
+        "ix_language_forms_lexical_unit": (("lexical_unit_id",), False),
+    },
+    "curriculum_versions": {
+        "uq_curriculum_versions_one_active": (("curriculum_code",), True),
+    },
+    "curriculum_nodes": {
+        "ix_curriculum_nodes_target": (("target_key",), False),
+    },
+    "practice_runs": {
+        "ix_practice_runs_learner_status": (("learner_id", "status"), False),
+    },
+    "activity_instances": {
+        "ix_activity_instances_retry": (("retry_of_activity_instance_id",), False),
+    },
+    "learning_events": {
+        "ix_learning_events_learner_time": (("learner_id", "occurred_at"), False),
+        "ix_learning_events_learner_target_time": (
+            ("learner_id", "target_key", "occurred_at", "id"),
+            False,
+        ),
+    },
+    "learner_target_states": {
+        "ix_learner_target_states_due": (("learner_id", "memory_due_at"), False),
+    },
+}
+DOMAIN_TARGET_KEY = (
+    "v1:sense:abcdef12-1234-5678-9234-567812345678:retrieve_form:written:"
+    "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+)
 
 
 def build_alembic_config(database_url, monkeypatch):
@@ -160,6 +219,309 @@ def read_legacy_progress(engine, *, include_schedule):
         ).mappings().one()
 
 
+def read_seeded_legacy_snapshot(engine):
+    with engine.connect() as connection:
+        vocabulary = connection.execute(
+            text("SELECT * FROM vocabulary_items WHERE id = :row_id"),
+            {"row_id": LEGACY_WORD_ID},
+        ).mappings().one()
+        profile = connection.execute(
+            text("SELECT * FROM user_profiles WHERE user_id = :user_id"),
+            {"user_id": LEGACY_USER_ID},
+        ).mappings().one()
+        progress = connection.execute(
+            text("SELECT * FROM user_word_progress WHERE id = :row_id"),
+            {"row_id": LEGACY_PROGRESS_ID},
+        ).mappings().one()
+    return {
+        "vocabulary": dict(vocabulary),
+        "profile": dict(profile),
+        "progress": dict(progress),
+    }
+
+
+def assert_domain_schema(engine):
+    inspector = inspect(engine)
+    assert DOMAIN_TABLES <= set(inspector.get_table_names())
+    for table_name, definitions in DOMAIN_INDEX_DEFINITIONS.items():
+        indexes = {
+            index["name"]: index for index in inspector.get_indexes(table_name)
+        }
+        for index_name, (columns, unique) in definitions.items():
+            assert tuple(indexes[index_name]["column_names"]) == columns
+            assert bool(indexes[index_name]["unique"]) is unique
+        if table_name == "curriculum_versions":
+            dialect_options = indexes[
+                "uq_curriculum_versions_one_active"
+            ].get("dialect_options", {})
+            predicate = str(
+                dialect_options[f"{engine.dialect.name}_where"]
+            )
+            normalized_predicate = (
+                predicate.lower()
+                .replace("::text", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace('"', "")
+            )
+            assert " ".join(normalized_predicate.split()) == "status = 'active'"
+
+    expected_composite_foreign_keys = {
+        "curriculum_prerequisites": {
+            (
+                ("curriculum_version_id", "prerequisite_node_id"),
+                "curriculum_nodes",
+                ("curriculum_version_id", "id"),
+            ),
+            (
+                ("curriculum_version_id", "dependent_node_id"),
+                "curriculum_nodes",
+                ("curriculum_version_id", "id"),
+            ),
+        },
+        "activity_instances": {
+            (
+                ("practice_run_id", "selection_policy_version"),
+                "practice_runs",
+                ("id", "selection_policy_version"),
+            ),
+            (
+                (
+                    "practice_run_id",
+                    "retry_of_activity_instance_id",
+                    "target_key",
+                ),
+                "activity_instances",
+                ("practice_run_id", "id", "target_key"),
+            ),
+        },
+        "learning_events": {
+            (
+                ("practice_run_id", "learner_id"),
+                "practice_runs",
+                ("id", "learner_id"),
+            ),
+            (
+                (
+                    "practice_run_id",
+                    "activity_instance_id",
+                    "target_key",
+                    "activity_kind",
+                ),
+                "activity_instances",
+                ("practice_run_id", "id", "target_key", "activity_kind"),
+            ),
+        },
+    }
+    for table_name, expected in expected_composite_foreign_keys.items():
+        actual = {
+            (
+                tuple(foreign_key["constrained_columns"]),
+                foreign_key["referred_table"],
+                tuple(foreign_key["referred_columns"]),
+            )
+            for foreign_key in inspector.get_foreign_keys(table_name)
+        }
+        assert expected <= actual
+
+    state_unique_constraints = {
+        constraint["name"]: tuple(constraint["column_names"])
+        for constraint in inspector.get_unique_constraints("learner_target_states")
+    }
+    assert state_unique_constraints[
+        "uq_learner_target_states_learner_target"
+    ] == ("learner_id", "target_key")
+
+
+def assert_domain_constraints_enforced(engine):
+    if engine.dialect.name == "sqlite":
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO curriculum_versions (
+                    id, curriculum_code, version_number, status, created_at
+                ) VALUES (
+                    '10000000-0000-4000-8000-000000000001',
+                    'constraint-checks', 1, 'draft', '2026-08-26 00:00:00+00:00'
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO curriculum_versions (
+                    id, curriculum_code, version_number, status, created_at
+                ) VALUES (
+                    '10000000-0000-4000-8000-000000000005',
+                    'constraint-checks', 2, 'draft', '2026-08-26 00:00:00+00:00'
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO curriculum_versions (
+                    id, curriculum_code, version_number, status,
+                    created_at, published_at
+                ) VALUES (
+                    '10000000-0000-4000-8000-000000000002',
+                    'one-active', 1, 'active',
+                    '2026-08-26 00:00:00+00:00', '2026-08-26 00:00:00+00:00'
+                )
+                """
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO curriculum_versions (
+                        id, curriculum_code, version_number, status, created_at
+                    ) VALUES (
+                        '10000000-0000-4000-8000-000000000003',
+                        'bad-lifecycle', 1, 'active', '2026-08-26 00:00:00+00:00'
+                    )
+                    """
+                )
+            )
+
+    with pytest.raises(IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO curriculum_versions (
+                        id, curriculum_code, version_number, status,
+                        created_at, published_at
+                    ) VALUES (
+                        '10000000-0000-4000-8000-000000000004',
+                        'one-active', 2, 'active',
+                        '2026-08-26 00:00:00+00:00',
+                        '2026-08-26 00:00:00+00:00'
+                    )
+                    """
+                )
+            )
+
+    with pytest.raises(IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO curriculum_nodes (
+                        id, curriculum_version_id, target_key, target_kind,
+                        target_id, capability, modality, condition_payload,
+                        priority, outcome_code
+                    ) VALUES (
+                        '20000000-0000-4000-8000-000000000001',
+                        '10000000-0000-4000-8000-000000000001',
+                        :target_key, 'sense',
+                        'abcdef12-1234-5678-9234-567812345678',
+                        'retrieve_form', 'written', '{}', 101, 'A1.bad'
+                    )
+                    """
+                ),
+                {"target_key": DOMAIN_TARGET_KEY},
+            )
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO practice_runs (
+                    id, learner_id, status, selection_policy_version, started_at
+                ) VALUES (
+                    '30000000-0000-4000-8000-000000000001',
+                    :learner_id, 'active', 'policy-v1',
+                    '2026-08-26 00:00:00+00:00'
+                )
+                """
+            ),
+            {"learner_id": LEGACY_USER_ID},
+        )
+
+    with pytest.raises(IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO activity_instances (
+                        id, practice_run_id, target_key, learning_intent,
+                        activity_kind, operation, sequence_number,
+                        attempt_number, spec_payload, selection_policy_version,
+                        selection_reason_payload, generator_kind,
+                        generator_version, status, selected_at
+                    ) VALUES (
+                        '40000000-0000-4000-8000-000000000001',
+                        '30000000-0000-4000-8000-000000000001',
+                        :target_key, 'review', 'exposure', NULL, 1, 1,
+                        '{}', 'policy-v2', '[]', 'curated', 'v1', 'pending',
+                        '2026-08-26 00:00:00+00:00'
+                    )
+                    """
+                ),
+                {"target_key": DOMAIN_TARGET_KEY},
+            )
+
+
+def assert_concurrent_progress_state_creation(engine):
+    from sqlalchemy import func
+    from sqlalchemy.orm import Session
+
+    from app.domain_models.progress import LearnerTargetStateModel
+    from app.repositories.progress import ProgressRepository
+
+    start = threading.Barrier(2)
+
+    class BarrierRepository(ProgressRepository):
+        def __init__(self, session):
+            super().__init__(session)
+            self._first_lookup = True
+
+        def _find_state_row(self, learner_id, target_key):
+            row = super()._find_state_row(learner_id, target_key)
+            if self._first_lookup:
+                self._first_lookup = False
+                assert row is None
+                start.wait(timeout=10)
+            return row
+
+    def ensure(state_id):
+        with Session(engine) as session:
+            state = BarrierRepository(session).ensure_state(
+                learner_id=LEGACY_USER_ID,
+                target_key=DOMAIN_TARGET_KEY,
+                state_id=state_id,
+                updated_at=datetime(2026, 8, 26, tzinfo=timezone.utc),
+            )
+            session.commit()
+            return state.state_id
+
+    state_ids = (
+        "50000000-0000-4000-8000-000000000001",
+        "50000000-0000-4000-8000-000000000002",
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(ensure, state_id) for state_id in state_ids]
+        recovered_ids = [future.result(timeout=30) for future in futures]
+
+    with Session(engine) as session:
+        persisted_ids = session.scalars(select(LearnerTargetStateModel.id)).all()
+        row_count = session.scalar(
+            select(func.count()).select_from(LearnerTargetStateModel)
+        )
+    assert row_count == 1
+    assert recovered_ids == [persisted_ids[0], persisted_ids[0]]
+
+
 def assert_active_recall_schedule_schema(engine):
     inspector = inspect(engine)
     progress_columns = {
@@ -286,10 +648,16 @@ def postgresql_migration_database(monkeypatch):
             seed_legacy_progress(initial_engine)
         finally:
             initial_engine.dispose()
+        command.upgrade(config, "20260725_0004")
+        snapshot_engine = create_engine(test_database_url)
+        try:
+            legacy_snapshot = read_seeded_legacy_snapshot(snapshot_engine)
+        finally:
+            snapshot_engine.dispose()
         command.upgrade(config, "head")
 
         test_engine = create_engine(test_database_url)
-        yield config, test_engine
+        yield config, test_engine, legacy_snapshot
     finally:
         if test_engine is not None:
             test_engine.dispose()
@@ -324,6 +692,163 @@ def test_postgresql_migration_target_skips_without_admin_url(monkeypatch):
 
     with pytest.raises(pytest.skip.Exception):
         next(fixture_generator)
+
+
+def test_domain_metadata_registry_creates_all_sql_01_tables():
+    expected_modules = [
+        "app.domain_models.catalog",
+        "app.domain_models.curriculum",
+        "app.domain_models.practice",
+        "app.domain_models.progress",
+    ]
+    script = """
+import json
+import sys
+from app.db import Base, load_model_registry
+
+def snapshot():
+    return {
+        "modules": sorted(
+            name for name in sys.modules
+            if name.startswith("app.domain_models.")
+        ),
+        "tables": sorted(Base.metadata.tables),
+    }
+
+before = snapshot()
+load_model_registry()
+first = snapshot()
+load_model_registry()
+print(json.dumps({"before": before, "first": first, "second": snapshot()}))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=BACKEND_ROOT,
+        env={
+            **os.environ,
+            "EDITOR_PASSWORD": "test-editor-password",
+            "ENVIRONMENT": "test",
+            "PYTHONPATH": str(BACKEND_ROOT),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    snapshot = json.loads(result.stdout)
+    expected = {
+        "modules": expected_modules,
+        "tables": sorted(LEGACY_METADATA_TABLES | DOMAIN_TABLES),
+    }
+    assert snapshot == {
+        "before": {"modules": [], "tables": []},
+        "first": expected,
+        "second": expected,
+    }
+
+    from app.db import Base, load_model_registry
+
+    load_model_registry()
+    assert set(Base.metadata.tables) == LEGACY_METADATA_TABLES | DOMAIN_TABLES
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    assert DOMAIN_TABLES <= set(inspect(engine).get_table_names())
+    Base.metadata.drop_all(engine)
+    assert not inspect(engine).get_table_names()
+    engine.dispose()
+
+
+def test_domain_root_context_exports_are_lazy_and_cached():
+    script = """
+import json
+import sys
+import app.domain as domain
+
+context_names = ["catalog", "curriculum", "practice", "progress"]
+
+def loaded_contexts():
+    return sorted(
+        name for name in sys.modules
+        if name in {f"app.domain.{context}" for context in context_names}
+    )
+
+states = [loaded_contexts()]
+cached = []
+for context_name in context_names:
+    first = getattr(domain, context_name)
+    cached.append(first is getattr(domain, context_name))
+    states.append(loaded_contexts())
+
+try:
+    getattr(domain, "unknown_context")
+except AttributeError:
+    unknown_rejected = True
+else:
+    unknown_rejected = False
+
+print(json.dumps({
+    "cached": cached,
+    "exports": sorted(set(domain.__all__) & set(context_names)),
+    "states": states,
+    "unknown_rejected": unknown_rejected,
+}))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=BACKEND_ROOT,
+        env={
+            **os.environ,
+            "EDITOR_PASSWORD": "test-editor-password",
+            "ENVIRONMENT": "test",
+            "PYTHONPATH": str(BACKEND_ROOT),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {
+        "cached": [True, True, True, True],
+        "exports": ["catalog", "curriculum", "practice", "progress"],
+        "states": [
+            [],
+            ["app.domain.catalog"],
+            ["app.domain.catalog", "app.domain.curriculum"],
+            ["app.domain.catalog", "app.domain.curriculum", "app.domain.practice"],
+            [
+                "app.domain.catalog",
+                "app.domain.curriculum",
+                "app.domain.practice",
+                "app.domain.progress",
+            ],
+        ],
+        "unknown_rejected": True,
+    }
+
+
+def test_domain_migration_round_trip_preserves_legacy_rows(tmp_path, monkeypatch):
+    database_url = f"sqlite:///{tmp_path / 'domain-round-trip.db'}"
+    config = build_alembic_config(database_url, monkeypatch)
+    command.upgrade(config, "20260725_0004")
+    engine = create_engine(database_url)
+    seed_legacy_vocabulary(engine)
+    seed_legacy_progress(engine)
+    legacy_tables = set(inspect(engine).get_table_names())
+    legacy_snapshot = read_seeded_legacy_snapshot(engine)
+    engine.dispose()
+
+    command.upgrade(config, "20260826_0005")
+    assert set(inspect(engine).get_table_names()) == legacy_tables | DOMAIN_TABLES
+    assert_domain_schema(engine)
+    assert_domain_constraints_enforced(engine)
+    assert read_seeded_legacy_snapshot(engine) == legacy_snapshot
+    engine.dispose()
+
+    command.downgrade(config, "20260725_0004")
+    assert set(inspect(engine).get_table_names()) == legacy_tables
+    assert read_seeded_legacy_snapshot(engine) == legacy_snapshot
+    engine.dispose()
 
 
 def test_postgresql_migration_target_rejects_invalid_admin_url(monkeypatch):
@@ -546,12 +1071,15 @@ def test_downgrade_to_initial_schema_preserves_legacy_stress(migration_database)
 
 
 def test_postgresql_migration_round_trip(postgresql_migration_database):
-    config, engine = postgresql_migration_database
+    config, engine, legacy_snapshot = postgresql_migration_database
     inspector = inspect(engine)
     vocabulary_columns = {
         column["name"]: column for column in inspector.get_columns("vocabulary_items")
     }
 
+    assert_domain_schema(engine)
+    assert_domain_constraints_enforced(engine)
+    assert_concurrent_progress_state_creation(engine)
     assert isinstance(vocabulary_columns["stress_pattern"]["type"], JSON)
     assert read_legacy_stress_marker(engine) == LEGACY_STRESS_MARKER
     assert_unique_generation_winner_survives(engine)
@@ -565,6 +1093,14 @@ def test_postgresql_migration_round_trip(postgresql_migration_database):
         "review_interval_days": 0,
         "review_streak": 0,
     }
+    assert read_seeded_legacy_snapshot(engine) == legacy_snapshot
+
+    engine.dispose()
+    command.downgrade(config, "20260725_0004")
+
+    assert DOMAIN_TABLES.isdisjoint(inspect(engine).get_table_names())
+    assert_active_recall_schedule_schema(engine)
+    assert read_seeded_legacy_snapshot(engine) == legacy_snapshot
 
     engine.dispose()
     command.downgrade(config, "20260725_0003")
@@ -598,7 +1134,7 @@ def test_postgresql_expired_reservation_has_one_takeover_and_provider_call(
     postgresql_migration_database,
     monkeypatch,
 ):
-    _, engine = postgresql_migration_database
+    _, engine, _ = postgresql_migration_database
     SessionFactory = sessionmaker(bind=engine)
     expired_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     with SessionFactory() as session:
@@ -692,7 +1228,7 @@ def test_postgresql_expired_reservation_has_one_takeover_and_provider_call(
 def test_postgresql_concurrent_review_grades_accept_exactly_one(
     postgresql_migration_database,
 ):
-    _, engine = postgresql_migration_database
+    _, engine, _ = postgresql_migration_database
     SessionFactory = sessionmaker(bind=engine)
     with SessionFactory() as session:
         progress = session.get(UserWordProgress, LEGACY_PROGRESS_ID)
