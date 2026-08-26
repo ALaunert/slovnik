@@ -182,7 +182,12 @@ class LegacyUserProfile(Protocol):
 class LearningEventView(Protocol):
     event_id: str
     learner_id: str
+    target_key: str
     occurred_at: datetime
+    event_type: object
+    evaluation_source: object | None
+    evaluation_outcome: object | None
+    first_response: object | None
 
 
 @runtime_checkable

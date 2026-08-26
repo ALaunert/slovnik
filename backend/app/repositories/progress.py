@@ -172,6 +172,29 @@ class ProgressRepository:
             return _to_domain(existing)
         return state
 
+    def save_projection(self, state: LearnerTargetState) -> None:
+        row = self._session.get(LearnerTargetStateModel, state.state_id)
+        if (
+            row is None
+            or row.learner_id != state.learner_id
+            or row.target_key != state.target_key
+        ):
+            raise ValueError("Projection state identity does not match its stored row")
+        row.competence_success_weight = state.competence.success_weight
+        row.competence_failure_weight = state.competence.failure_weight
+        row.competence_peak = state.competence.peak
+        row.uncertainty = state.competence.uncertainty
+        row.evidence_count = state.evidence.count
+        row.last_evidence_at = state.evidence.last_evidence_at
+        row.last_event_id = state.evidence.last_event_id
+        row.memory_due_at = state.memory.due_at
+        row.memory_interval_days = state.memory.interval_days
+        row.memory_lapses = state.memory.lapses
+        row.memory_policy_version = state.memory.policy_version
+        row.projection_policy_version = state.projection_policy_version
+        row.updated_at = state.updated_at
+        self._session.flush()
+
     def _find_state_row(
         self,
         learner_id: str,
