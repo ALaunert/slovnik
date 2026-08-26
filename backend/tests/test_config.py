@@ -27,8 +27,11 @@ def test_production_environment_check_is_case_insensitive():
         Settings(environment="Production", editor_password="change-me")
 
 
-def test_openai_settings_have_backend_defaults():
-    config = Settings(environment="test", editor_password="secret")
+def test_openai_settings_have_backend_defaults(monkeypatch):
+    for name in ["OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_TIMEOUT_SECONDS"]:
+        monkeypatch.delenv(name, raising=False)
+
+    config = Settings(_env_file=None, environment="test", editor_password="secret")
 
     assert config.openai_api_key == ""
     assert config.openai_model == "gpt-5.6-luna"
