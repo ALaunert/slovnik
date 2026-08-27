@@ -4,6 +4,7 @@ import sys
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+from types import SimpleNamespace
 from typing import Protocol
 
 import pytest
@@ -671,6 +672,64 @@ def test_selector_uses_review_strengthen_acquire_assess_precedence() -> None:
     assert strengthen.target_key == weak_target.target_key
     assert acquire.target_key == acquire_target.target_key
     assert assess.target_key == assess_target.target_key
+
+
+def test_selector_prioritizes_due_state_and_does_not_mutate_projection() -> None:
+    from app.domain.practice import LearningIntent, SelectionReason
+    from app.domain.progress import LearnerTargetState
+    from app.services.learner_projection_service import project_event
+
+    due_target = _target(target_id="14141414-1414-4414-8414-141414141414")
+    acquire_target = _target(target_id="15151515-1515-4515-8515-151515151515")
+    baseline = LearnerTargetState.neutral(
+        state_id="16161616-1616-4616-8616-161616161616",
+        learner_id="learner-1",
+        target_key=due_target.target_key,
+        updated_at=NOW - timedelta(hours=3),
+    )
+
+    def event(event_id, occurred_at, outcome):
+        return SimpleNamespace(
+            event_id=event_id,
+            learner_id="learner-1",
+            target_key=due_target.target_key,
+            occurred_at=occurred_at,
+            event_type="response_evaluated",
+            evaluation_source="deterministic",
+            evaluation_outcome=outcome,
+            first_response=None,
+        )
+
+    projected = project_event(
+        project_event(
+            baseline,
+            event(
+                "17171717-1717-4717-8717-171717171711",
+                NOW - timedelta(hours=2),
+                "correct",
+            ),
+        ),
+        event(
+            "17171717-1717-4717-8717-171717171712",
+            NOW - timedelta(hours=1),
+            "incorrect",
+        ),
+    )
+    before_bytes = repr(projected).encode("utf-8")
+
+    decision = _service(
+        (
+            _curriculum_target(acquire_target, priority=100),
+            _curriculum_target(due_target, priority=1),
+        ),
+        {due_target.target_key: projected},
+    ).select_next(learner_id="learner-1", now=NOW)
+
+    assert decision.intent is LearningIntent.REVIEW
+    assert decision.target_key == due_target.target_key
+    assert decision.reason_codes == (SelectionReason.DUE_REVIEW,)
+    assert decision.policy_version == "selector-v1"
+    assert repr(projected).encode("utf-8") == before_bytes
 
 
 def test_selector_returns_exact_no_activity_codes_and_respects_future_hold() -> None:

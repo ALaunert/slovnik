@@ -559,7 +559,21 @@ def test_late_event_resets_target_projection_to_frozen_baseline(
         replayed.memory.interval_days,
         replayed.memory.due_at,
         replayed.memory.lapses,
-    ) == (2, later_time, later.event_id, 1, 1, 0.5, 1, later_time + timedelta(days=1), 1)
+        replayed.projection_policy_version,
+        replayed.memory.policy_version,
+    ) == (
+        2,
+        later_time,
+        later.event_id,
+        1,
+        1,
+        0.5,
+        1,
+        later_time + timedelta(days=1),
+        1,
+        "projection-v1",
+        "memory-v1",
+    )
 
 
 def test_reverse_event_id_at_equal_time_triggers_canonical_replay(
@@ -594,7 +608,9 @@ def test_reverse_event_id_at_equal_time_triggers_canonical_replay(
         replayed.competence.peak,
         replayed.memory.interval_days,
         replayed.memory.lapses,
-    ) == (2, higher.event_id, 0.5, 1, 1)
+        replayed.projection_policy_version,
+        replayed.memory.policy_version,
+    ) == (2, higher.event_id, 0.5, 1, 1, "projection-v1", "memory-v1")
 
 
 def test_native_evidence_preserves_legacy_baseline_and_switches_policy_versions() -> None:

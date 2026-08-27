@@ -892,6 +892,57 @@ def test_frontier_uses_peak_and_ignores_later_failure_or_overdue_memory() -> Non
     assert dependent.reason_codes == (FrontierReason.READY,)
 
 
+def test_frontier_consumes_projected_high_water_state_after_later_failure() -> None:
+    from app.domain.progress import LearnerTargetState
+    from app.services.learner_projection_service import project_event
+
+    curriculum = _hard_curriculum()
+    prerequisite = curriculum.nodes[0]
+    state = LearnerTargetState.neutral(
+        state_id="50000000-0000-4000-8000-000000000001",
+        learner_id="learner-1",
+        target_key=prerequisite.target.target_key,
+        updated_at=NOW - timedelta(hours=3),
+    )
+    success = SimpleNamespace(
+        event_id="60000000-0000-4000-8000-000000000001",
+        learner_id="learner-1",
+        target_key=prerequisite.target.target_key,
+        occurred_at=NOW - timedelta(hours=2),
+        event_type="response_evaluated",
+        evaluation_source="deterministic",
+        evaluation_outcome="correct",
+        first_response=None,
+    )
+    failure = SimpleNamespace(
+        event_id="60000000-0000-4000-8000-000000000002",
+        learner_id="learner-1",
+        target_key=prerequisite.target.target_key,
+        occurred_at=NOW - timedelta(hours=1),
+        event_type="response_evaluated",
+        evaluation_source="deterministic",
+        evaluation_outcome="incorrect",
+        first_response=None,
+    )
+    projected = project_event(project_event(state, success), failure)
+
+    decisions = CurriculumFrontierPolicy().evaluate(
+        curriculum,
+        states_by_target_key={prerequisite.target.target_key: projected},
+        requested_level="A1",
+    )
+    dependent = next(
+        decision for decision in decisions if decision.node.id == NODE_B_ID
+    )
+
+    assert projected.competence.peak == 2 / 3
+    assert projected.competence.failure_weight == 1
+    assert projected.memory.due_at == failure.occurred_at
+    assert dependent.availability is FrontierAvailability.AVAILABLE
+    assert dependent.reason_codes == (FrontierReason.READY,)
+    assert dependent.policy_version == "frontier-v1"
+
+
 @pytest.mark.parametrize("prerequisite_ready", [False, True])
 def test_soft_prerequisite_only_contributes_readiness_metadata(
     prerequisite_ready: bool,
