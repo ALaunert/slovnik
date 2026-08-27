@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from types import MappingProxyType
 from uuid import UUID
@@ -185,6 +186,23 @@ class EvaluationOutcome(str, Enum):
     UNKNOWN = "unknown"
 
 
+class LearningEventType(str, Enum):
+    EXPOSURE = "exposure"
+    RESPONSE_EVALUATED = "response_evaluated"
+
+
+class HintKind(str, Enum):
+    CUE = "cue"
+    REVEAL = "reveal"
+    CORRECTION = "correction"
+
+
+class RepairOutcome(str, Enum):
+    REPAIRED = "repaired"
+    NOT_REPAIRED = "not_repaired"
+    NOT_ATTEMPTED = "not_attempted"
+
+
 @dataclass(frozen=True)
 class ResponseSnapshot:
     kind: ResponseKind
@@ -214,6 +232,17 @@ class ResponseSnapshot:
             "value": self.value,
             "truncated": self.truncated,
         }
+
+    @classmethod
+    def from_input(cls, *, kind: ResponseKind, value: str) -> ResponseSnapshot:
+        if kind is ResponseKind.TEXT and isinstance(value, str):
+            normalized = unicodedata.normalize("NFC", value)
+            return cls(
+                kind=kind,
+                value=normalized[:2000],
+                truncated=len(normalized) > 2000,
+            )
+        return cls(kind=kind, value=value)
 
 
 @dataclass(frozen=True)
@@ -656,3 +685,431 @@ class ActivityInstance:
         if self.status.is_terminal:
             raise ValueError("Activity is already terminal")
         return replace(self, status=status, terminal_at=terminal_at)
+
+
+@dataclass(frozen=True)
+class HintSnapshot:
+    kind: HintKind
+    sequence_number: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, HintKind):
+            raise ValueError("Hint kind must use a registered wire value")
+        if type(self.sequence_number) is not int or self.sequence_number < 1:
+            raise ValueError("Hint sequence_number must be at least 1")
+
+    def to_payload(self) -> dict[str, object]:
+        return {"kind": self.kind.value, "sequence_number": self.sequence_number}
+
+
+@dataclass(frozen=True)
+class FeedbackSnapshot:
+    code: str
+    delivered_at: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.code, str) or not self.code or len(self.code) > 64:
+            raise ValueError("Feedback code must contain at most 64 characters")
+        _require_aware_timestamp(self.delivered_at, "Feedback delivered_at")
+        object.__setattr__(self, "code", unicodedata.normalize("NFC", self.code))
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "code": self.code,
+            "delivered_at": _utc_text(self.delivered_at),
+        }
+
+
+@dataclass(frozen=True)
+class LegacySourceRef:
+    kind: str
+    reference: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.kind, str)
+            or not self.kind
+            or len(self.kind) > 64
+            or not isinstance(self.reference, str)
+            or not self.reference
+            or len(self.reference) > 255
+        ):
+            raise ValueError("Legacy source requires bounded kind and stable reference")
+        object.__setattr__(self, "kind", unicodedata.normalize("NFC", self.kind))
+        object.__setattr__(
+            self,
+            "reference",
+            unicodedata.normalize("NFC", self.reference),
+        )
+
+    def to_payload(self) -> dict[str, object]:
+        return {"kind": self.kind, "reference": self.reference}
+
+
+@dataclass(frozen=True)
+class LearningEventRequest:
+    event_id: str
+    learner_id: str
+    activity_instance_id: str
+    idempotency_key: str
+    occurred_at: datetime
+    first_response: ResponseSnapshot | None = None
+    final_response: ResponseSnapshot | None = None
+    evaluation: Evaluation | None = None
+    latency_ms: int | None = None
+    hints: tuple[HintSnapshot, ...] = ()
+    learner_confidence: float | None = None
+    feedback: FeedbackSnapshot | None = None
+    repair_outcome: RepairOutcome | None = None
+    legacy_source: LegacySourceRef | None = None
+
+    def __post_init__(self) -> None:
+        _require_canonical_uuid(self.event_id, "LearningEvent event_id")
+        _require_canonical_uuid(
+            self.activity_instance_id,
+            "LearningEvent activity_instance_id",
+        )
+        if not isinstance(self.learner_id, str) or not self.learner_id:
+            raise ValueError("LearningEvent learner_id is required")
+        if (
+            not isinstance(self.idempotency_key, str)
+            or not self.idempotency_key
+            or len(self.idempotency_key) > 255
+        ):
+            raise ValueError("LearningEvent idempotency key must contain at most 255 characters")
+        _require_aware_timestamp(self.occurred_at, "LearningEvent occurred_at")
+        for response in (self.first_response, self.final_response):
+            if response is not None and not isinstance(response, ResponseSnapshot):
+                raise ValueError("LearningEvent responses must be bounded snapshots")
+        if self.evaluation is not None and not isinstance(self.evaluation, Evaluation):
+            raise ValueError("LearningEvent evaluation must be bounded")
+        if self.latency_ms is not None and (
+            type(self.latency_ms) is not int or self.latency_ms < 0
+        ):
+            raise ValueError("LearningEvent latency_ms must be a nonnegative integer")
+        if (
+            not isinstance(self.hints, tuple)
+            or len(self.hints) > 10
+            or any(not isinstance(hint, HintSnapshot) for hint in self.hints)
+        ):
+            raise ValueError("LearningEvent hints are bounded to 10 immutable objects")
+        if self.learner_confidence is not None and not _is_unit_interval(
+            self.learner_confidence
+        ):
+            raise ValueError("Learner confidence must be finite and between 0 and 1")
+        if self.feedback is not None and not isinstance(self.feedback, FeedbackSnapshot):
+            raise ValueError("LearningEvent feedback must be bounded metadata")
+        if self.repair_outcome is not None and not isinstance(
+            self.repair_outcome, RepairOutcome
+        ):
+            raise ValueError("LearningEvent repair outcome must use a registered value")
+        if self.legacy_source is not None and not isinstance(
+            self.legacy_source, LegacySourceRef
+        ):
+            raise ValueError("LearningEvent legacy source must be a stable reference")
+
+    def semantic_payload(self) -> dict[str, object]:
+        return {
+            "activity_instance_id": self.activity_instance_id,
+            "first_response": _response_payload(self.first_response),
+            "final_response": _response_payload(self.final_response),
+            "legacy_source": (
+                self.legacy_source.to_payload() if self.legacy_source else None
+            ),
+        }
+
+    @property
+    def semantic_fingerprint(self) -> str:
+        encoded = json.dumps(
+            self.semantic_payload(),
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+
+@dataclass(frozen=True)
+class LearningEvent:
+    event_id: str
+    schema_version: int
+    learner_id: str
+    practice_run_id: str
+    activity_instance_id: str
+    target_spec: TargetSpec
+    event_type: LearningEventType
+    learning_intent: LearningIntent
+    activity_kind: ActivityKind
+    operation: ExerciseOperation | None
+    input_modality: Modality
+    output_modality: Modality | None
+    cue_level: CueLevel
+    first_response: ResponseSnapshot | None
+    final_response: ResponseSnapshot | None
+    evaluation: Evaluation | None
+    latency_ms: int | None
+    hints: tuple[HintSnapshot, ...]
+    learner_confidence: float | None
+    feedback: FeedbackSnapshot | None
+    repair_outcome: RepairOutcome | None
+    legacy_source: LegacySourceRef | None
+    generator_kind: GeneratorKind
+    generator_version: str
+    scorer_version: str | None
+    selection: SelectionMetadata
+    idempotency_key: str
+    occurred_at: datetime
+    created_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or type(self.schema_version) is not int:
+            raise ValueError("LearningEvent schema_version must be 1")
+        _require_canonical_uuid(self.event_id, "LearningEvent event_id")
+        _require_canonical_uuid(self.practice_run_id, "LearningEvent practice_run_id")
+        _require_canonical_uuid(
+            self.activity_instance_id,
+            "LearningEvent activity_instance_id",
+        )
+        _require_aware_timestamp(self.occurred_at, "LearningEvent occurred_at")
+        _require_aware_timestamp(self.created_at, "LearningEvent created_at")
+        if not isinstance(self.target_spec, TargetSpec):
+            raise ValueError("LearningEvent requires a canonical target snapshot")
+        event_enums = (
+            (self.event_type, LearningEventType),
+            (self.learning_intent, LearningIntent),
+            (self.activity_kind, ActivityKind),
+            (self.input_modality, Modality),
+            (self.cue_level, CueLevel),
+            (self.generator_kind, GeneratorKind),
+        )
+        if any(not isinstance(value, enum_type) for value, enum_type in event_enums):
+            raise ValueError("LearningEvent enum fields must use registered wire values")
+        if self.operation is not None and not isinstance(
+            self.operation, ExerciseOperation
+        ):
+            raise ValueError("LearningEvent operation must use a registered wire value")
+        if self.output_modality is not None and not isinstance(
+            self.output_modality, Modality
+        ):
+            raise ValueError("LearningEvent output modality must use a registered value")
+        if not isinstance(self.selection, SelectionMetadata):
+            raise ValueError("LearningEvent requires bounded selection metadata")
+        invalid_scorer_version = self.scorer_version is not None and (
+            not isinstance(self.scorer_version, str)
+            or not self.scorer_version
+            or len(self.scorer_version) > 120
+        )
+        if (
+            not isinstance(self.generator_version, str)
+            or not self.generator_version
+            or len(self.generator_version) > 120
+            or invalid_scorer_version
+        ):
+            raise ValueError("LearningEvent generator/scorer versions are bounded")
+        request = self.as_request()
+        if self.activity_kind is ActivityKind.EXPOSURE:
+            if (
+                self.event_type is not LearningEventType.EXPOSURE
+                or self.operation is not None
+                or self.output_modality is not None
+                or self.scorer_version is not None
+                or request.first_response is not None
+                or request.final_response is not None
+                or request.evaluation is not None
+            ):
+                raise ValueError("Exposure event has an incompatible shape")
+        elif (
+            self.event_type is not LearningEventType.RESPONSE_EVALUATED
+            or self.operation is None
+            or self.output_modality is None
+            or self.scorer_version is None
+            or request.first_response is None
+            or request.evaluation is None
+        ):
+            raise ValueError("Exercise event has an incompatible shape")
+        if request.evaluation is not None:
+            responses = tuple(
+                response
+                for response in (request.first_response, request.final_response)
+                if response is not None
+            )
+            if request.evaluation.source is EvaluationSource.SELF_REPORT:
+                if any(response.kind is not ResponseKind.RATING for response in responses):
+                    raise ValueError("Self-report requires rating response snapshots")
+            elif any(response.kind is ResponseKind.RATING for response in responses):
+                raise ValueError("Rating responses are reserved for self-report")
+        if _canonical_json_size(self.to_observation_payload()) > 16 * 1024:
+            raise ValueError("LearningEvent observation payload must not exceed 16 KiB")
+
+    @property
+    def target_key(self) -> str:
+        return self.target_spec.target_key
+
+    @property
+    def evaluation_source(self) -> EvaluationSource | None:
+        return self.evaluation.source if self.evaluation else None
+
+    @property
+    def evaluation_outcome(self) -> EvaluationOutcome | None:
+        return self.evaluation.outcome if self.evaluation else None
+
+    @property
+    def evaluation_confidence(self) -> float | None:
+        return self.evaluation.confidence if self.evaluation else None
+
+    @property
+    def partial_score(self) -> float | None:
+        return self.evaluation.partial_score if self.evaluation else None
+
+    @property
+    def error_tags(self) -> tuple[str, ...]:
+        return self.evaluation.error_tags if self.evaluation else ()
+
+    @property
+    def selection_policy_version(self) -> str:
+        return self.selection.policy_version
+
+    @property
+    def selection_reasons(self) -> tuple[SelectionReason, ...]:
+        return self.selection.reasons
+
+    @property
+    def selection_propensity(self) -> float | None:
+        return self.selection.propensity
+
+    @property
+    def semantic_fingerprint(self) -> str:
+        return self.as_request().semantic_fingerprint
+
+    def as_request(self) -> LearningEventRequest:
+        return LearningEventRequest(
+            event_id=self.event_id,
+            learner_id=self.learner_id,
+            activity_instance_id=self.activity_instance_id,
+            idempotency_key=self.idempotency_key,
+            occurred_at=self.occurred_at,
+            first_response=self.first_response,
+            final_response=self.final_response,
+            evaluation=self.evaluation,
+            latency_ms=self.latency_ms,
+            hints=self.hints,
+            learner_confidence=self.learner_confidence,
+            feedback=self.feedback,
+            repair_outcome=self.repair_outcome,
+            legacy_source=self.legacy_source,
+        )
+
+    def to_observation_payload(self) -> dict[str, object]:
+        evaluation = self.evaluation
+        return {
+            "target_spec": self.target_spec.to_payload(),
+            "learning_intent": self.learning_intent.value,
+            "operation": self.operation.value if self.operation else None,
+            "input_modality": self.input_modality.value,
+            "output_modality": (
+                self.output_modality.value if self.output_modality else None
+            ),
+            "cue_level": self.cue_level.value,
+            "first_response": _response_payload(self.first_response),
+            "final_response": _response_payload(self.final_response),
+            "evaluation_source": evaluation.source.value if evaluation else None,
+            "evaluation_outcome": evaluation.outcome.value if evaluation else None,
+            "evaluation_confidence": evaluation.confidence if evaluation else None,
+            "partial_score": evaluation.partial_score if evaluation else None,
+            "error_tags": list(evaluation.error_tags) if evaluation else [],
+            "latency_ms": self.latency_ms,
+            "hints": [hint.to_payload() for hint in self.hints],
+            "learner_confidence": self.learner_confidence,
+            "feedback": self.feedback.to_payload() if self.feedback else None,
+            "repair_outcome": (
+                self.repair_outcome.value if self.repair_outcome else None
+            ),
+            "legacy_source": (
+                self.legacy_source.to_payload() if self.legacy_source else None
+            ),
+            "generator_kind": self.generator_kind.value,
+            "generator_version": self.generator_version,
+            "scorer_version": self.scorer_version,
+            "selection_policy_version": self.selection.policy_version,
+            "selection_reasons": self.selection.to_payload(),
+            "selection_propensity": self.selection.propensity,
+        }
+
+
+def build_learning_event(
+    activity: ActivityInstance,
+    request: LearningEventRequest,
+    *,
+    created_at: datetime,
+    received_at: datetime,
+) -> LearningEvent:
+    if activity.id != request.activity_instance_id:
+        raise ValueError("LearningEvent request must reference its stored activity")
+    _require_aware_timestamp(received_at, "LearningEvent received_at")
+    if request.occurred_at < activity.selected_at:
+        raise ValueError("LearningEvent cannot occur before activity selection")
+    if request.occurred_at > received_at + timedelta(minutes=5):
+        raise ValueError("LearningEvent cannot occur more than five minutes in the future")
+    if activity.activity_kind is ActivityKind.EXPOSURE:
+        if any(
+            value is not None
+            for value in (
+                request.first_response,
+                request.final_response,
+                request.evaluation,
+            )
+        ):
+            raise ValueError("Exposure cannot contain response or evaluation")
+        event_type = LearningEventType.EXPOSURE
+    else:
+        evaluation = request.evaluation
+        if request.first_response is None or evaluation is None:
+            raise ValueError("Exercise requires response and evaluation")
+        if activity.scorer_kind is None or evaluation.source.value != activity.scorer_kind.value:
+            raise ValueError("Evaluation source must match stored activity scorer")
+        if activity.scorer_kind is ScorerKind.SELF_REPORT:
+            if request.first_response.kind is not ResponseKind.RATING:
+                raise ValueError("Self-report requires a rating response")
+        elif request.first_response.kind is ResponseKind.RATING:
+            raise ValueError("Rating responses are reserved for self-report")
+        event_type = LearningEventType.RESPONSE_EVALUATED
+    return LearningEvent(
+        event_id=request.event_id,
+        schema_version=1,
+        learner_id=request.learner_id,
+        practice_run_id=activity.practice_run_id,
+        activity_instance_id=activity.id,
+        target_spec=activity.target_spec,
+        event_type=event_type,
+        learning_intent=activity.learning_intent,
+        activity_kind=activity.activity_kind,
+        operation=activity.operation,
+        input_modality=activity.spec.input_modality,
+        output_modality=activity.spec.output_modality,
+        cue_level=activity.spec.cue_level,
+        first_response=request.first_response,
+        final_response=request.final_response,
+        evaluation=request.evaluation,
+        latency_ms=request.latency_ms,
+        hints=request.hints,
+        learner_confidence=request.learner_confidence,
+        feedback=request.feedback,
+        repair_outcome=request.repair_outcome,
+        legacy_source=request.legacy_source,
+        generator_kind=activity.generator_kind,
+        generator_version=activity.generator_version,
+        scorer_version=activity.scorer_version,
+        selection=activity.selection,
+        idempotency_key=request.idempotency_key,
+        occurred_at=request.occurred_at,
+        created_at=created_at,
+    )
+
+
+def _response_payload(response: ResponseSnapshot | None) -> dict[str, object] | None:
+    return response.to_payload() if response else None
+
+
+def _utc_text(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
