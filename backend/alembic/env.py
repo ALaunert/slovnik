@@ -4,8 +4,9 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.config import settings
-from app.db import Base
-from app import models  # noqa: F401
+from app.db import Base, load_model_registry
+
+load_model_registry()
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

@@ -211,7 +211,7 @@ class QuizStartRead(BaseModel):
 class QuizAnswerPayload(BaseModel):
     word_id: int
     question_type: Literal["sr_to_ru_choice", "ru_to_sr_typing", "remembered_forgot_self_check"]
-    answer: str
+    answer: str = Field(max_length=4096)
 
 
 class QuizAnswerRead(BaseModel):

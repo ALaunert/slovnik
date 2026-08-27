@@ -9,7 +9,10 @@ from sqlalchemy.pool import StaticPool
 os.environ["ENVIRONMENT"] = "test"
 os.environ["EDITOR_PASSWORD"] = "test-editor-password"
 
-from app.db import Base, get_db  # noqa: E402
+from app.db import Base, get_db, load_model_registry  # noqa: E402
+
+load_model_registry()
+
 from app.main import app  # noqa: E402
 
 

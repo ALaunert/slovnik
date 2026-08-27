@@ -1,11 +1,21 @@
+from collections.abc import Callable
 from datetime import datetime, time, timedelta, timezone
+import logging
 from typing import Any, Literal, TypedDict
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import UserWordProgress, VocabularyItem
 from app.services.profile_service import get_or_create_profile
+from app.services.shadow_learning_service import (
+    ShadowLearningFailure,
+    record_new_word_batch,
+    record_review_rating,
+)
+from app.services.shadow_comparison_service import LegacyLearningSelectionKind
+from app.services.shadow_selection_runtime import run_selection_comparison
 
 ReviewRating = Literal["again", "hard", "good", "easy"]
 
@@ -18,6 +28,7 @@ EASY_INITIAL_INTERVAL_DAYS = 4
 EASY_INTERVAL_MULTIPLIER = 3
 EASY_MAX_INTERVAL_DAYS = 365
 LEARNED_REVIEW_STREAK = 3
+logger = logging.getLogger(__name__)
 
 
 class ReviewWord(TypedDict):
@@ -117,7 +128,7 @@ def apply_review_rating(
 def get_daily_new_words(db: Session, user_id: str) -> list[VocabularyItem]:
     profile = get_or_create_profile(db, user_id)
     seen_word_ids = select(UserWordProgress.word_id).where(UserWordProgress.user_id == user_id)
-    return list(
+    words = list(
         db.scalars(
             select(VocabularyItem)
             .where(VocabularyItem.cefr_level == profile.preferred_level)
@@ -126,6 +137,18 @@ def get_daily_new_words(db: Session, user_id: str) -> list[VocabularyItem]:
             .limit(profile.daily_new_word_count)
         )
     )
+    if settings.language_assistant_shadow_enabled:
+        run_selection_comparison(
+            bind=db.get_bind(),
+            learner_id=user_id,
+            kind=(
+                LegacyLearningSelectionKind.NEW
+                if words
+                else LegacyLearningSelectionKind.NONE
+            ),
+            word_id=words[0].id if words else None,
+        )
+    return words
 
 
 def _ensure_words_exist(db: Session, word_ids: list[int]) -> None:
@@ -141,6 +164,77 @@ def _ensure_words_selected(selected_ids: set[int], word_ids: list[int]) -> None:
     unselected_ids = sorted(set(word_ids) - selected_ids)
     if unselected_ids:
         raise ValueError(f"Word ids are not in the current session: {unselected_ids}")
+
+
+def _record_shadow_new_word_batch(
+    db: Session,
+    *,
+    learner_id: str,
+    progress_rows: list[UserWordProgress],
+    occurred_at: datetime,
+) -> None:
+    if not settings.language_assistant_shadow_enabled or not progress_rows:
+        return
+    db.flush()
+    unique_progress_rows = tuple(dict.fromkeys(progress_rows))
+    _run_shadow_write(
+        lambda: record_new_word_batch(
+            db,
+            learner_id=learner_id,
+            progress_rows=unique_progress_rows,
+            occurred_at=occurred_at,
+        )
+    )
+
+
+def _run_shadow_write(write: Callable[[], object]) -> None:
+    try:
+        write()
+    except ShadowLearningFailure:
+        raise
+    except Exception:
+        pass
+    else:
+        return
+    raise ShadowLearningFailure("Learning shadow write failed") from None
+
+
+def _record_shadow_review_rating(
+    db: Session,
+    *,
+    learner_id: str,
+    progress: UserWordProgress,
+    locked_due_at: datetime | None,
+    rating: ReviewRating,
+    occurred_at: datetime,
+) -> None:
+    if not settings.language_assistant_shadow_enabled:
+        return
+    _run_shadow_write(
+        lambda: record_review_rating(
+            db,
+            learner_id=learner_id,
+            progress=progress,
+            locked_due_at=locked_due_at,
+            rating=rating,
+            occurred_at=occurred_at,
+        )
+    )
+
+
+def _commit_atomic(db: Session, write_shadow: Callable[[], None]) -> None:
+    try:
+        write_shadow()
+        db.commit()
+    except Exception:
+        db.rollback()
+        _log_shadow_failure()
+        raise
+
+
+def _log_shadow_failure() -> None:
+    if settings.language_assistant_shadow_enabled:
+        logger.error("Learning shadow write failed")
 
 
 def complete_new_words(db: Session, user_id: str, word_ids: list[int]) -> list[UserWordProgress]:
@@ -164,7 +258,15 @@ def complete_new_words(db: Session, user_id: str, word_ids: list[int]) -> list[U
         progress.last_seen_at = now
         progress.next_review_at = now + timedelta(days=1)
         progress_rows.append(progress)
-    db.commit()
+    _commit_atomic(
+        db,
+        lambda: _record_shadow_new_word_batch(
+            db,
+            learner_id=user_id,
+            progress_rows=progress_rows,
+            occurred_at=now,
+        ),
+    )
     for progress in progress_rows:
         db.refresh(progress)
     return progress_rows
@@ -214,6 +316,13 @@ def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
     )
     selected = [progress.word_id for progress in due_rows]
     if not selected:
+        if settings.language_assistant_shadow_enabled:
+            run_selection_comparison(
+                bind=db.get_bind(),
+                learner_id=user_id,
+                kind=LegacyLearningSelectionKind.NONE,
+                word_id=None,
+            )
         return []
     words_by_id = {
         word.id: word for word in db.scalars(select(VocabularyItem).where(VocabularyItem.id.in_(selected)))
@@ -242,6 +351,20 @@ def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
                 "incorrect_count": progress.incorrect_count,
                 "is_weak": progress.is_weak,
             }
+        )
+    first = result[0] if result else None
+    if settings.language_assistant_shadow_enabled:
+        run_selection_comparison(
+            bind=db.get_bind(),
+            learner_id=user_id,
+            kind=(
+                LegacyLearningSelectionKind.WEAK
+                if first is not None and first["is_weak"]
+                else LegacyLearningSelectionKind.DUE
+                if first is not None
+                else LegacyLearningSelectionKind.NONE
+            ),
+            word_id=first["id"] if first is not None else None,
         )
     return result
 
@@ -279,8 +402,19 @@ def grade_review(
     if not _is_review_due(progress, now):
         raise ValueError("Word is not currently due for review")
 
+    locked_due_at = _as_utc(progress.next_review_at)
     apply_review_rating(progress, rating, now)
-    db.commit()
+    _commit_atomic(
+        db,
+        lambda: _record_shadow_review_rating(
+            db,
+            learner_id=user_id,
+            progress=progress,
+            locked_due_at=locked_due_at,
+            rating=rating,
+            occurred_at=now,
+        ),
+    )
     db.refresh(progress)
     return progress
 

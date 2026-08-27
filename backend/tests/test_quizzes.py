@@ -1,8 +1,32 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy import select
 
 from app.models import UserWordProgress, VocabularyItem
+
+
+@pytest.fixture(autouse=True)
+def prepare_catalog_for_shadow_quiz_flows(client, db_session, monkeypatch):
+    from app.config import settings
+    from app.services.domain_bootstrap_service import bootstrap_catalog
+
+    original_post = client.post
+
+    def post(url, *args, **kwargs):
+        url_text = str(url)
+        shadow_enabled = settings.language_assistant_shadow_enabled
+        if shadow_enabled and url_text.endswith("/new-words/complete"):
+            settings.language_assistant_shadow_enabled = False
+            try:
+                return original_post(url, *args, **kwargs)
+            finally:
+                settings.language_assistant_shadow_enabled = True
+        if shadow_enabled and url_text.endswith("/start"):
+            bootstrap_catalog(db_session)
+        return original_post(url, *args, **kwargs)
+
+    monkeypatch.setattr(client, "post", post)
 
 
 def test_start_daily_quiz_returns_supported_question_types(client, completed_learning):
@@ -372,3 +396,49 @@ def test_complete_quiz_rejects_already_completed_attempt(client, started_quiz):
 
     assert first.status_code == 200
     assert second.status_code == 400
+
+
+def test_shadow_flag_off_keeps_quiz_paths_free_of_domain_work(
+    client,
+    completed_learning,
+    monkeypatch,
+):
+    import app.services.quiz_service as quiz_service
+
+    class UnexpectedShadowService:
+        def __init__(self, _session):
+            raise AssertionError("flag-off quiz path constructed the shadow adapter")
+
+    monkeypatch.setattr(
+        quiz_service.settings,
+        "language_assistant_shadow_enabled",
+        False,
+    )
+    monkeypatch.setattr(quiz_service, "ShadowQuizService", UnexpectedShadowService)
+
+    started = client.post(
+        "/api/quizzes/learner-1/start",
+        json={"quiz_type": "daily"},
+    )
+    assert started.status_code == 200
+    body = started.json()
+    for question in body["questions"]:
+        payload = {
+            "word_id": question["word_id"],
+            "question_type": question["question_type"],
+            "answer": "wrong",
+        }
+        assert client.post(
+            f"/api/quizzes/learner-1/{body['attempt_id']}/answers",
+            json=payload,
+        ).status_code == 200
+        assert client.post(
+            f"/api/quizzes/learner-1/{body['attempt_id']}/answers",
+            json=payload,
+        ).status_code == 200
+
+    completed = client.post(
+        f"/api/quizzes/learner-1/{body['attempt_id']}/complete"
+    )
+    assert completed.status_code == 200
+    assert completed.json()["total_questions"] == len(body["questions"])

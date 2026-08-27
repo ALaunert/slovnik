@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-luna"
     openai_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    language_assistant_shadow_enabled: bool = False
+    language_assistant_shadow_data_lifecycle_ready: bool = False
+    language_assistant_shadow_trusted_identity_ready: bool = False
 
     model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8", extra="ignore")
 
@@ -21,6 +24,24 @@ class Settings(BaseSettings):
         is_local_env = self.environment.strip().casefold() in local_environments
         if is_placeholder and not is_local_env:
             raise ValueError("EDITOR_PASSWORD placeholders are allowed only in explicit local/test environments")
+        return self
+
+    @model_validator(mode="after")
+    def require_shadow_release_gates_outside_local_env(self) -> "Settings":
+        local_environments = {"development", "local", "test"}
+        is_local_env = self.environment.strip().casefold() in local_environments
+        release_gates_ready = (
+            self.language_assistant_shadow_data_lifecycle_ready
+            and self.language_assistant_shadow_trusted_identity_ready
+        )
+        if (
+            self.language_assistant_shadow_enabled
+            and not is_local_env
+            and not release_gates_ready
+        ):
+            raise ValueError(
+                "Language-assistant shadow production gates are not ready"
+            )
         return self
 
 

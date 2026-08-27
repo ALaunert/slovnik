@@ -55,6 +55,37 @@ def test_complete_new_words_records_first_seen_progress(client, seeded_words):
     assert all(item["status"] == "seen" for item in response.json()["progress"])
 
 
+def test_complete_new_words_does_no_shadow_work_when_flag_is_off(
+    client,
+    db_session,
+    seeded_words,
+    monkeypatch,
+):
+    from sqlalchemy import func, select
+
+    from app.config import settings
+    from app.domain_models.practice import LearningEventModel
+    from app.services import learning_service
+
+    shadow_calls = []
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", False)
+    monkeypatch.setattr(
+        learning_service,
+        "record_new_word_batch",
+        lambda *args, **kwargs: shadow_calls.append((args, kwargs)),
+    )
+
+    response = client.post(
+        "/api/learning/learner-1/new-words/complete",
+        json={"word_ids": [seeded_words[0].id]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["progress"][0]["status"] == "seen"
+    assert shadow_calls == []
+    assert db_session.scalar(select(func.count()).select_from(LearningEventModel)) == 0
+
+
 def test_complete_new_words_schedules_first_review_in_about_one_day(client, seeded_words):
     before_due = datetime.now(timezone.utc) + timedelta(hours=23, minutes=59)
 
@@ -754,6 +785,49 @@ def test_grade_review_locks_owned_progress_before_due_check(
 
     assert len(progress_statements) == 1
     assert progress_statements[0]._for_update_arg is not None
+
+
+def test_grade_review_does_no_shadow_work_when_flag_is_off(
+    db_session,
+    seeded_words,
+    monkeypatch,
+):
+    from sqlalchemy import func, select
+
+    from app.config import settings
+    from app.domain_models.practice import LearningEventModel
+    from app.services import learning_service
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    progress = UserWordProgress(
+        user_id="flag-off-review",
+        word_id=seeded_words[0].id,
+        status="reviewing",
+        first_seen_at=now - timedelta(days=2),
+        last_seen_at=now - timedelta(days=1),
+        next_review_at=now - timedelta(minutes=1),
+    )
+    db_session.add(UserProfile(user_id="flag-off-review"))
+    db_session.add(progress)
+    db_session.commit()
+    shadow_calls = []
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", False)
+    monkeypatch.setattr(
+        learning_service,
+        "record_review_rating",
+        lambda *args, **kwargs: shadow_calls.append((args, kwargs)),
+    )
+
+    result = learning_service.grade_review(
+        db_session,
+        "flag-off-review",
+        seeded_words[0].id,
+        "hard",
+    )
+
+    assert result.review_interval_days == 1
+    assert shadow_calls == []
+    assert db_session.scalar(select(func.count()).select_from(LearningEventModel)) == 0
 
 
 def test_three_consecutive_good_or_easy_reviews_mark_word_learned():
