@@ -6,8 +6,10 @@ from typing import Any
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import QuizAnswer, QuizAttempt, UserWordProgress, VocabularyItem
 from app.services.profile_service import get_or_create_profile
+from app.services.shadow_quiz_service import ShadowQuizService
 
 QUESTION_TYPES = ["sr_to_ru_choice", "ru_to_sr_typing", "remembered_forgot_self_check"]
 
@@ -155,7 +157,16 @@ def start_quiz(db: Session, user_id: str, quiz_type: str) -> dict:
         question_plan=json.dumps(questions, ensure_ascii=False),
     )
     db.add(attempt)
-    db.commit()
+    if settings.language_assistant_shadow_enabled and questions:
+        try:
+            db.flush()
+            ShadowQuizService(db).start(attempt, questions)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+    else:
+        db.commit()
     db.refresh(attempt)
     return {"attempt_id": attempt.id, "quiz_type": quiz_type, "questions": questions}
 
@@ -187,7 +198,17 @@ def _get_user_attempt(db: Session, user_id: str, attempt_id: int) -> QuizAttempt
 
 
 def submit_answer(db: Session, user_id: str, attempt_id: int, word_id: int, question_type: str, answer: str) -> dict:
-    attempt = _get_user_attempt(db, user_id, attempt_id)
+    shadow = None
+    if settings.language_assistant_shadow_enabled:
+        shadow = ShadowQuizService(db)
+        attempt = shadow.lock_for_answer(
+            learner_id=user_id,
+            attempt_id=attempt_id,
+            word_id=word_id,
+            question_type=question_type,
+        )
+    else:
+        attempt = _get_user_attempt(db, user_id, attempt_id)
     if attempt.completed_at is not None:
         raise InvalidQuizSubmission("Quiz attempt is already complete")
     question = _matching_question(attempt, word_id, question_type)
@@ -221,17 +242,28 @@ def submit_answer(db: Session, user_id: str, attempt_id: int, word_id: int, ques
         progress.is_weak = True
         progress.weak_since = progress.weak_since or now
         progress.next_review_at = None
-    db.add(
-        QuizAnswer(
-            quiz_attempt_id=attempt_id,
-            word_id=word_id,
-            question_type=question_type,
-            prompt=str(question.get("prompt") or ""),
-            answer=answer,
-            is_correct=correct,
-        )
+    quiz_answer = QuizAnswer(
+        quiz_attempt_id=attempt_id,
+        word_id=word_id,
+        question_type=question_type,
+        prompt=str(question.get("prompt") or ""),
+        answer=answer,
+        is_correct=correct,
     )
-    db.commit()
+    db.add(quiz_answer)
+    if shadow is not None:
+        try:
+            db.flush()
+            shadow.record_answer(
+                quiz_answer,
+                create_retry=not correct and incorrect_before == 0,
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+    else:
+        db.commit()
     db.refresh(progress)
     return {"is_correct": correct, "repeat_word": not correct and incorrect_before == 0, "is_weak": progress.is_weak}
 
@@ -275,7 +307,15 @@ def complete_quiz(db: Session, user_id: str, attempt_id: int) -> dict:
     attempt.score = score
     attempt.total_questions = len(planned_questions)
     attempt.completed_at = datetime.now(timezone.utc)
-    db.commit()
+    if settings.language_assistant_shadow_enabled and planned_questions:
+        try:
+            ShadowQuizService(db).complete(attempt)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+    else:
+        db.commit()
     words_by_id = {
         word.id: word
         for word in db.scalars(select(VocabularyItem).where(VocabularyItem.id.in_({answer.word_id for answer in answers})))
