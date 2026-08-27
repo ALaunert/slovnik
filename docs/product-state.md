@@ -1,6 +1,6 @@
 # Slovnik Product State
 
-Last audited: 2026-08-26 (runtime implementation last verified: 2026-07-25)
+Last audited: 2026-08-27 (runtime implementation verified: 2026-08-27)
 
 ## Product Summary
 
@@ -9,7 +9,7 @@ Slovnik is a Serbian vocabulary trainer MVP for Russian-speaking learners. It ha
 This audit reflects the current product implementation, including AI vocabulary fill and
 reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabulary trainer MVP."
 
-## Approved Design Direction (Not Implemented)
+## Language Assistant Foundation
 
 - On 2026-08-26, Domain Model v0.1 was approved for evolving Slovnik from separate vocabulary,
   review, and quiz modes into an adaptive language-learning assistant.
@@ -18,15 +18,22 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   curriculum constraints, learner evidence, and memory risk; it is not an AI chat agent.
 - AI may later provide candidate exercises or evaluate ambiguous answers through replaceable ports.
   It cannot own curriculum progression, select learning truth, or update learner state directly.
-- The runtime implementation described below has not yet migrated to this model. `VocabularyItem`,
-  `UserWordProgress`, the existing review scheduler, quizzes, routes, and APIs remain unchanged.
+- The backend foundation is implemented as a modular-monolith addition: typed contracts, four
+  context-owned domain modules, reversible persistence, immutable evidence, replayable learner
+  projections, curriculum publication/frontier services, and a deterministic next-activity selector.
+- `VocabularyItem`, `UserWordProgress`, the existing review scheduler, quizzes, routes, responses,
+  and frontend remain the authoritative public product behavior.
+- Feature-flagged learning and quiz adapters can atomically shadow accepted legacy interactions into
+  domain runs, activities, events, and learner projections. The flag is off by default.
+- Shadow next-activity comparison is diagnostic only: it cannot change selection, learner state, or
+  legacy responses, and selector/metrics/logging failures are isolated from accepted writes.
+- Production shadow enablement is rejected unless both data-lifecycle and trusted-identity release
+  gates are explicitly true. Those policies and real authentication remain deferred.
 - The approved design and its explicit deferred log are in
   `docs/superpowers/specs/2026-08-26-domain-model-v0.1-design.md` and
   `docs/progress/domain-model-v0.1.md`.
-- A formally accepted ADR and an accepted backend-only foundation SDD were added on 2026-08-26. They
-  remain design artifacts: no migrations, domain runtime, public APIs, or UI changes have been implemented.
-  SDD revision 2 is prepared for three context-owned workstreams plus one integrator with explicit
-  contract and merge gates.
+- A formally accepted ADR and backend-only foundation SDD were added on 2026-08-26 and implemented
+  through gates G1–G4 on 2026-08-27 using three context-owned workstreams plus one integrator.
   A strong implementation-level audit is recorded in `docs/progress/document-audit-2026-08-26.md`;
   initiative-wide status and mandatory follow-ups are tracked in `docs/progress/PROGRESS.md`.
 
@@ -67,6 +74,10 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - Business logic lives in focused modules under `backend/app/services/`, including
   `ai_vocabulary_service.py` for duplicate/store/generation orchestration and
   `openai_vocabulary_client.py` for the Responses API adapter.
+- Language-assistant services under `backend/app/services/` own catalog bootstrap, curriculum
+  publication/frontier, immutable event recording, projection/replay, deterministic selection,
+  shadow learning/quiz adapters, and non-authoritative comparison. Context persistence is under
+  `backend/app/domain_models/` and `backend/app/repositories/`.
 - Concurrent AI fills for the same normalized source are coalesced with an expiring database
   reservation. Lease timestamps come from the database clock, and acquisition lock/statement
   waits are bounded by a monotonic request deadline. The owner commits the lease before calling
@@ -123,6 +134,13 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - Migration `20260725_0004_active_recall_schedule.py` adds nullable `next_review_at`, non-null
   `review_interval_days` and `review_streak` counters defaulted to zero, and an index on
   `next_review_at` without backfilling legacy review dates.
+- Migration `20260826_0005_domain_foundation.py` adds 11 domain tables for Language
+  Catalog, Curriculum, Practice & History, and Learner Progress. It preserves all legacy rows and
+  is reversible back to `20260725_0004`.
+- Learning events are immutable and idempotent per learner/key. Learner target state is a replayable
+  projection with explicit baseline, competence, memory-v1 and evidence cursor fields.
+- A technical A1 curriculum pilot and deterministic selector exist internally. They are not a
+  claim of curated A1 coverage and are not exposed by a public next-activity endpoint.
 - New-word completion schedules the first review one day later. Review ratings update the current
   scheduling state as follows:
   - Again: ten minutes, stored interval `0`, streak reset, mark weak.
@@ -158,6 +176,9 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   or stored by the frontend.
 - The editor password is a simple shared secret, not a user account or session system.
 - Production startup rejects placeholder editor passwords unless `ENVIRONMENT` is explicitly local/test.
+- `LANGUAGE_ASSISTANT_SHADOW_ENABLED` defaults to false. Non-local enablement also requires
+  `LANGUAGE_ASSISTANT_SHADOW_DATA_LIFECYCLE_READY` and
+  `LANGUAGE_ASSISTANT_SHADOW_TRUSTED_IDENTITY_READY`; configuration validation rejects unsafe enablement.
 - There is no delete endpoint for vocabulary, no real auth, no roles, no rate limiting, and no CSRF/session hardening.
 
 ## Verification and Test Coverage
@@ -171,6 +192,11 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   sessions, SQL due filtering/order/cap, every interval transition and cap, row-lock serialization,
   precise status reconciliation, quiz schedule reset, compatibility batch scheduling, quiz
   selection/submission/completion, weak-word behavior, repeat limits, and answer reveal.
+- Language-assistant coverage includes frozen target/event/shadow wire contracts, all four context
+  repositories, reversible migration constraints, event idempotency, replay and projection order,
+  memory-v1 transitions, legacy baseline bootstrap, curriculum lifecycle/frontier, deterministic
+  selector policies, shadow learning/quiz atomicity and concurrency, diagnostic isolation, and
+  privacy-safe bounded payloads.
 - OpenAI adapter tests cover strict response-schema requirements, configured SDK request arguments,
   prompt constraints, request-id retention, typed provider failures, and secret/source-word log
   redaction without real network calls.
@@ -201,7 +227,10 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   response, JSON payloads are exact, loading/focus/completion states work, and maximum bounded
   unbroken content creates no mobile horizontal overflow. No e2e scenario calls a real backend or
   OpenAI.
-- Verified on 2026-07-25: backend Ruff passed; PostgreSQL-enabled backend tests passed with `221 passed`;
+- Verified on 2026-08-27: backend flag-off regression passed with `658 passed, 16 skipped`; the
+  flag-on shadow target passed with `50 passed, 2 skipped`; all `19` PostgreSQL migration,
+  idempotency, and concurrency tests passed; backend Ruff and privacy/scope audits passed.
+- Verified on 2026-07-25: PostgreSQL-enabled backend tests passed with `221 passed`;
   frontend unit tests passed with `83 passed`; the production build passed; and all six Playwright
   tests passed.
 - Manual MVP flow is in `docs/testing/mvp-manual-test.md`.
@@ -210,8 +239,9 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 - Real authentication and authorization are deferred.
 - Native mobile apps, audio pronunciation, bulk import, social features, and payments are not implemented.
-- The current deterministic scheduler does not retain review events or fit FSRS parameters.
-  Review-history analytics, desired-retention controls, and workload forecasting remain deferred.
+- The legacy scheduler remains authoritative. Shadow mode can retain mapped review/quiz evidence,
+  but production retention/export/delete policy, review-history analytics, desired-retention
+  controls, FSRS fitting, and workload forecasting remain deferred.
 - AI fill v1 supports one Serbian word per request and strict normalized equality only. It has no
   batch input, regenerate action, Russian-to-Serbian card creation, morphology/fuzzy matching,
   generation review queue, or generation-store administration UI.
@@ -237,9 +267,13 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   reservation schema.
 - `backend/alembic/versions/20260725_0004_active_recall_schedule.py`: persisted review scheduling
   state and due-time index.
+- `backend/alembic/versions/20260826_0005_domain_foundation.py`: reversible domain
+  foundation schema.
 - `backend/app/services/learning_service.py`: due query, interval transitions, row locking, and
-  compatibility review completion.
-- `backend/app/services/quiz_service.py`: incorrect-quiz schedule reset.
+  compatibility review completion plus guarded shadow learning evidence.
+- `backend/app/services/quiz_service.py`: quiz behavior plus guarded shadow quiz evidence.
+- `backend/app/services/next_activity_service.py`: deterministic internal selector and optional
+  non-authoritative comparison seam.
 - `frontend/src/router.ts`: frontend route map.
 - `frontend/src/api/client.ts`: typed frontend API wrapper.
 - `frontend/src/views/ReviewView.vue`: reveal-first review, rating persistence, focus, and

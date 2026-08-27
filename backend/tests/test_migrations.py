@@ -1386,18 +1386,26 @@ def test_postgresql_expired_reservation_has_one_takeover_and_provider_call(
         assert session.get(AiVocabularyGenerationReservation, "uciti") is None
 
 
-def test_postgresql_concurrent_review_grades_accept_exactly_one(
+def test_postgresql_shadow_concurrent_review_grades_accept_exactly_one(
     postgresql_migration_database,
+    monkeypatch,
 ):
+    from sqlalchemy import func
+
+    from app.domain_models.practice import LearningEventModel
+    from app.services.domain_bootstrap_service import bootstrap_catalog
+
     _, engine, _ = postgresql_migration_database
     SessionFactory = sessionmaker(bind=engine)
     with SessionFactory() as session:
+        bootstrap_catalog(session)
         progress = session.get(UserWordProgress, LEGACY_PROGRESS_ID)
         progress.status = "reviewing"
         progress.is_weak = False
         progress.weak_since = None
         progress.next_review_at = datetime.now(timezone.utc) - timedelta(minutes=1)
         session.commit()
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", True)
 
     with engine.begin() as connection:
         connection.execute(
@@ -1448,3 +1456,7 @@ def test_postgresql_concurrent_review_grades_accept_exactly_one(
     assert sorted(result[0] for result in results) == ["rejected", "success"]
     rejection = next(result for result in results if result[0] == "rejected")
     assert rejection[1] == "Word is not currently due for review"
+    with SessionFactory() as session:
+        assert session.scalar(
+            select(func.count()).select_from(LearningEventModel)
+        ) == 1
