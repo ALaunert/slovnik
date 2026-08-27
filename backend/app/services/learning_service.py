@@ -1,11 +1,19 @@
+from collections.abc import Callable
 from datetime import datetime, time, timedelta, timezone
+import logging
 from typing import Any, Literal, TypedDict
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import UserWordProgress, VocabularyItem
 from app.services.profile_service import get_or_create_profile
+from app.services.shadow_learning_service import (
+    ShadowLearningFailure,
+    record_new_word_batch,
+    record_review_rating,
+)
 
 ReviewRating = Literal["again", "hard", "good", "easy"]
 
@@ -18,6 +26,7 @@ EASY_INITIAL_INTERVAL_DAYS = 4
 EASY_INTERVAL_MULTIPLIER = 3
 EASY_MAX_INTERVAL_DAYS = 365
 LEARNED_REVIEW_STREAK = 3
+logger = logging.getLogger(__name__)
 
 
 class ReviewWord(TypedDict):
@@ -143,6 +152,77 @@ def _ensure_words_selected(selected_ids: set[int], word_ids: list[int]) -> None:
         raise ValueError(f"Word ids are not in the current session: {unselected_ids}")
 
 
+def _record_shadow_new_word_batch(
+    db: Session,
+    *,
+    learner_id: str,
+    progress_rows: list[UserWordProgress],
+    occurred_at: datetime,
+) -> None:
+    if not settings.language_assistant_shadow_enabled or not progress_rows:
+        return
+    db.flush()
+    unique_progress_rows = tuple(dict.fromkeys(progress_rows))
+    _run_shadow_write(
+        lambda: record_new_word_batch(
+            db,
+            learner_id=learner_id,
+            progress_rows=unique_progress_rows,
+            occurred_at=occurred_at,
+        )
+    )
+
+
+def _run_shadow_write(write: Callable[[], object]) -> None:
+    try:
+        write()
+    except ShadowLearningFailure:
+        raise
+    except Exception:
+        pass
+    else:
+        return
+    raise ShadowLearningFailure("Learning shadow write failed") from None
+
+
+def _record_shadow_review_rating(
+    db: Session,
+    *,
+    learner_id: str,
+    progress: UserWordProgress,
+    locked_due_at: datetime | None,
+    rating: ReviewRating,
+    occurred_at: datetime,
+) -> None:
+    if not settings.language_assistant_shadow_enabled:
+        return
+    _run_shadow_write(
+        lambda: record_review_rating(
+            db,
+            learner_id=learner_id,
+            progress=progress,
+            locked_due_at=locked_due_at,
+            rating=rating,
+            occurred_at=occurred_at,
+        )
+    )
+
+
+def _commit_atomic(db: Session, write_shadow: Callable[[], None]) -> None:
+    try:
+        write_shadow()
+        db.commit()
+    except Exception:
+        db.rollback()
+        _log_shadow_failure()
+        raise
+
+
+def _log_shadow_failure() -> None:
+    if settings.language_assistant_shadow_enabled:
+        logger.error("Learning shadow write failed")
+
+
 def complete_new_words(db: Session, user_id: str, word_ids: list[int]) -> list[UserWordProgress]:
     _ensure_words_exist(db, word_ids)
     selected_ids = {word.id for word in get_daily_new_words(db, user_id)}
@@ -164,7 +244,15 @@ def complete_new_words(db: Session, user_id: str, word_ids: list[int]) -> list[U
         progress.last_seen_at = now
         progress.next_review_at = now + timedelta(days=1)
         progress_rows.append(progress)
-    db.commit()
+    _commit_atomic(
+        db,
+        lambda: _record_shadow_new_word_batch(
+            db,
+            learner_id=user_id,
+            progress_rows=progress_rows,
+            occurred_at=now,
+        ),
+    )
     for progress in progress_rows:
         db.refresh(progress)
     return progress_rows
@@ -279,8 +367,19 @@ def grade_review(
     if not _is_review_due(progress, now):
         raise ValueError("Word is not currently due for review")
 
+    locked_due_at = _as_utc(progress.next_review_at)
     apply_review_rating(progress, rating, now)
-    db.commit()
+    _commit_atomic(
+        db,
+        lambda: _record_shadow_review_rating(
+            db,
+            learner_id=user_id,
+            progress=progress,
+            locked_due_at=locked_due_at,
+            rating=rating,
+            occurred_at=now,
+        ),
+    )
     db.refresh(progress)
     return progress
 
