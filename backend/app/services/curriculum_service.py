@@ -1,30 +1,70 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID, uuid5
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domain.catalog import RetirementPolicyDecision
-from app.domain.curriculum import CurriculumVersion
+from app.domain.curriculum import (
+    CurriculumNode,
+    CurriculumStatus,
+    CurriculumVersion,
+    PrerequisiteEdge,
+    PrerequisiteKind,
+)
 from app.domain.target import TargetSpec
 from app.repositories.curriculum import CurriculumRepository, TargetResolver
+
+
+PILOT_CURRICULUM_CODE = "serbian-from-russian"
+PILOT_CURRICULUM_VERSION = 1
+PILOT_NAMESPACE = UUID("557369ab-183e-5e79-b81d-d40c74173445")
+
+
+@dataclass(frozen=True)
+class PilotPrerequisite:
+    prerequisite: TargetSpec
+    dependent: TargetSpec
+    kind: PrerequisiteKind
 
 
 class CurriculumActivationConflict(RuntimeError):
     pass
 
 
-def _is_one_active_conflict(error: IntegrityError) -> bool:
+def _constraint_name(error: IntegrityError) -> str | None:
     diagnostics = getattr(error.orig, "diag", None)
     constraint_name = getattr(diagnostics, "constraint_name", None)
     if constraint_name is None:
         constraint_name = getattr(error.orig, "constraint_name", None)
+    return constraint_name
+
+
+def _is_one_active_conflict(error: IntegrityError) -> bool:
+    constraint_name = _constraint_name(error)
     if constraint_name is not None:
         return constraint_name == "uq_curriculum_versions_one_active"
     return str(error.orig) == (
         "UNIQUE constraint failed: curriculum_versions.curriculum_code"
     )
+
+
+def _is_pilot_creation_conflict(error: IntegrityError) -> bool:
+    constraint_name = _constraint_name(error)
+    if constraint_name is not None:
+        return constraint_name in {
+            "curriculum_versions_pkey",
+            "uq_curriculum_versions_code_number",
+        }
+    message = str(error.orig)
+    return message in {
+        "UNIQUE constraint failed: curriculum_versions.id",
+        "UNIQUE constraint failed: curriculum_versions.curriculum_code, "
+        "curriculum_versions.version_number",
+    }
 
 
 def _replacement_retired_at(
@@ -52,6 +92,106 @@ class CurriculumService:
     def __init__(self, session: Session, target_resolver: TargetResolver) -> None:
         self._session = session
         self._repository = CurriculumRepository(session, target_resolver)
+
+    def bootstrap_technical_a1_pilot(
+        self,
+        *,
+        bootstrap_at: datetime,
+        targets: tuple[TargetSpec, ...] = (),
+        prerequisites: tuple[PilotPrerequisite, ...] = (),
+    ) -> CurriculumVersion:
+        existing = self._repository.get_by_code_version(
+            PILOT_CURRICULUM_CODE,
+            PILOT_CURRICULUM_VERSION,
+        )
+        if existing is not None:
+            return self._publish_pilot_if_ready(existing, bootstrap_at)
+        version_id = str(
+            uuid5(
+                PILOT_NAMESPACE,
+                f"{PILOT_CURRICULUM_CODE}:{PILOT_CURRICULUM_VERSION}",
+            )
+        )
+        nodes = tuple(
+            CurriculumNode(
+                id=str(uuid5(PILOT_NAMESPACE, f"node:{target.target_key}")),
+                curriculum_version_id=version_id,
+                target=target,
+                priority=50,
+                outcome_code="A1.technical-pilot",
+            )
+            for target in targets
+        )
+        node_ids = {node.target.target_key: node.id for node in nodes}
+        version = CurriculumVersion(
+            id=version_id,
+            curriculum_code=PILOT_CURRICULUM_CODE,
+            version_number=PILOT_CURRICULUM_VERSION,
+            created_at=bootstrap_at,
+            nodes=nodes,
+            prerequisites=tuple(
+                PrerequisiteEdge(
+                    id=str(
+                        uuid5(
+                            PILOT_NAMESPACE,
+                            "edge:"
+                            f"{prerequisite.kind.value}:"
+                            f"{prerequisite.prerequisite.target_key}:"
+                            f"{prerequisite.dependent.target_key}",
+                        )
+                    ),
+                    curriculum_version_id=version_id,
+                    prerequisite_node_id=node_ids[
+                        prerequisite.prerequisite.target_key
+                    ],
+                    dependent_node_id=node_ids[prerequisite.dependent.target_key],
+                    kind=prerequisite.kind,
+                )
+                for prerequisite in prerequisites
+            ),
+        )
+        try:
+            self._repository.add(version)
+            self._session.commit()
+        except IntegrityError as exc:
+            self._session.rollback()
+            if not _is_pilot_creation_conflict(exc):
+                raise
+            existing = self._repository.get_by_code_version(
+                PILOT_CURRICULUM_CODE,
+                PILOT_CURRICULUM_VERSION,
+            )
+            if existing is None or existing.id != version.id:
+                raise
+            version = existing
+        return self._publish_pilot_if_ready(version, bootstrap_at)
+
+    def _publish_pilot_if_ready(
+        self,
+        version: CurriculumVersion,
+        bootstrap_at: datetime,
+    ) -> CurriculumVersion:
+        if version.status is not CurriculumStatus.DRAFT:
+            return version
+        if any(
+            not self._repository.target_is_published(node.target)
+            for node in version.nodes
+        ):
+            return version
+        try:
+            return self.publish(version.id, published_at=bootstrap_at)
+        except CurriculumActivationConflict:
+            recovered = self._repository.get_by_code_version(
+                PILOT_CURRICULUM_CODE,
+                PILOT_CURRICULUM_VERSION,
+            )
+            if (
+                recovered is not None
+                and recovered.id == version.id
+                and recovered.status is CurriculumStatus.ACTIVE
+            ):
+                return recovered
+            raise
 
     def publish(
         self,
@@ -96,6 +236,10 @@ class CurriculumService:
         draft = self._repository.get(version_id)
         if draft is None:
             raise ValueError("curriculum version does not exist")
+        if draft.status is not CurriculumStatus.DRAFT:
+            raise CurriculumActivationConflict(
+                "curriculum version is no longer a draft"
+            )
         return draft, draft.publish(
             published_at=published_at,
             target_is_published=self._repository.target_is_published,

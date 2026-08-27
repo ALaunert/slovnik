@@ -1,6 +1,15 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
+from app.domain.curriculum import PrerequisiteKind
+from app.domain.shared import Capability
 from app.models import VocabularyItem
+from app.services.domain_bootstrap_service import (
+    PilotLexicalTargetRef,
+    PilotPrerequisiteSeed,
+    bootstrap_domain,
+)
 
 SAMPLE_WORDS = [
     {
@@ -29,6 +38,25 @@ SAMPLE_WORDS = [
     },
 ]
 
+PILOT_PREREQUISITES = (
+    PilotPrerequisiteSeed(
+        prerequisite=PilotLexicalTargetRef(
+            "hvala", Capability.RECOGNIZE_MEANING
+        ),
+        dependent=PilotLexicalTargetRef("hvala", Capability.RETRIEVE_FORM),
+        kind=PrerequisiteKind.HARD,
+    ),
+    PilotPrerequisiteSeed(
+        prerequisite=PilotLexicalTargetRef(
+            "hvala", Capability.RECOGNIZE_MEANING
+        ),
+        dependent=PilotLexicalTargetRef(
+            "molim", Capability.RECOGNIZE_MEANING
+        ),
+        kind=PrerequisiteKind.SOFT,
+    ),
+)
+
 
 def seed_words(db: Session) -> int:
     created = 0
@@ -46,9 +74,23 @@ def seed_words(db: Session) -> int:
     return created
 
 
+def seed_database(
+    db: Session,
+    *,
+    bootstrap_at: datetime | None = None,
+) -> int:
+    created = seed_words(db)
+    bootstrap_domain(
+        db,
+        bootstrap_at=bootstrap_at or datetime.now(timezone.utc),
+        prerequisite_seeds=PILOT_PREREQUISITES,
+    )
+    return created
+
+
 if __name__ == "__main__":
     from app.db import SessionLocal
 
     with SessionLocal() as db:
-        created = seed_words(db)
+        created = seed_database(db)
     print(f"Seeded {created} vocabulary words.")

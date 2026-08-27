@@ -22,8 +22,13 @@ from app.domain.catalog import (
     Sense,
     StressPattern,
 )
+from app.domain.curriculum import PrerequisiteKind
+from app.domain.shared import Capability, Modality, TargetKind
+from app.domain.target import TargetSpec
+from app.domain_models.catalog import LanguageConstruction, LanguageSense
 from app.models import VocabularyItem
 from app.repositories.catalog import CatalogRepository
+from app.services.curriculum_service import CurriculumService, PilotPrerequisite
 
 
 CATALOG_BOOTSTRAP_NAMESPACE = UUID("c139c951-f3db-5f7e-a1cf-e0f8b1dc8c52")
@@ -33,6 +38,24 @@ CATALOG_BOOTSTRAP_NAMESPACE = UUID("c139c951-f3db-5f7e-a1cf-e0f8b1dc8c52")
 class BootstrapResult:
     created: int
     existing: int
+
+
+@dataclass(frozen=True)
+class PilotLexicalTargetRef:
+    serbian_latin: str
+    capability: Capability
+
+
+@dataclass(frozen=True)
+class PilotPrerequisiteSeed:
+    prerequisite: PilotLexicalTargetRef
+    dependent: PilotLexicalTargetRef
+    kind: PrerequisiteKind
+
+
+@dataclass(frozen=True)
+class PilotConstructionSeed:
+    construction_id: str
 
 
 def _stable_id(legacy_id: int, entity: str) -> str:
@@ -183,3 +206,87 @@ def bootstrap_catalog(session: Session) -> BootstrapResult:
         created += 1
     session.commit()
     return BootstrapResult(created=created, existing=existing)
+
+
+class _CatalogTargetResolver:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def is_published(self, target: TargetSpec) -> bool:
+        record_type = {
+            TargetKind.SENSE: LanguageSense,
+            TargetKind.CONSTRUCTION: LanguageConstruction,
+        }.get(target.target_kind)
+        if record_type is None:
+            return False
+        record = self._session.get(record_type, target.target_id)
+        return record is not None and record.status == ContentStatus.PUBLISHED.value
+
+
+def _a1_lexical_targets(
+    session: Session,
+) -> tuple[tuple[TargetSpec, ...], dict[PilotLexicalTargetRef, TargetSpec]]:
+    repository = CatalogRepository(session)
+    targets: list[TargetSpec] = []
+    targets_by_ref: dict[PilotLexicalTargetRef, TargetSpec] = {}
+    words = session.scalars(
+        select(VocabularyItem)
+        .where(VocabularyItem.cefr_level == "A1")
+        .order_by(VocabularyItem.id)
+    )
+    for word in words:
+        lexical_unit = repository.get_by_legacy_vocabulary_item_id(word.id)
+        if lexical_unit is None or not lexical_unit.senses:
+            continue
+        sense_id = lexical_unit.senses[0].id
+        for capability in (
+            Capability.RECOGNIZE_MEANING,
+            Capability.RETRIEVE_FORM,
+        ):
+            target = TargetSpec(
+                target_kind=TargetKind.SENSE,
+                target_id=sense_id,
+                capability=capability,
+                modality=Modality.WRITTEN,
+            )
+            targets.append(target)
+            targets_by_ref[
+                PilotLexicalTargetRef(word.serbian_latin, capability)
+            ] = target
+    return tuple(targets), targets_by_ref
+
+
+def bootstrap_domain(
+    session: Session,
+    *,
+    bootstrap_at: datetime,
+    prerequisite_seeds: tuple[PilotPrerequisiteSeed, ...] = (),
+    construction_seeds: tuple[PilotConstructionSeed, ...] = (),
+) -> None:
+    bootstrap_catalog(session)
+    lexical_targets, targets_by_ref = _a1_lexical_targets(session)
+    construction_targets = tuple(
+        TargetSpec(
+            target_kind=TargetKind.CONSTRUCTION,
+            target_id=seed.construction_id,
+            capability=Capability.APPLY_CONSTRUCTION,
+            modality=Modality.WRITTEN,
+        )
+        for seed in construction_seeds
+    )
+    prerequisites = tuple(
+        PilotPrerequisite(
+            prerequisite=targets_by_ref[seed.prerequisite],
+            dependent=targets_by_ref[seed.dependent],
+            kind=seed.kind,
+        )
+        for seed in prerequisite_seeds
+    )
+    CurriculumService(
+        session,
+        _CatalogTargetResolver(session),
+    ).bootstrap_technical_a1_pilot(
+        bootstrap_at=bootstrap_at,
+        targets=(*lexical_targets, *construction_targets),
+        prerequisites=prerequisites,
+    )
