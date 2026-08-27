@@ -629,3 +629,80 @@ def test_native_evidence_preserves_legacy_baseline_and_switches_policy_versions(
         replayed.projection_policy_version,
         replayed.evidence.count,
     ) == (legacy.baseline, baseline_due_at, 3, "memory-v1", "projection-v1", 1)
+
+
+def test_native_projection_freezes_repository_bootstrapped_legacy_baseline(
+    projection_session,
+) -> None:
+    from app.domain.shared import Capability, Modality, TargetKind
+    from app.domain.target import TargetSpec
+    from app.models import UserProfile, UserWordProgress, VocabularyItem
+    from app.repositories.catalog import CatalogRepository
+    from app.repositories.progress import ProgressRepository
+    from app.services.domain_bootstrap_service import bootstrap_catalog
+    from app.services.learner_projection_service import LearnerProjectionService
+    from app.services.legacy_progress_bootstrap_service import bootstrap_legacy_progress
+
+    projection_session.add(UserProfile(user_id="learner-1"))
+    word = VocabularyItem(
+        serbian_cyrillic="реч",
+        serbian_latin="reč",
+        russian_translation="слово",
+        cefr_level="A1",
+        theme="daily",
+    )
+    projection_session.add(word)
+    projection_session.flush()
+    progress = UserWordProgress(
+        user_id="learner-1",
+        word_id=word.id,
+        status="reviewing",
+        first_seen_at=OCCURRED_AT - timedelta(days=5),
+        last_seen_at=OCCURRED_AT - timedelta(days=2),
+        next_review_at=OCCURRED_AT - timedelta(days=1),
+        review_interval_days=3,
+    )
+    projection_session.add(progress)
+    projection_session.commit()
+    bootstrap_catalog(projection_session)
+    bootstrap_legacy_progress(
+        projection_session,
+        bootstrap_at=OCCURRED_AT - timedelta(hours=1),
+    )
+    lexical_unit = CatalogRepository(
+        projection_session
+    ).get_by_legacy_vocabulary_item_id(word.id)
+    assert lexical_unit is not None
+    target = TargetSpec(
+        target_kind=TargetKind.SENSE,
+        target_id=lexical_unit.senses[0].id,
+        capability=Capability.RETRIEVE_FORM,
+        modality=Modality.WRITTEN,
+    )
+    event = FakeLearningEvent(
+        event_id="22222222-2222-4222-8222-222222222222",
+        target_key=target.target_key,
+    )
+    service = LearnerProjectionService(
+        ProgressRepository(projection_session),
+        FakeEventSource([event]),
+    )
+
+    projected = service.apply_event(event)
+    frozen_baseline = projected.baseline
+    progress.review_interval_days = 17
+    progress.next_review_at = OCCURRED_AT + timedelta(days=17)
+    projection_session.commit()
+    rerun = bootstrap_legacy_progress(
+        projection_session,
+        bootstrap_at=OCCURRED_AT + timedelta(days=1),
+    )
+    reloaded = ProgressRepository(projection_session).get_state(
+        "learner-1",
+        target.target_key,
+    )
+
+    assert rerun.skipped_frozen == 1
+    assert reloaded == projected
+    assert reloaded is not None
+    assert reloaded.baseline == frozen_baseline

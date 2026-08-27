@@ -195,6 +195,67 @@ class ProgressRepository:
         row.updated_at = state.updated_at
         self._session.flush()
 
+    def bootstrap_legacy_state(self, state: LearnerTargetState) -> str:
+        row = self._session.scalar(
+            self._state_statement(state.learner_id, state.target_key).with_for_update()
+        )
+        if row is None:
+            try:
+                with self._session.begin_nested():
+                    self._session.add(_to_model(state))
+                    self._session.flush()
+            except IntegrityError as exc:
+                if not _is_learner_target_unique_conflict(exc):
+                    raise
+                row = self._session.scalar(
+                    self._state_statement(
+                        state.learner_id,
+                        state.target_key,
+                    ).with_for_update()
+                )
+                if row is None:
+                    raise
+            else:
+                return "created"
+
+        existing = _to_domain(row)
+        if (
+            existing.baseline.kind is not BaselineKind.LEGACY_BOOTSTRAP
+            or existing.evidence.count > 0
+        ):
+            return "skipped_frozen"
+        if existing.baseline.payload == state.baseline.payload:
+            return "unchanged"
+
+        self._apply_legacy_bootstrap(row, state)
+        self._session.flush()
+        return "updated"
+
+    @staticmethod
+    def _apply_legacy_bootstrap(
+        row: LearnerTargetStateModel,
+        state: LearnerTargetState,
+    ) -> None:
+        payload = _plain_payload(state.baseline.payload)
+        assert isinstance(payload, dict)
+        row.competence_success_weight = state.competence.success_weight
+        row.competence_failure_weight = state.competence.failure_weight
+        row.competence_peak = state.competence.peak
+        row.uncertainty = state.competence.uncertainty
+        row.evidence_count = state.evidence.count
+        row.baseline_kind = state.baseline.kind.value
+        row.baseline_memory_due_at = state.baseline.memory_due_at
+        row.baseline_memory_interval_days = state.baseline.memory_interval_days
+        row.baseline_payload = payload
+        row.last_evidence_at = state.evidence.last_evidence_at
+        row.last_event_id = state.evidence.last_event_id
+        row.memory_due_at = state.memory.due_at
+        row.memory_interval_days = state.memory.interval_days
+        row.memory_lapses = state.memory.lapses
+        row.memory_policy_version = state.memory.policy_version
+        row.projection_policy_version = state.projection_policy_version
+        row.updated_at = state.updated_at
+
     def _find_state_row(
         self,
         learner_id: str,
