@@ -169,6 +169,20 @@ def test_only_deterministic_terminal_outcomes_change_competence() -> None:
     )
 
 
+def test_partial_counts_as_native_deterministic_evidence() -> None:
+    from app.services.learner_projection_service import project_event
+
+    projected = project_event(
+        _neutral_state(),
+        FakeLearningEvent(
+            event_id="23232323-2323-4323-8323-232323232323",
+            evaluation_outcome="partial",
+        ),
+    )
+
+    assert projected.evidence.deterministic_count == 1
+
+
 def test_first_exposure_sets_one_day_hold_without_competence_credit() -> None:
     from app.services.learner_projection_service import project_event
 

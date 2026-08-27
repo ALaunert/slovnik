@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.domain.catalog import ContentStatus, FormKind
 from app.domain.practice import (
     ActivityInstance,
     ActivityKind,
@@ -32,10 +30,8 @@ from app.domain.practice import (
     SelfReportRating,
     build_learning_event,
 )
-from app.domain.shared import Capability, Modality, TargetKind
+from app.domain.shared import Capability, Modality
 from app.domain.progress import MEMORY_POLICY_VERSION
-from app.domain.target import TargetSpec
-from app.domain_models.catalog import LanguageForm, LanguageLexicalUnit, LanguageSense
 from app.domain_models.practice import LearningEventModel
 from app.models import UserWordProgress
 from app.repositories.practice import PracticeRepository
@@ -50,6 +46,11 @@ from app.services.domain_shadow_contracts import (
     ShadowPolicyVersion,
 )
 from app.services.learner_projection_service import LearnerProjectionService
+from app.services.catalog_mapping_service import (
+    CatalogLexicalMapping,
+    CatalogMappingError,
+    resolve_catalog_mapping,
+)
 
 
 GENERATOR_KIND = GeneratorKind.CURATED
@@ -59,12 +60,6 @@ REVIEW_POLICY = ShadowPolicyVersion.LEGACY_REVIEW_V1.value
 
 class ShadowLearningFailure(RuntimeError):
     pass
-
-
-@dataclass(frozen=True)
-class _LexicalMapping:
-    target: TargetSpec
-    citation_form_snapshot: dict[str, object]
 
 
 class _PracticeEventSource:
@@ -104,48 +99,17 @@ def _utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-def _resolve_mapping(session: Session, word_id: int) -> _LexicalMapping:
-    sense_ids = tuple(
-        session.scalars(
-            select(LanguageSense.id)
-            .join(LanguageLexicalUnit)
-            .where(
-                LanguageLexicalUnit.legacy_vocabulary_item_id == word_id,
-                LanguageLexicalUnit.status == ContentStatus.PUBLISHED.value,
-                LanguageSense.status == ContentStatus.PUBLISHED.value,
-            )
-            .order_by(LanguageSense.id)
-        )
-    )
-    forms = tuple(
-        session.scalars(
-            select(LanguageForm)
-            .join(LanguageLexicalUnit)
-            .where(
-                LanguageLexicalUnit.legacy_vocabulary_item_id == word_id,
-                LanguageLexicalUnit.status == ContentStatus.PUBLISHED.value,
-                LanguageForm.status == ContentStatus.PUBLISHED.value,
-                LanguageForm.form_kind == FormKind.CITATION.value,
-            )
-            .order_by(LanguageForm.id)
-        )
-    )
-    if len(sense_ids) != 1 or len(forms) != 1:
-        raise ShadowLearningFailure("Legacy word has no unique published lexical mapping")
-    form = forms[0]
-    return _LexicalMapping(
-        target=TargetSpec(
-            target_kind=TargetKind.SENSE,
-            target_id=sense_ids[0],
+def _resolve_mapping(session: Session, word_id: int) -> CatalogLexicalMapping:
+    try:
+        return resolve_catalog_mapping(
+            session,
+            word_id,
             capability=Capability.RETRIEVE_FORM,
-            modality=Modality.WRITTEN,
-        ),
-        citation_form_snapshot={
-            "id": form.id,
-            "form_kind": form.form_kind,
-            "orthographies": form.orthographies,
-        },
-    )
+        )
+    except CatalogMappingError:
+        raise ShadowLearningFailure(
+            "Legacy word has no unique published lexical mapping"
+        ) from None
 
 
 def _selection(policy_version: str, reason: SelectionReason) -> SelectionMetadata:
@@ -156,7 +120,7 @@ def _new_word_activity(
     *,
     run_id: str,
     sequence_number: int,
-    mapping: _LexicalMapping,
+    mapping: CatalogLexicalMapping,
     occurred_at: datetime,
 ) -> ActivityInstance:
     return ActivityInstance(
@@ -179,6 +143,7 @@ def _new_word_activity(
         generator_kind=GENERATOR_KIND,
         generator_version=NEW_WORD_POLICY,
         scorer_version=None,
+        feedback_policy_version=NEW_WORD_POLICY,
         status=ActivityStatus.PENDING,
         selected_at=occurred_at,
         terminal_at=None,
@@ -188,7 +153,7 @@ def _new_word_activity(
 def _review_activity(
     *,
     run_id: str,
-    mapping: _LexicalMapping,
+    mapping: CatalogLexicalMapping,
     occurred_at: datetime,
 ) -> ActivityInstance:
     return ActivityInstance(
@@ -214,6 +179,7 @@ def _review_activity(
         generator_kind=GENERATOR_KIND,
         generator_version=REVIEW_POLICY,
         scorer_version=MEMORY_POLICY_VERSION,
+        feedback_policy_version=REVIEW_POLICY,
         status=ActivityStatus.PENDING,
         selected_at=occurred_at,
         terminal_at=None,

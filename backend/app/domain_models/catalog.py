@@ -3,7 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, Integer, Text
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -18,12 +27,19 @@ class LanguageLexicalUnit(Base):
         CheckConstraint("kind IN ('word', 'mwe')", name="ck_language_lexical_units_kind"),
         CheckConstraint(_STATUS_CHECK, name="ck_language_lexical_units_status"),
         CheckConstraint("revision >= 1", name="ck_language_lexical_units_revision"),
+        UniqueConstraint(
+            "legacy_vocabulary_item_id",
+            name="uq_lexical_unit_legacy_vocabulary_item",
+        ),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     legacy_vocabulary_item_id: Mapped[int | None] = mapped_column(
-        ForeignKey("vocabulary_items.id"), unique=True
+        ForeignKey(
+            "vocabulary_items.id",
+            name="fk_lexical_unit_legacy_vocabulary_item",
+        )
     )
     status: Mapped[str] = mapped_column(Text, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -48,7 +64,12 @@ class LanguageSense(Base):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     lexical_unit_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("language_lexical_units.id"), nullable=False
+        Text,
+        ForeignKey(
+            "language_lexical_units.id",
+            name="fk_language_sense_lexical_unit",
+        ),
+        nullable=False,
     )
     glosses: Mapped[list[dict[str, Any]]] = mapped_column(JSON(none_as_null=True), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
@@ -73,7 +94,12 @@ class LanguageForm(Base):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     lexical_unit_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("language_lexical_units.id"), nullable=False
+        Text,
+        ForeignKey(
+            "language_lexical_units.id",
+            name="fk_language_form_lexical_unit",
+        ),
+        nullable=False,
     )
     form_kind: Mapped[str] = mapped_column(Text, nullable=False)
     orthographies: Mapped[list[dict[str, str]]] = mapped_column(
@@ -94,10 +120,11 @@ class LanguageConstruction(Base):
     __table_args__ = (
         CheckConstraint(_STATUS_CHECK, name="ck_language_constructions_status"),
         CheckConstraint("revision >= 1", name="ck_language_constructions_revision"),
+        UniqueConstraint("code", name="uq_language_construction_code"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
-    code: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    code: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     morph_features: Mapped[dict[str, Any]] = mapped_column(

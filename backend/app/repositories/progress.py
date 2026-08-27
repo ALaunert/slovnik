@@ -68,6 +68,7 @@ def _to_domain(row: LearnerTargetStateModel) -> LearnerTargetState:
         ),
         evidence=EvidenceSummary(
             count=row.evidence_count,
+            deterministic_count=row.deterministic_evidence_count,
             last_evidence_at=row.last_evidence_at,
             last_event_id=row.last_event_id,
         ),
@@ -94,6 +95,7 @@ def _to_model(state: LearnerTargetState) -> LearnerTargetStateModel:
         competence_peak=state.competence.peak,
         uncertainty=state.competence.uncertainty,
         evidence_count=state.evidence.count,
+        deterministic_evidence_count=state.evidence.deterministic_count,
         baseline_kind=state.baseline.kind.value,
         baseline_memory_due_at=state.baseline.memory_due_at,
         baseline_memory_interval_days=state.baseline.memory_interval_days,
@@ -185,6 +187,7 @@ class ProgressRepository:
         row.competence_peak = state.competence.peak
         row.uncertainty = state.competence.uncertainty
         row.evidence_count = state.evidence.count
+        row.deterministic_evidence_count = state.evidence.deterministic_count
         row.last_evidence_at = state.evidence.last_evidence_at
         row.last_event_id = state.evidence.last_event_id
         row.memory_due_at = state.memory.due_at
@@ -243,6 +246,7 @@ class ProgressRepository:
         row.competence_peak = state.competence.peak
         row.uncertainty = state.competence.uncertainty
         row.evidence_count = state.evidence.count
+        row.deterministic_evidence_count = state.evidence.deterministic_count
         row.baseline_kind = state.baseline.kind.value
         row.baseline_memory_due_at = state.baseline.memory_due_at
         row.baseline_memory_interval_days = state.baseline.memory_interval_days

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from datetime import datetime, timezone
 
@@ -474,3 +475,211 @@ def test_comparison_logs_are_redacted(monkeypatch, caplog) -> None:
     for secret in (learner_secret, response_secret, translation_secret):
         assert secret not in messages
         assert secret not in record_payloads
+
+
+def test_daily_endpoint_compares_first_word_and_none(
+    client,
+    seeded_words,
+    monkeypatch,
+) -> None:
+    from app.config import settings
+    from app.services import learning_service
+
+    calls = []
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", True)
+    monkeypatch.setattr(
+        learning_service,
+        "run_selection_comparison",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    first = client.get("/api/learning/runtime-new/new-words")
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", False)
+    for word in seeded_words:
+        client.post(
+            "/api/learning/runtime-none/new-words/complete",
+            json={"word_ids": [word.id]},
+        )
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", True)
+    none = client.get("/api/learning/runtime-none/new-words")
+
+    assert first.status_code == none.status_code == 200
+    assert calls[0]["kind"].value == "new"
+    assert calls[0]["word_id"] == first.json()["words"][0]["id"]
+    assert calls[-1]["kind"].value == "none"
+    assert calls[-1]["word_id"] is None
+
+
+def test_review_endpoint_maps_first_weak_word(
+    client,
+    weak_progress,
+    monkeypatch,
+) -> None:
+    from app.config import settings
+    from app.services import learning_service
+
+    calls = []
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", True)
+    monkeypatch.setattr(
+        learning_service,
+        "run_selection_comparison",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    response = client.get("/api/learning/learner-1/review")
+
+    assert response.status_code == 200
+    assert calls == [
+        {
+            "bind": weak_progress._sa_instance_state.session.get_bind(),
+            "learner_id": "learner-1",
+            "kind": learning_service.LegacyLearningSelectionKind.WEAK,
+            "word_id": weak_progress.word_id,
+        }
+    ]
+
+
+def test_enabled_daily_endpoint_runs_persistence_backed_comparison(
+    client,
+    db_session,
+    seeded_words,
+    monkeypatch,
+    caplog,
+) -> None:
+    from app.config import settings
+    from app.services import catalog_mapping_service
+    from app.services.domain_bootstrap_service import bootstrap_domain
+
+    caplog.set_level(logging.INFO)
+    bootstrap_domain(
+        db_session,
+        bootstrap_at=datetime(2026, 8, 27, 12, tzinfo=timezone.utc),
+    )
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", True)
+    lock_modes = []
+    original_mapping_rows = catalog_mapping_service._mapping_rows
+
+    def capture_mapping_lock(session, word_id, *, lock_source=False):
+        lock_modes.append(lock_source)
+        return original_mapping_rows(
+            session,
+            word_id,
+            lock_source=lock_source,
+        )
+
+    monkeypatch.setattr(
+        catalog_mapping_service,
+        "_mapping_rows",
+        capture_mapping_lock,
+    )
+
+    response = client.get("/api/learning/runtime-live/new-words")
+
+    assert response.status_code == 200
+    records = [
+        record
+        for record in caplog.records
+        if hasattr(record, "shadow_comparison")
+    ]
+    assert len(records) == 1
+    assert records[0].shadow_comparison["legacy_intent"] == "acquire"
+    assert lock_modes == [False]
+
+
+def test_runtime_frontier_does_not_unlock_on_failed_deterministic_evidence(
+    db_session,
+    seeded_words,
+) -> None:
+    from app.domain.curriculum import PrerequisiteKind
+    from app.domain.progress import (
+        CompetenceEstimate,
+        EvidenceSummary,
+        LearnerProfile,
+        LearnerTargetState,
+        MemoryState,
+        ProjectionBaseline,
+    )
+    from app.domain.shared import Capability
+    from app.models import UserProfile
+    from app.repositories.progress import _to_model
+    from app.services.catalog_mapping_service import resolve_catalog_mapping
+    from app.services.domain_bootstrap_service import (
+        PilotLexicalTargetRef,
+        PilotPrerequisiteSeed,
+        bootstrap_domain,
+    )
+    from app.services.shadow_selection_runtime import _CurriculumPort
+
+    profile = UserProfile(user_id="runtime-frontier", preferred_level="A1")
+    db_session.add(profile)
+    prerequisite_ref = PilotLexicalTargetRef(
+        seeded_words[0].serbian_latin,
+        Capability.RETRIEVE_FORM,
+    )
+    dependent_ref = PilotLexicalTargetRef(
+        seeded_words[1].serbian_latin,
+        Capability.RETRIEVE_FORM,
+    )
+    bootstrap_domain(
+        db_session,
+        bootstrap_at=datetime(2026, 8, 27, 12, tzinfo=timezone.utc),
+        prerequisite_seeds=(
+            PilotPrerequisiteSeed(
+                prerequisite=prerequisite_ref,
+                dependent=dependent_ref,
+                kind=PrerequisiteKind.HARD,
+            ),
+        ),
+    )
+    prerequisite_target = resolve_catalog_mapping(
+        db_session,
+        word_id=seeded_words[0].id,
+        capability=Capability.RETRIEVE_FORM,
+    ).target
+    dependent_target = resolve_catalog_mapping(
+        db_session,
+        word_id=seeded_words[1].id,
+        capability=Capability.RETRIEVE_FORM,
+    ).target
+    observed_at = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    db_session.add(
+        _to_model(
+            LearnerTargetState(
+                state_id="99999999-9999-4999-8999-999999999999",
+                learner_id=profile.user_id,
+                target_key=prerequisite_target.target_key,
+                baseline=ProjectionBaseline.neutral(),
+                competence=CompetenceEstimate(
+                    success_weight=0,
+                    failure_weight=1,
+                    peak=0,
+                    uncertainty=0.5,
+                ),
+                evidence=EvidenceSummary(
+                    count=1,
+                    deterministic_count=1,
+                    last_evidence_at=observed_at,
+                    last_event_id="88888888-8888-4888-8888-888888888888",
+                ),
+                memory=MemoryState(
+                    due_at=observed_at,
+                    interval_days=0,
+                    lapses=1,
+                    policy_version="memory-v1",
+                ),
+                projection_policy_version="projection-v1",
+                updated_at=observed_at,
+            )
+        )
+    )
+    db_session.commit()
+
+    frontier = _CurriculumPort(db_session).active_frontier(
+        LearnerProfile.from_legacy(profile)
+    )
+
+    assert frontier is not None
+    dependent = next(
+        item for item in frontier if item.target_spec == dependent_target
+    )
+    assert dependent.hard_ready is False

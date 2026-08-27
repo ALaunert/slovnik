@@ -13,7 +13,18 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import JSON, MetaData, Table, create_engine, inspect, select, text
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    ForeignKeyConstraint,
+    MetaData,
+    Table,
+    UniqueConstraint,
+    create_engine,
+    inspect,
+    select,
+    text,
+)
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
@@ -597,6 +608,7 @@ def assert_concurrent_event_submission(engine):
         generator_kind=GeneratorKind.CURATED,
         generator_version="curated-v1",
         scorer_version="deterministic-v1",
+        feedback_policy_version="legacy-review-v1",
         status=ActivityStatus.PENDING,
         selected_at=selected_at,
         terminal_at=None,
@@ -902,6 +914,98 @@ print(json.dumps({"before": before, "first": first, "second": snapshot()}))
     Base.metadata.drop_all(engine)
     assert not inspect(engine).get_table_names()
     engine.dispose()
+
+
+def test_migrated_domain_schema_matches_orm_constraint_contract(
+    migration_database,
+):
+    from app.db import Base, load_model_registry
+
+    _, engine = migration_database
+    load_model_registry()
+    inspector = inspect(engine)
+
+    for table_name in DOMAIN_TABLES:
+        table = Base.metadata.tables[table_name]
+        reflected_columns = {
+            column["name"]: (
+                str(column["type"]).upper(),
+                column["nullable"],
+            )
+            for column in inspector.get_columns(table_name)
+            if column["name"] not in table.primary_key.columns
+        }
+        orm_columns = {
+            column.name: (
+                str(column.type.compile(dialect=engine.dialect)).upper(),
+                column.nullable,
+            )
+            for column in table.columns
+            if not column.primary_key
+        }
+        assert reflected_columns == orm_columns
+
+        reflected_unique = {
+            (constraint["name"], tuple(constraint["column_names"]))
+            for constraint in inspector.get_unique_constraints(table_name)
+        }
+        orm_unique = {
+            (constraint.name, tuple(column.name for column in constraint.columns))
+            for constraint in table.constraints
+            if isinstance(constraint, UniqueConstraint)
+        }
+        assert reflected_unique == orm_unique
+
+        reflected_foreign_keys = {
+            (
+                constraint["name"],
+                tuple(constraint["constrained_columns"]),
+                constraint["referred_table"],
+                tuple(constraint["referred_columns"]),
+            )
+            for constraint in inspector.get_foreign_keys(table_name)
+        }
+        orm_foreign_keys = {
+            (
+                constraint.name,
+                tuple(column.name for column in constraint.columns),
+                constraint.referred_table.name,
+                tuple(element.column.name for element in constraint.elements),
+            )
+            for constraint in table.constraints
+            if isinstance(constraint, ForeignKeyConstraint)
+        }
+        assert reflected_foreign_keys == orm_foreign_keys
+
+        reflected_checks = {
+            constraint["name"]
+            for constraint in inspector.get_check_constraints(table_name)
+        }
+        orm_checks = {
+            constraint.name
+            for constraint in table.constraints
+            if isinstance(constraint, CheckConstraint)
+        }
+        assert reflected_checks == orm_checks
+
+        reflected_indexes = {
+            (
+                index["name"],
+                tuple(index["column_names"]),
+                bool(index["unique"]),
+            )
+            for index in inspector.get_indexes(table_name)
+            if not index.get("duplicates_constraint")
+        }
+        orm_indexes = {
+            (
+                index.name,
+                tuple(column.name for column in index.columns),
+                index.unique,
+            )
+            for index in table.indexes
+        }
+        assert reflected_indexes == orm_indexes
 
 
 def test_domain_root_context_exports_are_lazy_and_cached():

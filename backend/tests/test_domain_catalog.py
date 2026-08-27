@@ -3,7 +3,7 @@ from math import inf, nan
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, text, update
 from sqlalchemy.orm import Session
 
 from app.domain.catalog import (
@@ -858,6 +858,9 @@ def test_vocabulary_bootstrap_is_idempotent_and_preserves_legacy_content():
         assert legacy.forms[0].stress_pattern.legacy_marker == "хва́ла"
         assert structured.forms[0].morph_features["bootstrap"]["cefr_level"] == "A1"
         assert structured.forms[0].morph_features["bootstrap"]["theme"] == "actions"
+        assert len(
+            structured.forms[0].morph_features["bootstrap"]["source_fingerprint"]
+        ) == 64
         assert mwe.kind is EntryKind.MWE
         assert mwe.forms[0].form_kind is FormKind.FIXED
         assert ambiguous.kind is EntryKind.WORD
@@ -888,3 +891,68 @@ def test_vocabulary_bootstrap_is_idempotent_and_preserves_legacy_content():
         )
         assert all(item.status is ContentStatus.PUBLISHED for item in catalog[:4])
         assert session.scalar(text("SELECT count(*) FROM learning_events")) == 0
+
+
+def test_catalog_mapping_audit_reports_stale_source_without_mutation(db_session) -> None:
+    from app.models import VocabularyItem
+    from app.services.catalog_mapping_service import audit_catalog_mappings
+
+    word = VocabularyItem(
+        serbian_cyrillic="кућа",
+        serbian_latin="kuća",
+        russian_translation="дом",
+        cefr_level="A1",
+        theme="home",
+    )
+    db_session.add(word)
+    db_session.commit()
+    bootstrap_catalog(db_session)
+
+    word.russian_translation = "здание"
+    db_session.commit()
+
+    audit = audit_catalog_mappings(db_session)
+
+    assert audit.stale == (word.id,)
+    assert audit.missing == ()
+    assert audit.ambiguous == ()
+
+
+def test_locking_mapping_refreshes_stale_identity_map_before_fingerprint_check(
+    db_session,
+) -> None:
+    from app.domain.shared import Capability
+    from app.models import VocabularyItem
+    from app.services.catalog_mapping_service import (
+        CatalogMappingError,
+        resolve_catalog_mapping,
+    )
+
+    word = VocabularyItem(
+        serbian_cyrillic="реч",
+        serbian_latin="reč",
+        russian_translation="слово",
+        cefr_level="A1",
+        theme="identity-map",
+    )
+    db_session.add(word)
+    db_session.commit()
+    bootstrap_catalog(db_session)
+    loaded = db_session.get(VocabularyItem, word.id)
+    db_session.execute(
+        update(VocabularyItem)
+        .where(VocabularyItem.id == word.id)
+        .values(russian_translation="изменено")
+        .execution_options(synchronize_session=False)
+    )
+    assert loaded is not None
+    assert loaded.russian_translation == "слово"
+
+    with pytest.raises(CatalogMappingError) as error:
+        resolve_catalog_mapping(
+            db_session,
+            word.id,
+            capability=Capability.RETRIEVE_FORM,
+        )
+
+    assert error.value.reason == "stale"

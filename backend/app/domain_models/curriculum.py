@@ -107,7 +107,7 @@ class CurriculumNodeRecord(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     curriculum_version_id: Mapped[str] = mapped_column(
         Text,
-        ForeignKey("curriculum_versions.id"),
+        ForeignKey("curriculum_versions.id", name="fk_curriculum_node_version"),
         nullable=False,
     )
     target_key: Mapped[str] = mapped_column(Text, nullable=False)
@@ -158,7 +158,10 @@ class CurriculumPrerequisiteRecord(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     curriculum_version_id: Mapped[str] = mapped_column(
         Text,
-        ForeignKey("curriculum_versions.id"),
+        ForeignKey(
+            "curriculum_versions.id",
+            name="fk_curriculum_prerequisite_version",
+        ),
         nullable=False,
     )
     prerequisite_node_id: Mapped[str] = mapped_column(Text, nullable=False)

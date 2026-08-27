@@ -124,6 +124,7 @@ def make_activity(*, scorer="deterministic"):
         generator_kind=GeneratorKind.CURATED,
         generator_version="curated-v1",
         scorer_version=scorer_version,
+        feedback_policy_version="legacy-review-v1",
         status=ActivityStatus.PENDING,
         selected_at=NOW,
         terminal_at=None,
@@ -786,6 +787,24 @@ def test_integrity_recovery_is_selective_to_idempotency_constraint() -> None:
 
     assert _is_idempotency_violation(idempotency_error) is True
     assert _is_idempotency_violation(activity_error) is False
+
+
+def test_integrity_recovery_accepts_deployed_idempotency_constraint_name() -> None:
+    from types import SimpleNamespace
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.services.learning_event_service import _is_idempotency_violation
+
+    deployed_error = IntegrityError(
+        "insert",
+        {},
+        SimpleNamespace(
+            diag=SimpleNamespace(constraint_name="uq_learning_event_idempotency")
+        ),
+    )
+
+    assert _is_idempotency_violation(deployed_error) is True
 
 
 def test_same_idempotency_key_is_scoped_to_each_learner(db_session) -> None:

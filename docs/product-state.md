@@ -26,7 +26,14 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - Feature-flagged learning and quiz adapters can atomically shadow accepted legacy interactions into
   domain runs, activities, events, and learner projections. The flag is off by default.
 - Shadow next-activity comparison is diagnostic only: it cannot change selection, learner state, or
-  legacy responses, and selector/metrics/logging failures are isolated from accepted writes.
+  legacy responses. Daily new-word and review reads invoke it in an isolated read session using the
+  first authoritative result (`NEW`, `DUE`, or `WEAK`) or `NONE`; failures remain isolated.
+- Catalog bootstrap is creation-only. Each bootstrapped Form stores a canonical source fingerprint;
+  shared learning/quiz mapping rejects missing, ambiguous, and stale content before evidence writes.
+  `python -m app.catalog_audit` reports only affected legacy word IDs.
+- Quiz shadow enrollment is per attempt. Attempts started while the flag was off remain legacy-only;
+  answer/event drift abandons a linked run with the fixed `quiz_shadow_enrollment_gap` diagnostic
+  and does not block legacy quiz behavior.
 - Production shadow enablement is rejected unless both data-lifecycle and trusted-identity release
   gates are explicitly true. Those policies and real authentication remain deferred.
 - The approved design and its explicit deferred log are in
@@ -196,7 +203,8 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   repositories, reversible migration constraints, event idempotency, replay and projection order,
   memory-v1 transitions, legacy baseline bootstrap, curriculum lifecycle/frontier, deterministic
   selector policies, shadow learning/quiz atomicity and concurrency, diagnostic isolation, and
-  privacy-safe bounded payloads.
+  privacy-safe bounded payloads, catalog freshness, rollout flag transitions, deterministic partial
+  evidence, persisted activity provenance, and runtime comparison wiring.
 - OpenAI adapter tests cover strict response-schema requirements, configured SDK request arguments,
   prompt constraints, request-id retention, typed provider failures, and secret/source-word log
   redaction without real network calls.
@@ -227,9 +235,11 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   response, JSON payloads are exact, loading/focus/completion states work, and maximum bounded
   unbroken content creates no mobile horizontal overflow. No e2e scenario calls a real backend or
   OpenAI.
-- Verified on 2026-08-27: backend flag-off regression passed with `658 passed, 16 skipped`; the
-  flag-on shadow target passed with `50 passed, 2 skipped`; all `19` PostgreSQL migration,
-  idempotency, and concurrency tests passed; backend Ruff and privacy/scope audits passed.
+- Verified on 2026-08-27 after review remediation: full backend passed with `674 passed, 16 skipped`;
+  targeted catalog/quiz/curriculum/selection/schema regressions, Ruff, whitespace, fresh migration
+  upgrade, the explicit ORM/migration domain-schema parity regression, and the read-only catalog
+  audit passed. PostgreSQL-only tests remain environment-gated by
+  `SLOVNIK_TEST_POSTGRES_ADMIN_URL`.
 - Verified on 2026-07-25: PostgreSQL-enabled backend tests passed with `221 passed`;
   frontend unit tests passed with `83 passed`; the production build passed; and all six Playwright
   tests passed.
@@ -242,6 +252,10 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - The legacy scheduler remains authoritative. Shadow mode can retain mapped review/quiz evidence,
   but production retention/export/delete policy, review-history analytics, desired-retention
   controls, FSRS fitting, and workload forecasting remain deferred.
+- Catalog semantic versioning and automatic reconciliation remain deferred. Stale mappings are
+  reported and rejected rather than silently rewritten.
+- `alembic check` still reports five pre-existing legacy nullable mismatches on quiz/profile/
+  vocabulary timestamps; the new domain tables have an explicit ORM/migration parity regression.
 - AI fill v1 supports one Serbian word per request and strict normalized equality only. It has no
   batch input, regenerate action, Russian-to-Serbian card creation, morphology/fuzzy matching,
   generation review queue, or generation-store administration UI.
@@ -274,6 +288,10 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - `backend/app/services/quiz_service.py`: quiz behavior plus guarded shadow quiz evidence.
 - `backend/app/services/next_activity_service.py`: deterministic internal selector and optional
   non-authoritative comparison seam.
+- `backend/app/services/shadow_selection_runtime.py`: persistence-backed isolated runtime
+  composition for diagnostic selection comparison.
+- `backend/app/services/catalog_mapping_service.py`: source fingerprint, fresh mapping resolver,
+  and read-only mapping audit.
 - `frontend/src/router.ts`: frontend route map.
 - `frontend/src/api/client.ts`: typed frontend API wrapper.
 - `frontend/src/views/ReviewView.vue`: reveal-first review, rating persistence, focus, and

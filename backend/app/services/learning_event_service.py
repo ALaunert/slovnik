@@ -143,10 +143,15 @@ class LearningEventService:
 
 def _is_idempotency_violation(error: IntegrityError) -> bool:
     diagnostic = getattr(error.orig, "diag", None)
-    if getattr(diagnostic, "constraint_name", None) == "uq_learning_events_idempotency":
+    constraint_name = getattr(diagnostic, "constraint_name", None)
+    if constraint_name in {
+        "uq_learning_event_idempotency",
+        "uq_learning_events_idempotency",
+    }:
         return True
     message = str(error.orig).lower()
     return (
         "learning_events.learner_id, learning_events.idempotency_key" in message
+        or "uq_learning_event_idempotency" in message
         or "uq_learning_events_idempotency" in message
     )

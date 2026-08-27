@@ -23,7 +23,7 @@ Updated: 2026-08-27
 | Domain Model v0.1 | Done | Approved by user; no production code/UI |
 | Formal ADR | Accepted | Domain decision was approved by the user and passed an additional self-review |
 | Backend SDD | Accepted, revision 2 | Parallel execution design approved by the user on 2026-08-26 |
-| Implementation | G4 complete | P1–P4 backend foundation is integrated; P4.T5 is completed by the current documentation/gate commit |
+| Implementation | G4 remediation complete | Schema parity, evidence provenance, catalog freshness, quiz rollout/privacy, and live diagnostic comparison are integrated |
 
 ## SDD phase status
 

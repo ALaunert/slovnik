@@ -29,6 +29,7 @@ from app.domain_models.catalog import LanguageConstruction, LanguageSense
 from app.models import VocabularyItem
 from app.repositories.catalog import CatalogRepository
 from app.services.curriculum_service import CurriculumService, PilotPrerequisite
+from app.services.catalog_mapping_service import vocabulary_source_fingerprint
 
 
 CATALOG_BOOTSTRAP_NAMESPACE = UUID("c139c951-f3db-5f7e-a1cf-e0f8b1dc8c52")
@@ -166,6 +167,7 @@ def _aggregate(word: VocabularyItem) -> LexicalUnit:
                 "theme": word.theme,
                 "usage_register": word.usage_register,
                 "needs_editor_review": needs_editor_review,
+                "source_fingerprint": vocabulary_source_fingerprint(word),
             }
         },
         stress_pattern=stress,

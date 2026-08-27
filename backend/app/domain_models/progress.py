@@ -42,6 +42,11 @@ class LearnerTargetStateModel(Base):
             name="ck_learner_target_states_evidence_count",
         ),
         CheckConstraint(
+            "deterministic_evidence_count >= 0 AND "
+            "deterministic_evidence_count <= evidence_count",
+            name="ck_learner_target_states_deterministic_evidence_count",
+        ),
+        CheckConstraint(
             "baseline_kind IN ('neutral', 'legacy_bootstrap')",
             name="ck_learner_target_states_baseline_kind",
         ),
@@ -82,7 +87,12 @@ class LearnerTargetStateModel(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     learner_id: Mapped[str] = mapped_column(
-        String(80), ForeignKey("user_profiles.user_id"), nullable=False
+        String(80),
+        ForeignKey(
+            "user_profiles.user_id",
+            name="fk_learner_target_state_learner",
+        ),
+        nullable=False,
     )
     target_key: Mapped[str] = mapped_column(String(255), nullable=False)
     competence_success_weight: Mapped[float] = mapped_column(Float, nullable=False)
@@ -90,6 +100,9 @@ class LearnerTargetStateModel(Base):
     competence_peak: Mapped[float] = mapped_column(Float, nullable=False)
     uncertainty: Mapped[float] = mapped_column(Float, nullable=False)
     evidence_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    deterministic_evidence_count: Mapped[int] = mapped_column(
+        Integer, nullable=False
+    )
     baseline_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     baseline_memory_due_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)

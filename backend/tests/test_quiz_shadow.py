@@ -1,5 +1,6 @@
 import os
 import threading
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
@@ -121,6 +122,59 @@ def test_flag_on_start_creates_one_linked_active_run(
     assert runs[0].selection_policy_version == "legacy-quiz-v1"
 
 
+def test_stale_catalog_mapping_aborts_quiz_start_without_rows(
+    client,
+    db_session,
+    completed_learning,
+    monkeypatch,
+) -> None:
+    from app.domain_models.practice import PracticeRunModel
+    from app.models import QuizAttempt
+    from app.services.shadow_quiz_service import ShadowQuizFailure
+
+    _enable_shadow(db_session, monkeypatch)
+    completed_learning[0].russian_translation = "изменённый перевод"
+    db_session.commit()
+
+    with pytest.raises(ShadowQuizFailure, match="Shadow quiz operation failed"):
+        client.post(
+            "/api/quizzes/learner-1/start",
+            json={"quiz_type": "daily"},
+        )
+
+    assert not tuple(db_session.scalars(select(QuizAttempt)))
+    assert not tuple(db_session.scalars(select(PracticeRunModel)))
+
+
+def test_catalog_edit_after_quiz_start_aborts_answer_evidence(
+    client,
+    db_session,
+    completed_learning,
+    monkeypatch,
+) -> None:
+    from app.domain_models.practice import LearningEventModel
+    from app.models import QuizAnswer, VocabularyItem
+    from app.services.shadow_quiz_service import ShadowQuizFailure
+
+    _enable_shadow(db_session, monkeypatch)
+    started = client.post(
+        "/api/quizzes/learner-1/start", json={"quiz_type": "daily"}
+    ).json()
+    question = started["questions"][0]
+    word = db_session.get(VocabularyItem, question["word_id"])
+    word.russian_translation = "изменённый перевод"
+    db_session.commit()
+
+    with pytest.raises(ShadowQuizFailure, match="Shadow quiz operation failed"):
+        client.post(
+            f"/api/quizzes/learner-1/{started['attempt_id']}/answers",
+            json={**question, "answer": "ответ"},
+        )
+
+    assert not tuple(db_session.scalars(select(QuizAnswer)))
+    assert not tuple(db_session.scalars(select(LearningEventModel)))
+
+
 def test_flag_on_empty_quiz_preserves_legacy_completion_without_synthetic_run(
     client,
     db_session,
@@ -144,6 +198,66 @@ def test_flag_on_empty_quiz_preserves_legacy_completion_without_synthetic_run(
     )
     assert completed.status_code == 200
     assert completed.json()["total_questions"] == 0
+
+
+def test_flag_enabled_after_legacy_start_keeps_attempt_legacy_only(
+    client,
+    db_session,
+    completed_learning,
+    monkeypatch,
+) -> None:
+    from app.config import settings
+    from app.domain_models.practice import LearningEventModel, PracticeRunModel
+
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", False)
+    started = client.post(
+        "/api/quizzes/learner-1/start", json={"quiz_type": "daily"}
+    ).json()
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", True)
+    question = started["questions"][0]
+
+    response = client.post(
+        f"/api/quizzes/learner-1/{started['attempt_id']}/answers",
+        json={**question, "answer": _answer_for(question, db_session)},
+    )
+
+    assert response.status_code == 200
+    assert not tuple(db_session.scalars(select(PracticeRunModel)))
+    assert not tuple(db_session.scalars(select(LearningEventModel)))
+
+
+def test_flag_gap_abandons_shadow_run_and_continues_legacy(
+    client,
+    db_session,
+    completed_learning,
+    monkeypatch,
+    caplog,
+) -> None:
+    from app.config import settings
+    from app.domain_models.practice import LearningEventModel, PracticeRunModel
+
+    _enable_shadow(db_session, monkeypatch)
+    started = client.post(
+        "/api/quizzes/learner-1/start", json={"quiz_type": "daily"}
+    ).json()
+    first, second = started["questions"][:2]
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", False)
+    assert client.post(
+        f"/api/quizzes/learner-1/{started['attempt_id']}/answers",
+        json={**first, "answer": _answer_for(first, db_session)},
+    ).status_code == 200
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", True)
+
+    response = client.post(
+        f"/api/quizzes/learner-1/{started['attempt_id']}/answers",
+        json={**second, "answer": _answer_for(second, db_session)},
+    )
+
+    assert response.status_code == 200
+    run = db_session.scalar(select(PracticeRunModel))
+    assert run.status == "abandoned"
+    assert not tuple(db_session.scalars(select(LearningEventModel)))
+    assert "quiz_shadow_enrollment_gap" in caplog.text
 
 
 def test_flag_on_start_snapshots_each_planned_question_without_events(
@@ -501,23 +615,31 @@ def test_shadow_failure_rolls_back_legacy_answer_and_progress(
     )
     before = (progress.correct_count, progress.incorrect_count, progress.is_weak)
 
+    secret = "SECRET-ANSWER-AND-PROVIDER-PAYLOAD"
+
     def fail_after_shadow_event_write(self, event):
-        raise RuntimeError("injected shadow failure")
+        raise RuntimeError(secret)
 
     monkeypatch.setattr(
         shadow_quiz_service.LearnerProjectionService,
         "apply_event",
         fail_after_shadow_event_write,
     )
-    with pytest.raises(RuntimeError, match="injected shadow failure"):
+    from app.services.shadow_quiz_service import ShadowQuizFailure
+
+    with pytest.raises(ShadowQuizFailure, match="Shadow quiz operation failed") as error:
         client.post(
             f"/api/quizzes/learner-1/{started['attempt_id']}/answers",
             json={
                 "word_id": question["word_id"],
                 "question_type": question["question_type"],
-                "answer": "wrong",
+                "answer": secret,
             },
         )
+
+    assert secret not in "".join(traceback.format_exception(error.value))
+    assert error.value.__cause__ is None
+    assert error.value.__suppress_context__ is True
 
     current = db_session.scalar(
         select(UserWordProgress).where(

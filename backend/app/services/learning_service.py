@@ -14,6 +14,8 @@ from app.services.shadow_learning_service import (
     record_new_word_batch,
     record_review_rating,
 )
+from app.services.shadow_comparison_service import LegacyLearningSelectionKind
+from app.services.shadow_selection_runtime import run_selection_comparison
 
 ReviewRating = Literal["again", "hard", "good", "easy"]
 
@@ -126,7 +128,7 @@ def apply_review_rating(
 def get_daily_new_words(db: Session, user_id: str) -> list[VocabularyItem]:
     profile = get_or_create_profile(db, user_id)
     seen_word_ids = select(UserWordProgress.word_id).where(UserWordProgress.user_id == user_id)
-    return list(
+    words = list(
         db.scalars(
             select(VocabularyItem)
             .where(VocabularyItem.cefr_level == profile.preferred_level)
@@ -135,6 +137,18 @@ def get_daily_new_words(db: Session, user_id: str) -> list[VocabularyItem]:
             .limit(profile.daily_new_word_count)
         )
     )
+    if settings.language_assistant_shadow_enabled:
+        run_selection_comparison(
+            bind=db.get_bind(),
+            learner_id=user_id,
+            kind=(
+                LegacyLearningSelectionKind.NEW
+                if words
+                else LegacyLearningSelectionKind.NONE
+            ),
+            word_id=words[0].id if words else None,
+        )
+    return words
 
 
 def _ensure_words_exist(db: Session, word_ids: list[int]) -> None:
@@ -302,6 +316,13 @@ def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
     )
     selected = [progress.word_id for progress in due_rows]
     if not selected:
+        if settings.language_assistant_shadow_enabled:
+            run_selection_comparison(
+                bind=db.get_bind(),
+                learner_id=user_id,
+                kind=LegacyLearningSelectionKind.NONE,
+                word_id=None,
+            )
         return []
     words_by_id = {
         word.id: word for word in db.scalars(select(VocabularyItem).where(VocabularyItem.id.in_(selected)))
@@ -330,6 +351,20 @@ def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
                 "incorrect_count": progress.incorrect_count,
                 "is_weak": progress.is_weak,
             }
+        )
+    first = result[0] if result else None
+    if settings.language_assistant_shadow_enabled:
+        run_selection_comparison(
+            bind=db.get_bind(),
+            learner_id=user_id,
+            kind=(
+                LegacyLearningSelectionKind.WEAK
+                if first is not None and first["is_weak"]
+                else LegacyLearningSelectionKind.DUE
+                if first is not None
+                else LegacyLearningSelectionKind.NONE
+            ),
+            word_id=first["id"] if first is not None else None,
         )
     return result
 

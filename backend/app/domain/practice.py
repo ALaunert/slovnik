@@ -568,6 +568,7 @@ class ActivityInstance:
     generator_kind: GeneratorKind
     generator_version: str
     scorer_version: str | None
+    feedback_policy_version: str
     status: ActivityStatus
     selected_at: datetime
     terminal_at: datetime | None
@@ -590,6 +591,13 @@ class ActivityInstance:
             raise ValueError("Activity requires bounded selection metadata")
         if not isinstance(self.generator_kind, GeneratorKind):
             raise ValueError("Activity generator must use a registered wire value")
+        if (
+            not isinstance(self.feedback_policy_version, str)
+            or not 1 <= len(self.feedback_policy_version) <= 120
+        ):
+            raise ValueError(
+                "Activity feedback_policy_version must contain 1 to 120 characters"
+            )
         if type(self.sequence_number) is not int or self.sequence_number < 1:
             raise ValueError("Activity sequence_number must be at least 1")
         if type(self.attempt_number) is not int or self.attempt_number < 1:

@@ -30,6 +30,17 @@ Concurrent requests for the same normalized word share one provider call through
 
 Structured stress stores aligned Cyrillic and Latin syllables plus one stressed-syllable index. The editor preview, vocabulary list, and new-word/review cards emphasize the full stressed syllable. When structured stress is absent, the legacy `stress_marker` remains visible as metadata without inferred emphasis.
 
+## Language-assistant shadow audit
+
+Catalog bootstrap is creation-only and records a fingerprint of each source `VocabularyItem`; shadow learning and quiz writes reject missing, ambiguous, or stale mappings before evidence is stored. Audit mappings without changing data:
+
+```bash
+cd backend
+.venv/bin/python -m app.catalog_audit
+```
+
+The output contains only legacy word IDs grouped as `missing`, `stale`, or `ambiguous`. The audit does not rewrite published content.
+
 ## Verification
 
 Backend:

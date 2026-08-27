@@ -100,6 +100,7 @@ def _native_state(target_spec, *, due_at=None, success=1, failure=0, uncertainty
         ),
         evidence=EvidenceSummary(
             count=evidence_count,
+            deterministic_count=evidence_count,
             last_evidence_at=NOW - timedelta(days=2),
             last_event_id="88888888-8888-4888-8888-888888888888",
         ),
@@ -672,6 +673,43 @@ def test_selector_uses_review_strengthen_acquire_assess_precedence() -> None:
     assert strengthen.target_key == weak_target.target_key
     assert acquire.target_key == acquire_target.target_key
     assert assess.target_key == assess_target.target_key
+
+
+def test_partial_deterministic_response_creates_assessment_gap() -> None:
+    from types import SimpleNamespace
+
+    from app.domain.practice import LearningIntent, SelectionReason
+    from app.domain.progress import LearnerTargetState
+    from app.services.learner_projection_service import project_event
+
+    target_spec = _target(target_id="67676767-6767-4767-8767-676767676767")
+    state = LearnerTargetState.neutral(
+        state_id="68686868-6868-4868-8868-686868686868",
+        learner_id="learner-1",
+        target_key=target_spec.target_key,
+        updated_at=NOW - timedelta(hours=2),
+    )
+    projected = project_event(
+        state,
+        SimpleNamespace(
+            event_id="69696969-6969-4969-8969-696969696969",
+            learner_id="learner-1",
+            target_key=target_spec.target_key,
+            occurred_at=NOW - timedelta(hours=1),
+            event_type="response_evaluated",
+            evaluation_source="deterministic",
+            evaluation_outcome="partial",
+            first_response=None,
+        ),
+    )
+
+    decision = _service(
+        (_curriculum_target(target_spec),),
+        {target_spec.target_key: projected},
+    ).select_next(learner_id="learner-1", now=NOW)
+
+    assert decision.intent is LearningIntent.ASSESS
+    assert decision.reason_codes == (SelectionReason.ASSESSMENT_GAP,)
 
 
 def test_selector_prioritizes_due_state_and_does_not_mutate_projection() -> None:

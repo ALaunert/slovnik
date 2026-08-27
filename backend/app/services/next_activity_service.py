@@ -53,9 +53,7 @@ def _within_requested_level(target: CurriculumTarget, requested_level: str) -> b
 
 
 def _has_native_deterministic_evidence(state) -> bool:
-    return state is not None and (
-        state.competence.success_weight + state.competence.failure_weight > 0
-    )
+    return state is not None and state.evidence.deterministic_count > 0
 
 
 def _is_due(state, now: datetime) -> bool:

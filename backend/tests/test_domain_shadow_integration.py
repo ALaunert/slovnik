@@ -158,7 +158,9 @@ def test_quiz_shadow_failure_rolls_back_without_cross_flow_orphans(
                 RuntimeError("injected shadow event failure")
             ),
         )
-        with pytest.raises(RuntimeError, match="injected shadow event failure"):
+        from app.services.shadow_quiz_service import ShadowQuizFailure
+
+        with pytest.raises(ShadowQuizFailure, match="Shadow quiz operation failed"):
             client.post(
                 answer_url,
                 json={

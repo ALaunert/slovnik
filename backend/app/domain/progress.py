@@ -323,11 +323,17 @@ class CompetenceEstimate:
 @dataclass(frozen=True)
 class EvidenceSummary:
     count: int
+    deterministic_count: int = 0
     last_evidence_at: datetime | None = None
     last_event_id: str | None = None
 
     def __post_init__(self) -> None:
         _require_nonnegative_int("Evidence count", self.count)
+        _require_nonnegative_int(
+            "Deterministic evidence count", self.deterministic_count
+        )
+        if self.deterministic_count > self.count:
+            raise ValueError("Deterministic evidence count cannot exceed evidence count")
         has_timestamp = self.last_evidence_at is not None
         has_event_id = self.last_event_id is not None
         if has_timestamp != has_event_id or (self.count > 0) != has_timestamp:

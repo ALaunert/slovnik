@@ -73,6 +73,10 @@ def project_event(
         competence=_project_competence(state.competence, event),
         evidence=EvidenceSummary(
             count=state.evidence.count + 1,
+            deterministic_count=(
+                state.evidence.deterministic_count
+                + int(_is_deterministic_response(event))
+            ),
             last_evidence_at=event.occurred_at,
             last_event_id=event.event_id,
         ),

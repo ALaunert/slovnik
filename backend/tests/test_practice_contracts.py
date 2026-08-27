@@ -83,10 +83,15 @@ def make_activity():
         generator_kind=GeneratorKind.CURATED,
         generator_version="curated-v1",
         scorer_version=None,
+        feedback_policy_version="legacy-new-word-v1",
         status=ActivityStatus.PENDING,
         selected_at=NOW,
         terminal_at=None,
     )
+
+
+def test_activity_freezes_feedback_policy_version() -> None:
+    assert make_activity().feedback_policy_version == "legacy-new-word-v1"
 
 
 def test_practice_run_requires_terminal_timestamp_only_after_active_state() -> None:
@@ -708,10 +713,11 @@ def test_practice_repository_returns_domain_values_not_orm_rows() -> None:
             selection_reason_payload=activity.selection.to_payload(),
             selection_propensity=activity.selection.propensity,
             generator_kind=activity.generator_kind.value,
-            generator_version=activity.generator_version,
-            scorer_kind=None,
-            scorer_version=None,
-            status=activity.status.value,
+                generator_version=activity.generator_version,
+                scorer_kind=None,
+                scorer_version=None,
+                feedback_policy_version=activity.feedback_policy_version,
+                status=activity.status.value,
             selected_at=activity.selected_at,
             terminal_at=activity.terminal_at,
         ),
@@ -808,10 +814,11 @@ def test_practice_repository_sqlite_round_trip_normalizes_timestamps_to_utc() ->
                 selection_reason_payload JSON NOT NULL,
                 selection_propensity REAL,
                 generator_kind TEXT NOT NULL,
-                generator_version TEXT NOT NULL,
-                scorer_kind TEXT,
-                scorer_version TEXT,
-                status TEXT NOT NULL,
+                    generator_version TEXT NOT NULL,
+                    scorer_kind TEXT,
+                    scorer_version TEXT,
+                    feedback_policy_version TEXT NOT NULL,
+                    status TEXT NOT NULL,
                 selected_at TIMESTAMP NOT NULL,
                 terminal_at TIMESTAMP
             )

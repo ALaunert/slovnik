@@ -36,18 +36,29 @@ class PracticeRunModel(Base):
             "selection_policy_version",
             name="uq_practice_runs_selection_policy",
         ),
+        UniqueConstraint(
+            "legacy_quiz_attempt_id",
+            name="uq_practice_run_legacy_quiz_attempt",
+        ),
         Index("ix_practice_runs_learner_status", "learner_id", "status"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     learner_id: Mapped[str] = mapped_column(
-        ForeignKey("user_profiles.user_id"), nullable=False
+        ForeignKey("user_profiles.user_id", name="fk_practice_run_learner"),
+        nullable=False,
     )
     curriculum_version_id: Mapped[str | None] = mapped_column(
-        ForeignKey("curriculum_versions.id")
+        ForeignKey(
+            "curriculum_versions.id",
+            name="fk_practice_run_curriculum_version",
+        )
     )
     legacy_quiz_attempt_id: Mapped[int | None] = mapped_column(
-        ForeignKey("quiz_attempts.id"), unique=True
+        ForeignKey(
+            "quiz_attempts.id",
+            name="fk_practice_run_legacy_quiz_attempt",
+        )
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     selection_policy_version: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -162,6 +173,7 @@ class ActivityInstanceModel(Base):
     generator_version: Mapped[str] = mapped_column(String(120), nullable=False)
     scorer_kind: Mapped[str | None] = mapped_column(String(20))
     scorer_version: Mapped[str | None] = mapped_column(String(120))
+    feedback_policy_version: Mapped[str] = mapped_column(String(120), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     selected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     terminal_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -216,7 +228,8 @@ class LearningEventModel(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
     learner_id: Mapped[str] = mapped_column(
-        ForeignKey("user_profiles.user_id"), nullable=False
+        ForeignKey("user_profiles.user_id", name="fk_learning_event_learner"),
+        nullable=False,
     )
     practice_run_id: Mapped[str] = mapped_column(String(36), nullable=False)
     activity_instance_id: Mapped[str] = mapped_column(String(36), nullable=False)

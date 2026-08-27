@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid5
@@ -33,7 +34,6 @@ from app.domain.practice import (
 from app.domain.progress import MEMORY_POLICY_VERSION
 from app.domain.shared import Capability, Modality, TargetKind
 from app.domain.target import TargetSpec
-from app.domain_models.catalog import LanguageLexicalUnit, LanguageSense
 from app.domain_models.practice import LearningEventModel, PracticeRunModel
 from app.models import QuizAnswer, QuizAttempt
 from app.repositories.practice import PracticeRepository
@@ -45,9 +45,15 @@ from app.services.domain_shadow_contracts import (
     ShadowPolicyVersion,
 )
 from app.services.learner_projection_service import LearnerProjectionService
+from app.services.catalog_mapping_service import CatalogMappingError, resolve_catalog_mapping
 
 
 SHADOW_QUIZ_NAMESPACE = UUID("283932b6-0867-5b81-9118-1cc3f1354795")
+logger = logging.getLogger(__name__)
+
+
+class ShadowQuizFailure(RuntimeError):
+    pass
 
 
 def _stable_id(attempt_id: int, entity: str) -> str:
@@ -65,6 +71,11 @@ class ShadowQuizService:
         self._session = session
         self._repository = PracticeRepository(session)
         self._answer_activity: ActivityInstance | None = None
+        self._enrolled = False
+
+    @property
+    def enrolled(self) -> bool:
+        return self._enrolled
 
     def start(self, attempt, questions: list[dict[str, object]]) -> PracticeRun:
         run = PracticeRun(
@@ -103,7 +114,15 @@ class ShadowQuizService:
         )
         target_spec = TargetSpec(
             target_kind=TargetKind.SENSE,
-            target_id=self._published_sense_id(int(question["word_id"])),
+            target_id=resolve_catalog_mapping(
+                self._session,
+                int(question["word_id"]),
+                capability=(
+                    Capability.RETRIEVE_FORM
+                    if question_type == "ru_to_sr_typing"
+                    else Capability.RECOGNIZE_MEANING
+                ),
+            ).target.target_id,
             capability=(
                 Capability.RETRIEVE_FORM
                 if question_type == "ru_to_sr_typing"
@@ -147,30 +166,11 @@ class ShadowQuizService:
                 if scorer_kind is ScorerKind.SELF_REPORT
                 else "legacy-quiz-v1"
             ),
+            feedback_policy_version="legacy-quiz-v1",
             status=ActivityStatus.PENDING,
             selected_at=run.started_at,
             terminal_at=None,
         )
-
-    def _published_sense_id(self, word_id: int) -> str:
-        ids = tuple(
-            self._session.scalars(
-                select(LanguageSense.id)
-                .join(
-                    LanguageLexicalUnit,
-                    LanguageLexicalUnit.id == LanguageSense.lexical_unit_id,
-                )
-                .where(
-                    LanguageLexicalUnit.legacy_vocabulary_item_id == word_id,
-                    LanguageLexicalUnit.status == "published",
-                    LanguageSense.status == "published",
-                )
-                .order_by(LanguageSense.id)
-            )
-        )
-        if len(ids) != 1:
-            raise RuntimeError("Quiz word requires exactly one published Sense")
-        return ids[0]
 
     def lock_for_answer(
         self,
@@ -190,13 +190,16 @@ class ShadowQuizService:
         )
         if attempt is None:
             raise ValueError("Quiz attempt not found")
+        if not self._enroll(attempt):
+            self._answer_activity = None
+            return attempt
+        self._enrolled = True
         run_row = self._session.scalar(
-            select(PracticeRunModel)
-            .where(PracticeRunModel.legacy_quiz_attempt_id == attempt_id)
-            .with_for_update()
+            select(PracticeRunModel).where(
+                PracticeRunModel.legacy_quiz_attempt_id == attempt_id
+            )
         )
-        if run_row is None or run_row.learner_id != learner_id:
-            raise RuntimeError("Linked shadow quiz run not found")
+        assert run_row is not None
         run = self._repository.get_run(run_row.id)
         if run is None:
             raise RuntimeError("Linked shadow quiz run not found")
@@ -214,6 +217,60 @@ class ShadowQuizService:
             raise RuntimeError("Quiz question has multiple pending shadow activities")
         self._answer_activity = matches[0] if matches else None
         return attempt
+
+    def _enroll(self, attempt: QuizAttempt) -> bool:
+        run_row = self._session.scalar(
+            select(PracticeRunModel)
+            .where(PracticeRunModel.legacy_quiz_attempt_id == attempt.id)
+            .with_for_update()
+        )
+        if run_row is None or run_row.learner_id != attempt.user_id:
+            return False
+        run = self._repository.get_run(run_row.id)
+        if run is None or run.status is not PracticeRunStatus.ACTIVE:
+            return False
+        expected_answer_ids = set(
+            self._session.scalars(
+                select(QuizAnswer.id).where(QuizAnswer.quiz_attempt_id == attempt.id)
+            )
+        )
+        event_rows = tuple(
+            self._session.scalars(
+                select(LearningEventModel).where(
+                    LearningEventModel.practice_run_id == run.id
+                )
+            )
+        )
+        actual_answer_ids: set[int] = set()
+        valid = True
+        for event in event_rows:
+            legacy_source = event.observation_payload.get("legacy_source")
+            if not isinstance(legacy_source, dict):
+                valid = False
+                break
+            reference = legacy_source.get("reference")
+            try:
+                answer_id = int(reference)
+            except (TypeError, ValueError):
+                valid = False
+                break
+            if (
+                legacy_source.get("kind") != ShadowLegacySourceKind.QUIZ_ANSWER.value
+                or event.idempotency_key != f"legacy:quiz-answer:{answer_id}"
+            ):
+                valid = False
+                break
+            actual_answer_ids.add(answer_id)
+        if valid and actual_answer_ids == expected_answer_ids:
+            return True
+        at = self._repository.database_now()
+        activities = self._repository.lock_activities(run.id)
+        abandoned, cancelled = run.abandon(activities, at)
+        for activity in cancelled:
+            self._repository.update_activity(activity)
+        self._repository.update_run(abandoned)
+        logger.warning("quiz_shadow_enrollment_gap")
+        return False
 
     def record_answer(
         self,
@@ -247,6 +304,13 @@ class ShadowQuizService:
         activity = self._answer_activity
         if activity is None:
             raise RuntimeError("Quiz answer has no pending shadow activity")
+        current_mapping = resolve_catalog_mapping(
+            self._session,
+            answer.word_id,
+            capability=activity.target_spec.capability,
+        )
+        if current_mapping.target.target_key != activity.target_key:
+            raise CatalogMappingError("stale")
         occurred_at = self._chronological_occurred_at(
             activity,
             _utc(answer.answered_at),
@@ -311,7 +375,19 @@ class ShadowQuizService:
             return proposed
         return latest_utc + timedelta(microseconds=1)
 
-    def complete(self, attempt: QuizAttempt) -> PracticeRun:
+    def complete(self, attempt: QuizAttempt) -> PracticeRun | None:
+        locked_attempt = self._session.scalar(
+            select(QuizAttempt)
+            .where(
+                QuizAttempt.id == attempt.id,
+                QuizAttempt.user_id == attempt.user_id,
+            )
+            .with_for_update()
+        )
+        if locked_attempt is None:
+            raise ValueError("Quiz attempt not found")
+        if not self._enroll(locked_attempt):
+            return None
         run_row = self._session.scalar(
             select(PracticeRunModel)
             .where(PracticeRunModel.legacy_quiz_attempt_id == attempt.id)

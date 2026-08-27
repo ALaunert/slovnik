@@ -666,3 +666,25 @@ def test_mapping_failure_aborts_without_legacy_or_domain_rows(
     assert db_session.scalar(select(func.count()).select_from(UserWordProgress)) == 0
     assert db_session.scalar(select(func.count()).select_from(LearningEventModel)) == 0
     assert db_session.scalar(select(func.count()).select_from(PracticeRunModel)) == 0
+
+
+def test_stale_mapping_aborts_before_legacy_or_domain_writes(
+    db_session,
+    shadow_words,
+    monkeypatch,
+) -> None:
+    from app.config import settings
+    from app.services.learning_service import complete_new_words
+    from app.services.shadow_learning_service import ShadowLearningFailure
+
+    word = shadow_words[0]
+    word.russian_translation = "изменённый перевод"
+    db_session.commit()
+    monkeypatch.setattr(settings, "language_assistant_shadow_enabled", True)
+
+    with pytest.raises(ShadowLearningFailure, match="unique published lexical mapping"):
+        complete_new_words(db_session, "shadow-stale-mapping", [word.id])
+
+    assert db_session.scalar(select(func.count()).select_from(UserWordProgress)) == 0
+    assert db_session.scalar(select(func.count()).select_from(LearningEventModel)) == 0
+    assert db_session.scalar(select(func.count()).select_from(PracticeRunModel)) == 0
