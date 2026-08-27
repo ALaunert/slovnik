@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta, timezone
+from typing import TYPE_CHECKING
 
 from app.domain.practice import LearningIntent, SelectionReason
 from app.domain.selection_policy import (
@@ -22,6 +23,13 @@ from app.domain.selection_ports import (
     LearnerProgressPort,
     SelectionHistoryPort,
 )
+
+if TYPE_CHECKING:
+    from app.services.domain_shadow_contracts import ShadowComparison
+    from app.services.shadow_comparison_service import (
+        LegacyLearningSelection,
+        ShadowComparisonService,
+    )
 
 
 CEFR_ORDER = {level: index for index, level in enumerate(("A1", "A2", "B1", "B2", "C1", "C2"))}
@@ -331,4 +339,20 @@ class NextActivityService:
             reason_metadata={
                 "difficulty_features": selected.difficulty_features,
             },
+        )
+
+    def compare_non_authoritatively(
+        self,
+        *,
+        learner_id: str,
+        now: datetime,
+        legacy_selection: LegacyLearningSelection,
+        comparison_service: ShadowComparisonService,
+    ) -> ShadowComparison | None:
+        return comparison_service.compare(
+            legacy_selection=legacy_selection,
+            select_shadow=lambda: self.select_next(
+                learner_id=learner_id,
+                now=now,
+            ),
         )
