@@ -534,16 +534,21 @@ def test_service_same_key_with_different_semantic_payload_conflicts(db_session) 
 def test_projector_failure_rolls_back_event_and_activity_terminal_state(db_session) -> None:
     from app.domain.practice import ActivityStatus
     from app.domain_models.practice import LearningEventModel
+    from app.domain_models.progress import LearnerTargetStateModel
     from app.repositories.practice import PracticeRepository
+    from app.repositories.progress import ProgressRepository
     from app.services.learning_event_service import LearningEventService
-    from app.models import UserProfile
 
     _, activity = seed_practice(db_session)
 
     class FailingTransactionalProjector:
         def project(self, event):
-            db_session.add(UserProfile(user_id="projection-write"))
-            db_session.flush()
+            ProgressRepository(db_session).ensure_state(
+                learner_id=event.learner_id,
+                target_key=event.target_key,
+                state_id="50000000-0000-4000-8000-000000000001",
+                updated_at=event.occurred_at,
+            )
             raise RuntimeError("projection failed")
 
     service = LearningEventService(db_session, projector=FailingTransactionalProjector())
@@ -555,7 +560,10 @@ def test_projector_failure_rolls_back_event_and_activity_terminal_state(db_sessi
     restored = PracticeRepository(db_session).get_activity(activity.id)
     assert restored.status is ActivityStatus.PENDING
     assert restored.terminal_at is None
-    assert db_session.get(UserProfile, "projection-write") is None
+    assert db_session.get(
+        LearnerTargetStateModel,
+        "50000000-0000-4000-8000-000000000001",
+    ) is None
 
 
 def test_semantic_fingerprint_normalizes_responses_and_legacy_reference() -> None:

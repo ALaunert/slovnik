@@ -631,6 +631,43 @@ def test_native_evidence_preserves_legacy_baseline_and_switches_policy_versions(
     ) == (legacy.baseline, baseline_due_at, 3, "memory-v1", "projection-v1", 1)
 
 
+def test_incremental_and_replay_match_from_frozen_legacy_baseline() -> None:
+    from app.domain.progress import LearnerTargetState, ProjectionBaseline
+    from app.services.learner_projection_service import project_event, replay_events
+
+    baseline_due_at = OCCURRED_AT - timedelta(days=2)
+    baseline = LearnerTargetState.legacy_bootstrap(
+        state_id="11111111-1111-4111-8111-111111111111",
+        learner_id="learner-1",
+        target_key=TARGET_KEY,
+        baseline=ProjectionBaseline.legacy(
+            memory_due_at=baseline_due_at,
+            memory_interval_days=3,
+            source_ref="user_word_progress:42",
+            source_fingerprint="a" * 64,
+        ),
+        updated_at=baseline_due_at,
+    )
+    events = (
+        FakeLearningEvent(
+            event_id="33333333-3333-4333-8333-333333333333",
+            occurred_at=OCCURRED_AT + timedelta(hours=1),
+        ),
+        FakeLearningEvent(
+            event_id="22222222-2222-4222-8222-222222222222",
+            evaluation_outcome="incorrect",
+        ),
+    )
+    incremental = baseline
+    for event in sorted(events, key=lambda item: (item.occurred_at, item.event_id)):
+        incremental = project_event(incremental, event)
+
+    replayed = replay_events(incremental, reversed(events))
+
+    assert replayed == incremental
+    assert replayed.baseline == baseline.baseline
+
+
 def test_native_projection_freezes_repository_bootstrapped_legacy_baseline(
     projection_session,
 ) -> None:

@@ -522,6 +522,151 @@ def assert_concurrent_progress_state_creation(engine):
     assert recovered_ids == [persisted_ids[0], persisted_ids[0]]
 
 
+def assert_concurrent_event_submission(engine):
+    from sqlalchemy import func
+    from sqlalchemy.orm import Session
+
+    from app.domain.practice import (
+        ActivityInstance,
+        ActivityKind,
+        ActivitySpec,
+        ActivityStatus,
+        CueLevel,
+        Evaluation,
+        EvaluationOutcome,
+        EvaluationSource,
+        ExerciseOperation,
+        GeneratorKind,
+        LearningEventRequest,
+        LearningIntent,
+        PracticeRun,
+        PracticeRunStatus,
+        ResponseKind,
+        ResponseSnapshot,
+        ScorerKind,
+        SelectionMetadata,
+        SelectionReason,
+    )
+    from app.domain.shared import Capability, Modality, TargetKind
+    from app.domain.target import TargetSpec
+    from app.domain_models.practice import LearningEventModel
+    from app.models import UserProfile
+    from app.repositories.practice import PracticeRepository
+    from app.services.learning_event_service import LearningEventService
+
+    learner_id = "g2-event-learner"
+    run_id = "61000000-0000-4000-8000-000000000001"
+    activity_id = "62000000-0000-4000-8000-000000000001"
+    target = TargetSpec(
+        target_kind=TargetKind.SENSE,
+        target_id="abcdef12-1234-5678-9234-567812345678",
+        capability=Capability.RETRIEVE_FORM,
+        modality=Modality.WRITTEN,
+    )
+    selected_at = datetime.now(timezone.utc)
+    run = PracticeRun(
+        id=run_id,
+        learner_id=learner_id,
+        curriculum_version_id=None,
+        legacy_quiz_attempt_id=None,
+        status=PracticeRunStatus.ACTIVE,
+        selection_policy_version="deterministic-v1",
+        started_at=selected_at,
+        ended_at=None,
+    )
+    activity = ActivityInstance(
+        id=activity_id,
+        practice_run_id=run_id,
+        spec=ActivitySpec(
+            target_spec=target,
+            activity_kind=ActivityKind.EXERCISE,
+            operation=ExerciseOperation.RETRIEVE,
+            cue_level=CueLevel.NONE,
+            output_modality=Modality.WRITTEN,
+            scorer_kind=ScorerKind.DETERMINISTIC,
+            snapshot={"prompt": "кућа"},
+        ),
+        learning_intent=LearningIntent.REVIEW,
+        sequence_number=1,
+        retry_of_activity_instance_id=None,
+        attempt_number=1,
+        selection=SelectionMetadata(
+            policy_version="deterministic-v1",
+            reasons=(SelectionReason.DUE_REVIEW,),
+        ),
+        generator_kind=GeneratorKind.CURATED,
+        generator_version="curated-v1",
+        scorer_version="deterministic-v1",
+        status=ActivityStatus.PENDING,
+        selected_at=selected_at,
+        terminal_at=None,
+    )
+    SessionFactory = sessionmaker(bind=engine, autoflush=False)
+    with SessionFactory() as session:
+        session.add(UserProfile(user_id=learner_id))
+        session.flush()
+        repository = PracticeRepository(session)
+        repository.add_run(run)
+        repository.add_activity(run, activity)
+        session.commit()
+
+    start = threading.Barrier(2)
+
+    class BarrierRepository(PracticeRepository):
+        def __init__(self, session):
+            super().__init__(session)
+            self._first_lookup = True
+
+        def get_learning_event(self, learner_id, idempotency_key):
+            event = super().get_learning_event(learner_id, idempotency_key)
+            if self._first_lookup:
+                self._first_lookup = False
+                assert event is None
+                start.wait(timeout=10)
+            return event
+
+    class NoopProjector:
+        def project(self, event):
+            del event
+
+    def record(event_id):
+        request = LearningEventRequest(
+            event_id=event_id,
+            learner_id=learner_id,
+            activity_instance_id=activity_id,
+            idempotency_key="g2-duplicate-request",
+            occurred_at=selected_at,
+            first_response=ResponseSnapshot(
+                kind=ResponseKind.TEXT,
+                value="кућа",
+            ),
+            evaluation=Evaluation(
+                source=EvaluationSource.DETERMINISTIC,
+                outcome=EvaluationOutcome.CORRECT,
+            ),
+        )
+        with SessionFactory() as session:
+            return LearningEventService(
+                session,
+                projector=NoopProjector(),
+                repository=BarrierRepository(session),
+            ).record(request)
+
+    event_ids = (
+        "63000000-0000-4000-8000-000000000001",
+        "63000000-0000-4000-8000-000000000002",
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(record, event_id) for event_id in event_ids]
+        results = [future.result(timeout=30) for future in futures]
+
+    assert results[0].event_id == results[1].event_id
+    with Session(engine) as session:
+        assert session.scalar(
+            select(func.count()).select_from(LearningEventModel)
+        ) == 1
+
+
 def assert_active_recall_schedule_schema(engine):
     inspector = inspect(engine)
     progress_columns = {
@@ -1128,6 +1273,22 @@ def test_postgresql_migration_round_trip(postgresql_migration_database):
         not in inspector.get_table_names()
     )
     assert read_legacy_stress_marker(engine) == LEGACY_STRESS_MARKER
+
+
+def test_postgresql_projection_state_first_creation_is_conflict_safe(
+    postgresql_migration_database,
+):
+    _, engine, _ = postgresql_migration_database
+
+    assert_concurrent_progress_state_creation(engine)
+
+
+def test_postgresql_event_duplicate_submission_is_idempotent(
+    postgresql_migration_database,
+):
+    _, engine, _ = postgresql_migration_database
+
+    assert_concurrent_event_submission(engine)
 
 
 def test_postgresql_expired_reservation_has_one_takeover_and_provider_call(
