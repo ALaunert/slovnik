@@ -9,7 +9,7 @@ Serbian vocabulary trainer MVP with a FastAPI backend, Postgres persistence, and
 3. Open `http://localhost:5173`.
 4. Check the API: `curl http://localhost:8000/api/health`.
 
-Compose starts PostgreSQL, runs Alembic migrations before the FastAPI server starts, and serves the Vue/Vite frontend with source reload. It does not seed vocabulary automatically. To add the three sample words explicitly, run `docker compose exec backend python -m app.seed`.
+Compose starts PostgreSQL, runs Alembic migrations before the FastAPI server starts, and serves the Vue/Vite frontend with source reload. All published ports (PostgreSQL, API, and Vite) bind to `127.0.0.1` for local access only. It does not seed vocabulary automatically. To add the three sample words explicitly, run `docker compose exec backend python -m app.seed`.
 
 Use `docker compose logs -f backend frontend` to follow app logs and `docker compose down` to stop the stack while keeping database and frontend dependency volumes. After changing frontend npm dependencies, run `docker compose run --rm frontend npm ci` to update the persisted `node_modules` volume. Rebuild images with `docker compose up -d --build` after changing Dockerfiles or package installation inputs.
 
