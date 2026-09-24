@@ -1,6 +1,6 @@
 # Slovnik Product State
 
-Last audited: 2026-08-27 (runtime implementation verified: 2026-08-27)
+Last audited: 2026-09-24 (Compose setup verified: 2026-09-24; core runtime audit: 2026-08-27)
 
 ## Product Summary
 
@@ -121,7 +121,7 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 ## Data Model and Persistence
 
-- Postgres is the intended local/dev database via `docker-compose.yml`; tests override the DB with in-memory SQLite fixtures.
+- Docker Compose starts PostgreSQL, FastAPI, and Vue/Vite for local development. It preserves Postgres data and frontend `node_modules` in named volumes, bind-mounts backend/frontend sources for reload, runs Alembic upgrades before Uvicorn, and leaves sample vocabulary seeding manual. Published PostgreSQL, API, and Vite ports bind to host `127.0.0.1`; the backend uses the internal `postgres:5432` address while the frontend receives only the browser-facing API URL and file-watcher setting. Tests override the DB with in-memory SQLite fixtures.
 - Initial migration `20260702_0001_initial_schema.py` creates:
   - `vocabulary_items`: global word content, CEFR level, theme, optional notes/examples, timestamps.
   - `user_profiles`: `user_id`, preferred level, daily new-word count, UI language.
@@ -190,6 +190,9 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 ## Verification and Test Coverage
 
+- Compose setup in `README.md` uses `docker compose up -d --build` after copying `.env.example` to `.env`; the existing host-run workflow remains available. Changing frontend npm dependencies requires `docker compose run --rm frontend npm ci` because its dependency volume persists. Compose configuration validation confirms all three published ports use host `127.0.0.1`.
+- Verified on 2026-09-24 in a distinct disposable Compose project: configuration and frontend environment assertions passed; both images built; PostgreSQL became healthy; Alembic reached `20260826_0005 (head)` before Uvicorn started; the API health and Vite HTML endpoints responded; a temporary Vue edit appeared through Vite; vocabulary stayed at zero across a backend restart and became three only after manual seed; the container frontend build and all 83 unit tests passed.
+- A separate 30-second PostgreSQL init-script smoke test reproduced premature readiness from a socket-only probe and an exhausted healthcheck retry budget. The Compose healthcheck now probes TCP on `127.0.0.1` with a 45-second startup grace period. On a fresh disposable volume, PostgreSQL stayed unready during initialization, then became healthy; backend migrations reached `20260826_0005 (head)` before Uvicorn, and `/api/health` returned OK.
 - Backend verification documented in `README.md`: `cd backend && .venv/bin/ruff check .` and `.venv/bin/pytest -v`.
 - Backend editable installation is verified with `.venv/bin/python -m pip install -e ".[dev]"`;
   setuptools discovers only `app*`, and the dev dependency remains on Ruff `0.6.x`.
@@ -269,7 +272,9 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 - `README.md`: setup, verification, and MVP access caveat.
 - `.env.example`: local environment variables.
-- `docker-compose.yml`: local Postgres service.
+- `docker-compose.yml`: local PostgreSQL, migration-gated FastAPI, and Vue/Vite services, with source mounts and persistent data/dependency volumes.
+- `backend/Dockerfile` and `backend/.dockerignore`: backend development image and context exclusions.
+- `frontend/Dockerfile` and `frontend/.dockerignore`: lockfile-based Vite development image and context exclusions.
 - `backend/app/models.py`: SQLAlchemy models.
 - `backend/app/schemas.py`: Pydantic API contracts.
 - `backend/app/routers/`: FastAPI endpoints.
