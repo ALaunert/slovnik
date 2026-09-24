@@ -4,19 +4,30 @@ Serbian vocabulary trainer MVP with a FastAPI backend, Postgres persistence, and
 
 ## Local Development
 
+1. Copy `.env.example` to `.env` and keep `ENVIRONMENT=development` for local use.
+2. Start the development stack: `docker compose up -d --build`.
+3. Open `http://localhost:5173`.
+4. Check the API: `curl http://localhost:8000/api/health`.
+
+Compose starts PostgreSQL, runs Alembic migrations before the FastAPI server starts, and serves the Vue/Vite frontend with source reload. It does not seed vocabulary automatically. To add the three sample words explicitly, run `docker compose exec backend python -m app.seed`.
+
+Use `docker compose logs -f backend frontend` to follow app logs and `docker compose down` to stop the stack while keeping database and frontend dependency volumes. After changing frontend npm dependencies, run `docker compose run --rm frontend npm ci` to update the persisted `node_modules` volume. Rebuild images with `docker compose up -d --build` after changing Dockerfiles or package installation inputs.
+
+If local port `5432` is busy, set `POSTGRES_PORT` in `.env`; the backend container still connects to PostgreSQL on the internal `postgres:5432` address. `VITE_API_BASE_URL` defaults to the browser-facing `http://localhost:8000` and may be overridden in `.env`. The frontend container receives only this URL and its file-watcher setting, not backend secrets.
+
+### Host-run alternative
+
 1. Copy `.env.example` to `.env`; keep `ENVIRONMENT=development` locally.
 2. Install backend dependencies: `cd backend && python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev]"`.
 3. Install frontend dependencies: `cd frontend && npm install`.
 4. Start Postgres: `docker compose up -d postgres`.
 5. Run migrations: `cd backend && .venv/bin/alembic upgrade head`.
-6. Seed sample words: `cd backend && .venv/bin/python -m app.seed`.
+6. Seed sample words if wanted: `cd backend && .venv/bin/python -m app.seed`.
 7. Start backend: `cd backend && .venv/bin/uvicorn app.main:app --reload`.
 8. Start frontend: `cd frontend && npm run dev`.
 9. Check backend: `curl http://localhost:8000/api/health`.
 
-If local port `5432` is busy, set `POSTGRES_PORT` and update `DATABASE_URL` in `.env`, for example `POSTGRES_PORT=55432` and `DATABASE_URL=postgresql+psycopg://slovnik:slovnik@localhost:55432/slovnik`.
-
-After pulling changes, run `cd backend && .venv/bin/alembic upgrade head` before starting the app. Backend setup uses the supported editable install command shown above.
+When using a nondefault `POSTGRES_PORT` with the host-run backend, also update the host-oriented `DATABASE_URL` in `.env`, for example `POSTGRES_PORT=55432` and `DATABASE_URL=postgresql+psycopg://slovnik:slovnik@localhost:55432/slovnik`. After pulling changes, run the host Alembic upgrade before starting the host-run app.
 
 For production deployments, set `ENVIRONMENT=production` and replace `EDITOR_PASSWORD` with a non-placeholder secret before starting the backend. Placeholder editor passwords are accepted only for explicit local/test environments.
 
