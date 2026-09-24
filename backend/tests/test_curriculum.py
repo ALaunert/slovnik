@@ -305,6 +305,32 @@ def test_replacement_activation_retires_previous_and_keeps_history_readable(
     assert persisted_second == activated_second
 
 
+def test_caller_owned_publication_can_roll_back_replacement(curriculum_engine) -> None:
+    resolver = _TargetResolver({TARGET_A_ID, TARGET_B_ID})
+    replacement_id = "22222222-2222-4222-8222-222222222222"
+    first = _draft()
+    second = _draft(
+        version_id=replacement_id,
+        version_number=2,
+        nodes=(_node(NODE_B_ID, TARGET_B_ID, version_id=replacement_id),),
+    )
+    with Session(curriculum_engine) as session:
+        repository = CurriculumRepository(session, resolver)
+        repository.add(first)
+        repository.add(second)
+        session.commit()
+        service = CurriculumService(session, resolver)
+        service.publish(first.id, published_at=NOW)
+        service.publish_in_transaction(second.id, published_at=NOW + timedelta(hours=1))
+        assert repository.get(first.id).status is CurriculumStatus.RETIRED
+        assert repository.get(second.id).status is CurriculumStatus.ACTIVE
+        session.rollback()
+    with Session(curriculum_engine) as session:
+        repository = CurriculumRepository(session, resolver)
+        assert repository.get(first.id).status is CurriculumStatus.ACTIVE
+        assert repository.get(second.id).status is CurriculumStatus.DRAFT
+
+
 def test_replacement_publication_cannot_predate_the_current_active_version(
     curriculum_engine,
 ) -> None:

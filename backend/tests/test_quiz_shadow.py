@@ -120,6 +120,11 @@ def test_flag_on_start_creates_one_linked_active_run(
     assert runs[0].learner_id == "learner-1"
     assert runs[0].status == "active"
     assert runs[0].selection_policy_version == "legacy-quiz-v1"
+    from app.domain_models.practice import ActivityInstanceModel
+
+    activities = tuple(db_session.scalars(select(ActivityInstanceModel)))
+    assert activities
+    assert all("answer_key" not in str(activity.spec_payload) for activity in activities)
 
 
 def test_stale_catalog_mapping_aborts_quiz_start_without_rows(

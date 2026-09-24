@@ -1,9 +1,213 @@
+import json
+import unicodedata
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from app.models import UserWordProgress, VocabularyItem
+from app.models import QuizAttempt, UserWordProgress, VocabularyItem
+
+
+def test_new_plan_keys_stay_private_and_grade_issued_content_after_edits(client, completed_learning, db_session):
+    from app.services.quiz_service import start_quiz
+
+    started = start_quiz(db_session, "learner-1", "daily")
+    stored = db_session.get(QuizAttempt, started["attempt_id"])
+    plan = json.loads(stored.question_plan)
+    assert all(item["answer_key_version"] == 1 for item in plan)
+    assert all("answer_key" in item for item in plan)
+    assert all("answer_key" not in item and "answer_key_version" not in item for item in started["questions"])
+
+    original = {word.id: (word.serbian_latin, word.serbian_cyrillic, word.russian_translation) for word in completed_learning}
+    for word in completed_learning:
+        word.serbian_latin = f"changed{word.id}"
+        word.serbian_cyrillic = f"измена{word.id}"
+        word.russian_translation = f"changed translation {word.id}"
+    db_session.commit()
+
+    for question in started["questions"]:
+        word_id = question["word_id"]
+        kind = question["question_type"]
+        latin, cyrillic, translation = original[word_id]
+        if kind == "remembered_forgot_self_check":
+            revealed = client.get(f"/api/quizzes/learner-1/{started['attempt_id']}/questions/{word_id}/{kind}/answer")
+            assert revealed.json() == {"answer": translation}
+            answer = "forgot"
+        else:
+            answer = translation if kind == "sr_to_ru_choice" else cyrillic
+            accepted = client.post(f"/api/quizzes/learner-1/{started['attempt_id']}/answers", json={"word_id": word_id, "question_type": kind, "answer": answer})
+            assert accepted.json()["is_correct"] is True
+            continue
+        for _ in range(2):
+            response = client.post(f"/api/quizzes/learner-1/{started['attempt_id']}/answers", json={"word_id": word_id, "question_type": kind, "answer": answer})
+            assert response.status_code == 200
+    completed = client.post(f"/api/quizzes/learner-1/{started['attempt_id']}/complete")
+    assert completed.status_code == 200
+    assert all(
+        mistake["correct_answer"] == original[mistake["word_id"]][2]
+        for mistake in completed.json()["mistakes"]
+    )
+
+
+@pytest.mark.parametrize("script_index", [0, 1])
+def test_typing_key_accepts_both_issued_scripts_after_edit(client, started_quiz, db_session, script_index):
+    question = next(item for item in started_quiz["questions"] if item["question_type"] == "ru_to_sr_typing")
+    word = db_session.get(VocabularyItem, question["word_id"])
+    issued = (word.serbian_latin, word.serbian_cyrillic)
+    word.serbian_latin = "changed"
+    word.serbian_cyrillic = "измењено"
+    db_session.commit()
+
+    response = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json={"word_id": word.id, "question_type": question["question_type"], "answer": issued[script_index]})
+
+    assert response.status_code == 200
+    assert response.json()["is_correct"] is True
+
+
+def test_all_new_mistake_corrections_use_issued_keys_after_edit(client, started_quiz, db_session):
+    issued = {}
+    for question in started_quiz["questions"]:
+        word = db_session.get(VocabularyItem, question["word_id"])
+        issued[(word.id, question["question_type"])] = (
+            f"{word.serbian_latin} / {word.serbian_cyrillic}"
+            if question["question_type"] == "ru_to_sr_typing" else word.russian_translation
+        )
+        word.serbian_latin = f"changed{word.id}"
+        word.serbian_cyrillic = f"измена{word.id}"
+        word.russian_translation = f"changed translation {word.id}"
+    db_session.commit()
+    for question in started_quiz["questions"]:
+        payload = {"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"}
+        first = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
+        second = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers", json=payload)
+        assert first.json()["repeat_word"] is True
+        assert second.json()["repeat_word"] is False
+    completed = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete")
+    assert completed.status_code == 200
+    assert len(completed.json()["mistakes"]) == 2 * len(started_quiz["questions"])
+    assert all(
+        mistake["correct_answer"] == issued[(mistake["word_id"], mistake["question_type"])]
+        for mistake in completed.json()["mistakes"]
+    )
+
+
+@pytest.mark.parametrize("bad_version", [None, True, 999])
+def test_old_plan_uses_legacy_content_and_unknown_key_version_is_rejected(client, started_quiz, db_session, bad_version):
+    attempt = db_session.get(QuizAttempt, started_quiz["attempt_id"])
+    plan = json.loads(attempt.question_plan)
+    question = plan[0]
+    word = db_session.get(VocabularyItem, question["word_id"])
+    question.pop("answer_key_version", None)
+    question.pop("answer_key", None)
+    word.russian_translation = "новый перевод"
+    attempt.question_plan = json.dumps(plan, ensure_ascii=False)
+    db_session.commit()
+
+    answer = client.post(f"/api/quizzes/learner-1/{attempt.id}/answers", json={"word_id": word.id, "question_type": question["question_type"], "answer": "новый перевод"})
+    assert answer.status_code == 200
+    assert answer.json()["is_correct"] is True
+
+    unknown_question = plan[1]
+    unknown_question["answer_key_version"] = bad_version
+    attempt.question_plan = json.dumps(plan, ensure_ascii=False)
+    db_session.commit()
+    unknown = client.post(f"/api/quizzes/learner-1/{attempt.id}/answers", json={"word_id": unknown_question["word_id"], "question_type": unknown_question["question_type"], "answer": "wrong"})
+    assert unknown.status_code == 400
+
+
+@pytest.mark.parametrize("slot", [0, 1, 2, 3])
+def test_choice_correct_answer_can_occupy_each_slot(db_session, seeded_words, monkeypatch, slot):
+    import app.services.quiz_service as quiz_service
+
+    class ControlledRandom:
+        def __init__(self):
+            pass
+
+        def shuffle(self, choices):
+            choices.insert(slot, choices.pop(0))
+
+    monkeypatch.setattr(quiz_service, "SystemRandom", ControlledRandom)
+    choices = quiz_service._distractors(db_session, seeded_words[0])
+    assert len(choices) == 4
+    assert choices.index(seeded_words[0].russian_translation) == slot
+
+
+def test_choice_labels_are_normalized_unique_and_scan_past_duplicates(db_session, seeded_words):
+    from app.services.quiz_service import _distractors
+
+    seeded_words[0].russian_translation = "сёло"
+    seeded_words[1].russian_translation = " СЁЛО "
+    seeded_words[2].russian_translation = unicodedata.normalize("NFD", "сёло")
+    seeded_words[3].russian_translation = "слово 2"
+    db_session.commit()
+
+    choices = _distractors(db_session, seeded_words[0])
+
+    assert len(choices) == 4
+    assert {"сёло", "слово 2", "слово 5", "слово 6"} == set(choices)
+
+
+@pytest.mark.parametrize(
+    ("source", "display"),
+    [
+        (unicodedata.normalize("NFD", "сёло"), "сёло"),
+        ("добрый   день", "добрый день"),
+    ],
+)
+def test_normalized_issued_choice_remains_gradeable(client, weak_progress, db_session, source, display):
+    word = db_session.get(VocabularyItem, weak_progress.word_id)
+    word.russian_translation = source
+    db_session.commit()
+    started = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"}).json()
+    choice_question = next(item for item in started["questions"] if item["question_type"] == "sr_to_ru_choice")
+    assert display in choice_question["choices"]
+
+    response = client.post(f"/api/quizzes/learner-1/{started['attempt_id']}/answers", json={
+        "word_id": word.id,
+        "question_type": "sr_to_ru_choice",
+        "answer": display,
+    })
+
+    assert response.status_code == 200
+    assert response.json()["is_correct"] is True
+
+
+def test_single_word_quiz_omits_choice_but_keeps_typing_self_check_and_repeats(client, weak_progress, db_session):
+    db_session.execute(delete(VocabularyItem).where(VocabularyItem.id != weak_progress.word_id))
+    db_session.commit()
+    started = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
+    assert started.status_code == 200
+    body = started.json()
+    assert {item["question_type"] for item in body["questions"]} == {
+        "ru_to_sr_typing", "remembered_forgot_self_check"
+    }
+    assert all(set(item) == {"word_id", "question_type", "prompt", "choices"} for item in body["questions"])
+    attempt = db_session.get(QuizAttempt, body["attempt_id"])
+    assert attempt.total_questions == 2
+    for item in body["questions"]:
+        payload = {"word_id": item["word_id"], "question_type": item["question_type"], "answer": "wrong"}
+        first = client.post(f"/api/quizzes/learner-1/{attempt.id}/answers", json=payload)
+        second = client.post(f"/api/quizzes/learner-1/{attempt.id}/answers", json=payload)
+        assert first.json()["repeat_word"] is True
+        assert second.json()["repeat_word"] is False
+    completed = client.post(f"/api/quizzes/learner-1/{attempt.id}/complete")
+    assert completed.status_code == 200
+    assert completed.json()["total_questions"] == 2
+    assert completed.json()["score"] == 0
+
+
+def test_all_duplicate_translations_omit_choice_but_keep_other_questions(client, completed_learning, seeded_words, db_session):
+    for word in seeded_words:
+        word.russian_translation = "общий перевод"
+    db_session.commit()
+
+    response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
+
+    assert response.status_code == 200
+    questions = response.json()["questions"]
+    assert questions
+    assert "sr_to_ru_choice" not in {item["question_type"] for item in questions}
+    assert {"ru_to_sr_typing", "remembered_forgot_self_check"} <= {item["question_type"] for item in questions}
 
 
 @pytest.fixture(autouse=True)
@@ -133,6 +337,106 @@ def test_complete_daily_quiz_returns_score(client, started_quiz):
     assert body["mistakes"][0]["correct_answer"]
 
 
+def test_completion_separates_first_objective_responses_recovery_and_self_report(
+    client, started_quiz, db_session,
+):
+    objective_index = 0
+    for question in started_quiz["questions"]:
+        word = db_session.get(VocabularyItem, question["word_id"])
+        endpoint = f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers"
+        payload = {"word_id": word.id, "question_type": question["question_type"]}
+        if question["question_type"] == "remembered_forgot_self_check":
+            assert client.post(endpoint, json={**payload, "answer": "remembered"}).status_code == 200
+            continue
+        correct = word.russian_translation if question["question_type"] == "sr_to_ru_choice" else word.serbian_latin
+        if objective_index < 2:
+            assert client.post(endpoint, json={**payload, "answer": "wrong"}).status_code == 200
+            retry = correct if objective_index == 0 else "wrong"
+            assert client.post(endpoint, json={**payload, "answer": retry}).status_code == 200
+        else:
+            assert client.post(endpoint, json={**payload, "answer": correct}).status_code == 200
+        objective_index += 1
+
+    completed = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete")
+
+    assert completed.status_code == 200
+    assert completed.json()["result_version"] == 2
+    assert completed.json()["first_attempt_status"] == "available"
+    assert completed.json()["first_attempt_eligible"] == 4
+    assert completed.json()["first_attempt_correct"] == 2
+    assert completed.json()["recovered_objective_items"] == 1
+    assert completed.json()["self_report_remembered"] == 1
+    assert completed.json()["self_report_total"] == 1
+    assert completed.json()["score"] == 4
+
+
+def test_self_check_only_completion_has_no_objective_measurement(client, started_quiz, db_session):
+    attempt = db_session.get(QuizAttempt, started_quiz["attempt_id"])
+    self_check = next(question for question in json.loads(attempt.question_plan)
+                      if question["question_type"] == "remembered_forgot_self_check")
+    attempt.question_plan = json.dumps([self_check], ensure_ascii=False)
+    attempt.total_questions = 1
+    db_session.commit()
+
+    answer = client.post(f"/api/quizzes/learner-1/{attempt.id}/answers", json={
+        "word_id": self_check["word_id"], "question_type": self_check["question_type"], "answer": "forgot"
+    })
+    assert answer.status_code == 200
+    assert client.post(f"/api/quizzes/learner-1/{attempt.id}/answers", json={
+        "word_id": self_check["word_id"], "question_type": self_check["question_type"], "answer": "forgot"
+    }).status_code == 200
+    completed = client.post(f"/api/quizzes/learner-1/{attempt.id}/complete")
+    assert completed.status_code == 200
+    assert completed.json()["first_attempt_status"] == "not_measured"
+    assert completed.json()["first_attempt_eligible"] == 0
+    assert completed.json()["first_attempt_correct"] == 0
+    assert completed.json()["recovered_objective_items"] == 0
+    assert completed.json()["self_report_remembered"] == 0
+    assert completed.json()["self_report_total"] == 1
+
+
+def test_legacy_plan_completion_marks_breakdown_unavailable(client, started_quiz, db_session):
+    attempt = db_session.get(QuizAttempt, started_quiz["attempt_id"])
+    plan = json.loads(attempt.question_plan)
+    for question in plan:
+        question.pop("answer_key_version")
+        question.pop("answer_key")
+        if question["question_type"] == "remembered_forgot_self_check":
+            question["answer"] = db_session.get(VocabularyItem, question["word_id"]).russian_translation
+    attempt.question_plan = json.dumps(plan, ensure_ascii=False)
+    db_session.commit()
+
+    for question in started_quiz["questions"]:
+        word = db_session.get(VocabularyItem, question["word_id"])
+        correct = {
+            "sr_to_ru_choice": word.russian_translation,
+            "ru_to_sr_typing": word.serbian_latin,
+            "remembered_forgot_self_check": "remembered",
+        }[question["question_type"]]
+        assert client.post(f"/api/quizzes/learner-1/{attempt.id}/answers", json={
+            "word_id": word.id, "question_type": question["question_type"], "answer": correct,
+        }).status_code == 200
+    completed = client.post(f"/api/quizzes/learner-1/{attempt.id}/complete")
+    assert completed.status_code == 200
+    assert completed.json()["score"] == len(plan)
+    assert completed.json()["first_attempt_status"] == "unavailable"
+    assert completed.json()["first_attempt_eligible"] == 0
+    assert completed.json()["first_attempt_correct"] == 0
+    assert completed.json()["recovered_objective_items"] == 0
+    assert completed.json()["self_report_total"] == 0
+
+
+def test_empty_quiz_completion_is_not_measured(client, db_session):
+    started = client.post("/api/quizzes/empty-learner/start", json={"quiz_type": "daily"}).json()
+    completed = client.post(f"/api/quizzes/empty-learner/{started['attempt_id']}/complete")
+    assert completed.status_code == 200
+    assert completed.json()["result_version"] == 2
+    assert completed.json()["score"] == 0
+    assert completed.json()["first_attempt_status"] == "not_measured"
+    assert completed.json()["first_attempt_eligible"] == 0
+    assert completed.json()["self_report_total"] == 0
+
+
 def test_weekly_quiz_includes_this_weeks_words_and_weak_words(client, weekly_progress):
     response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "weekly"})
 
@@ -188,12 +492,24 @@ def test_backend_repeats_incorrect_answer_only_once(client, started_quiz):
     assert second.json()["repeat_word"] is False
 
 
-def test_multiple_choice_does_not_always_put_correct_answer_first(client, completed_learning):
-    response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
+def test_multiple_choice_position_is_shuffled_on_each_issuance(db_session, seeded_words, monkeypatch):
+    import app.services.quiz_service as quiz_service
 
-    question = next(item for item in response.json()["questions"] if item["question_type"] == "sr_to_ru_choice")
-    learned_word = next(word for word in completed_learning if word.id == question["word_id"])
-    assert question["choices"][0] != learned_word.russian_translation
+    class AlternatingRandom:
+        next_slot = 0
+
+        def __init__(self):
+            self.slot = AlternatingRandom.next_slot
+            AlternatingRandom.next_slot = 1 - AlternatingRandom.next_slot
+
+        def shuffle(self, choices):
+            choices.insert(self.slot, choices.pop(0))
+
+    monkeypatch.setattr(quiz_service, "SystemRandom", AlternatingRandom)
+    word = seeded_words[0]
+    first = quiz_service._distractors(db_session, word)
+    second = quiz_service._distractors(db_session, word)
+    assert [choices.index(word.russian_translation) for choices in (first, second)] == [0, 1]
 
 
 def test_weekly_quiz_uses_calendar_week_boundary(client, db_session, monkeypatch):
@@ -351,6 +667,10 @@ def test_start_quiz_does_not_expose_self_check_answer(client, completed_learning
     response = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"})
 
     assert response.status_code == 200
+    assert all(
+        set(item) == {"word_id", "question_type", "prompt", "choices"}
+        for item in response.json()["questions"]
+    )
     question = next(
         item for item in response.json()["questions"] if item["question_type"] == "remembered_forgot_self_check"
     )

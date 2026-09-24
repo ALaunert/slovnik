@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "status": "provisional_editorial_draft",
+  "pilot_id": "a1-written-four-outcomes",
+  "audience": "Adult Russian-speaking beginners in Serbia; prior Serbian knowledge is probed, not assumed.",
+  "scope": "Written Serbian only. Standard Ekavian is the editorial baseline; both Latin and Cyrillic are assessed as separate conditions. Reviewed valid variants remain eligible.",
+  "cefr_source": {"title": "Common European Framework of Reference for Languages: Learning, Teaching, Assessment — Companion Volume", "edition": "Council of Europe 2020", "url": "https://rm.coe.int/common-european-framework-of-reference-for-languages-learning-teaching/16809ea0d4", "locator_basis": "printed page"},
+  "targets": [
+    {"id": "personal.fields", "kind": "construction", "capability": "apply_construction", "function": "provide requested fictional personal details"},
+    {"id": "personal.copula", "kind": "construction", "capability": "apply_construction", "function": "write a short identity statement"},
+    {"id": "request.item", "kind": "construction", "capability": "apply_construction", "function": "request one named item politely"},
+    {"id": "price.item-link", "kind": "sense", "capability": "recognize_meaning", "function": "link a specified item to its price"},
+    {"id": "location.static", "kind": "construction", "capability": "apply_construction", "function": "state where a place is"},
+    {"id": "location.return-time", "kind": "construction", "capability": "apply_construction", "function": "state a requested return time"}
+  ],
+  "outcomes": [
+    {
+      "id": "A1.PERSONAL_DETAILS", "stage": 1,
+      "function": "Give basic personal details and read a short fictional profile.",
+      "cefr": {"level": "A1", "scale": "Notes, messages and forms", "printed_page": 84},
+      "primary_target_id": "personal.fields", "target_ids": ["personal.fields", "personal.copula"],
+      "written_task": "Read a new fictional registration prompt; complete its requested name, residence and short self-description fields. Never request real personal data.",
+      "rubric": {"communicative_success": "Judge whether requested fictional details are present and interpretable; report missing or contradictory fields.", "target_accuracy": "Separately judge the elicited copula/personal form; accept reviewed equivalent word orders and spelling variants.", "support": "Keep unaided first submission separate from hints, correction and unresolved responses."},
+      "families": {"input": ["profile.example-cards"], "practice": ["profile.guided-form", "profile.short-bio"], "assessment": ["profile.unseen-registration"]},
+      "script_conditions": ["serbian_latin", "serbian_cyrillic"],
+      "scope_note": "Reading and short writing only; no spoken self-introduction claim."
+    },
+    {
+      "id": "A1.SIMPLE_REQUEST", "stage": 2,
+      "function": "Request a specified everyday item politely.",
+      "cefr": {"level": "A1", "scale": "Obtaining goods and services", "printed_page": 78},
+      "primary_target_id": "request.item", "target_ids": ["request.item"],
+      "written_task": "Given a new service scenario and one named item, compose one short written request to obtain it.",
+      "rubric": {"communicative_success": "Judge whether the item and request intent are clear and socially suitable in context.", "target_accuracy": "Separately judge the reviewed request construction and item form; accept preapproved polite variants.", "support": "Record model display and revisions; only an unaided first submission enters first-attempt accuracy."},
+      "families": {"input": ["request.model-dialogue"], "practice": ["request.counter-card", "request.shop-note"], "assessment": ["request.unseen-service-note"]},
+      "script_conditions": ["serbian_latin", "serbian_cyrillic"],
+      "scope_note": "Written rehearsal of an interaction descriptor; no oral transaction claim."
+    },
+    {
+      "id": "A1.PRICE_INFO", "stage": 2,
+      "function": "Find a simple price for a specified item.",
+      "cefr": {"level": "A1", "scale": "Reading for orientation", "printed_page": 56},
+      "primary_target_id": "price.item-link", "target_ids": ["price.item-link"],
+      "written_task": "Read an unfamiliar short price notice with several items and give the requested item's price.",
+      "rubric": {"communicative_success": "Judge whether amount and currency belong to the requested item rather than another line.", "target_accuracy": "Separately judge recognition of the item-price link; do not require broad menu comprehension or productive numeral agreement.", "support": "Record first unaided selection and later correction separately; ambiguous notices or answers are unresolved."},
+      "families": {"input": ["price.annotated-sign"], "practice": ["price.market-tag", "price.cafe-board"], "assessment": ["price.unseen-service-board"]},
+      "script_conditions": ["serbian_latin", "serbian_cyrillic"],
+      "scope_note": "Short written notices only; no listening or general purchasing claim."
+    },
+    {
+      "id": "A1.LOCATION_INFO", "stage": 2,
+      "function": "Give simple location information in a short message.",
+      "cefr": {"level": "A1", "scale": "Notes, messages and forms", "printed_page": 84},
+      "primary_target_id": "location.static", "target_ids": ["location.static", "location.return-time"],
+      "written_task": "Read a new fictional arrangement and write where a named place is and, if prompted, when to return.",
+      "rubric": {"communicative_success": "Judge whether the reader can identify the place and any requested return time.", "target_accuracy": "Separately judge a reviewed static-location construction; do not infer destination or locative-paradigm mastery.", "support": "Score unaided first message separately from prompted rewrites; unreviewed variants need human adjudication."},
+      "families": {"input": ["location.annotated-message"], "practice": ["location.meeting-note", "location.place-card"], "assessment": ["location.unseen-return-note"]},
+      "script_conditions": ["serbian_latin", "serbian_cyrillic"],
+      "scope_note": "Short written location/return-time message only; no navigation or oral direction claim."
+    }
+  ],
+  "edges": [
+    {"id": "personal-to-request", "from": "A1.PERSONAL_DETAILS", "to": "A1.SIMPLE_REQUEST", "kind": "soft"},
+    {"id": "request-to-price", "from": "A1.SIMPLE_REQUEST", "to": "A1.PRICE_INFO", "kind": "soft"},
+    {"id": "personal-to-location", "from": "A1.PERSONAL_DETAILS", "to": "A1.LOCATION_INFO", "kind": "soft"}
+  ]
+}

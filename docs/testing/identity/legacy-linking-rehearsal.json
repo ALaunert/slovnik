@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "purpose": "Populated-data migration rehearsal, never automatic claim evidence",
+  "profiles": [
+    {"user_id":"legacy-orchid","link_state":"unclaimed","user_word_progress":3,"quiz_attempts":2,"quiz_answers":5,"practice_runs":1,"activity_instances":2,"learning_events":2,"learner_target_states":1},
+    {"user_id":"legacy-maple","link_state":"claimed","subject_ref":"subject-A","user_word_progress":1,"quiz_attempts":1,"quiz_answers":1,"practice_runs":0,"activity_instances":0,"learning_events":0,"learner_target_states":0},
+    {"user_id":"legacy-cedar","link_state":"claimed","subject_ref":"subject-B","user_word_progress":2,"quiz_attempts":0,"quiz_answers":0,"practice_runs":1,"activity_instances":1,"learning_events":1,"learner_target_states":1}
+  ],
+  "scenarios": [
+    {"id":"unclaimed","actor":"subject-C","target":"legacy-orchid","proof":"none; knows user_id only","expect":"deny; no mapping or row movement"},
+    {"id":"verified-opt-in","actor":"subject-C","target":"legacy-orchid","proof":"approved independent proof placeholder; implementation waits for owner decision","expect":"one atomic mapping after fresh login and explicit confirmation; all existing child foreign keys and counts unchanged"},
+    {"id":"claimed-collision","actor":"subject-B","target":"legacy-maple","proof":"even if another proof is presented","expect":"deny; subject-A mapping and all data unchanged; start dispute recovery"},
+    {"id":"claim-race","actor":"subject-C and subject-D","target":"legacy-orchid","proof":"both request concurrently","expect":"at most one mapping; loser denied; no duplicate or split children"},
+    {"id":"idempotent-retry","actor":"subject-C","target":"legacy-orchid","proof":"same completed approved claim retried","expect":"same mapping; no duplicate audit event or changed child rows"},
+    {"id":"interrupted-claim","actor":"subject-C","target":"legacy-orchid","proof":"transaction interrupted before commit","expect":"no mapping and no child changes; retry safe"},
+    {"id":"logout","actor":"subject-C","target":"legacy-orchid","proof":"previously linked, credential terminated","expect":"old credential denied in same and other browser tabs; no cached learner result shown"}
+  ],
+  "reconciliation": ["snapshot all per-profile row counts and stable digests before rehearsal", "compare after additive migration, failed claims and successful claim", "assert every quiz_answer remains under its original attempt and every activity/event under its original run", "restore disposable snapshot and repeat"]
+}

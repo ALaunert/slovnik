@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "status": "P2-01b test specification; expected to fail against current legacy access",
+  "actors": ["anonymous", "owner_a", "owner_b", "editor", "expired", "revoked"],
+  "cases": {
+    "owner": "owner_a succeeds only for profile_a; response and database rows belong to profile_a",
+    "anonymous": "missing credential is denied before profile lookup or creation",
+    "foreign": "owner_b using profile_a path or body is denied without read/write side effect",
+    "guessed-id": "authenticated principal with no link cannot claim or access profile_a by supplying its ID",
+    "foreign-child": "owner_b using profile_b path plus profile_a child ID is denied without read/write side effect",
+    "expired": "expired credential is denied before lookup",
+    "revoked": "revoked credential is denied before lookup",
+    "learner-editor": "learner credential cannot perform editor action",
+    "forged-role": "client-supplied role cannot grant editor action"
+  },
+  "routes": [
+    {"method":"POST","path":"/api/profiles","scope":"profile","id_source":"body.user_id","cases":["owner","anonymous","foreign","guessed-id","expired","revoked"]},
+    {"method":"PATCH","path":"/api/profiles/{user_id}","scope":"profile","id_source":"path.user_id","cases":["owner","anonymous","foreign","expired","revoked"]},
+    {"method":"GET","path":"/api/learning/{user_id}/new-words","scope":"progress","id_source":"path.user_id","cases":["owner","anonymous","foreign","expired","revoked"]},
+    {"method":"POST","path":"/api/learning/{user_id}/new-words/complete","scope":"progress","id_source":"path.user_id","cases":["owner","anonymous","foreign","expired","revoked"]},
+    {"method":"GET","path":"/api/learning/{user_id}/review","scope":"progress","id_source":"path.user_id","cases":["owner","anonymous","foreign","expired","revoked"]},
+    {"method":"GET","path":"/api/learning/{user_id}/review/status/{word_id}","scope":"progress","id_source":"path.user_id + word_id","cases":["owner","anonymous","foreign","expired","revoked"]},
+    {"method":"POST","path":"/api/learning/{user_id}/review/answers","scope":"progress","id_source":"path.user_id + body.word_id","cases":["owner","anonymous","foreign","expired","revoked"]},
+    {"method":"POST","path":"/api/learning/{user_id}/review/complete","scope":"progress","id_source":"path.user_id","cases":["owner","anonymous","foreign","expired","revoked"]},
+    {"method":"POST","path":"/api/quizzes/{user_id}/start","scope":"quiz","id_source":"path.user_id","cases":["owner","anonymous","foreign","expired","revoked"]},
+    {"method":"POST","path":"/api/quizzes/{user_id}/{attempt_id}/answers","scope":"quiz","id_source":"path.user_id + attempt_id","cases":["owner","anonymous","foreign","foreign-child","expired","revoked"]},
+    {"method":"GET","path":"/api/quizzes/{user_id}/{attempt_id}/questions/{word_id}/{question_type}/answer","scope":"quiz","id_source":"path.user_id + attempt_id","cases":["owner","anonymous","foreign","foreign-child","expired","revoked"]},
+    {"method":"POST","path":"/api/quizzes/{user_id}/{attempt_id}/complete","scope":"quiz","id_source":"path.user_id + attempt_id","cases":["owner","anonymous","foreign","foreign-child","expired","revoked"]},
+    {"method":"POST","path":"/api/vocabulary","scope":"editor","id_source":"server role","cases":["learner-editor","forged-role","expired","revoked"]},
+    {"method":"PUT","path":"/api/vocabulary/{word_id}","scope":"editor","id_source":"server role","cases":["learner-editor","forged-role","expired","revoked"]},
+    {"method":"POST","path":"/api/vocabulary/editor/verify","scope":"editor","id_source":"server role","cases":["learner-editor","forged-role","expired","revoked"]},
+    {"method":"POST","path":"/api/vocabulary/ai-fill","scope":"editor","id_source":"server role","cases":["learner-editor","forged-role","expired","revoked"]},
+    {"method":"GET","path":"/api/vocabulary","scope":"public_catalog","id_source":"none","cases":[]},
+    {"method":"GET","path":"/api/vocabulary/themes","scope":"public_catalog","id_source":"none","cases":[]},
+    {"method":"GET","path":"/api/vocabulary/{word_id}","scope":"public_catalog","id_source":"none","cases":[]},
+    {"method":"GET","path":"/api/health","scope":"public_health","id_source":"none","cases":[]}
+  ],
+  "future_internal_surfaces": ["practice run and activity read/write", "learning events", "learner target state and projection", "owner export/delete"],
+  "execution": "In P2-01b, parameterize a pytest integration test over routes and cases; seed two profiles, progress and quiz attempts, substitute concrete IDs and valid payloads; assert denied cases have no owner-data delta. Provider/session test adapter supplies actor credentials. Separately test role success, logout, linking and future direct-practice routes."
+}
