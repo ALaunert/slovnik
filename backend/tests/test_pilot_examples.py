@@ -31,6 +31,47 @@ class PilotExampleTests(unittest.TestCase):
                 capture_output=True, text=True, check=False,
             )
 
+    def reviewed_source_backed_pack(self):
+        examples = copy.deepcopy(self.examples)
+        examples["status"] = "reviewed"
+        for item in list(examples["examples"]):
+            if item["role"] == "practice":
+                input_item = copy.deepcopy(item)
+                input_item["id"] += "-input"
+                input_item["role"] = "input"
+                outcome = next(
+                    outcome for outcome in self.curriculum["outcomes"]
+                    if outcome["id"] == item["outcome_id"]
+                )
+                input_item["family_id"] = outcome["families"]["input"][0]
+                input_item["text_nfc"] += " Primer."
+                input_item["translation_ru_nfc"] += " Пример."
+                input_item["answer_policy"]["id"] += "-input"
+                examples["examples"].append(input_item)
+
+        material = {
+            "rights": {"analysis": "allowed", "redistribution": "allowed", "adaptation": "allowed"},
+            "license": "test fixture", "evidence_url": "https://example.test/fixture",
+            "reviewer": "test fixture", "reviewed_on": "2026-09-25",
+            "attribution_required": False, "share_alike_required": False,
+        }
+        source = {
+            "source_id": "test-reviewed-pack", "kind": "authored", "release_id": "test-fixture",
+            "review": {"reviewer": "test fixture", "reviewed_on": "2026-09-25",
+                       "evidence_url": "https://example.test/fixture"},
+            "items": [],
+        }
+        for item in examples["examples"]:
+            item_id = item["id"]
+            item["source"] = {"source_id": source["source_id"], "item_id": item_id}
+            item["review_status"] = "approved"
+            item["answer_policy"]["review_status"] = "approved"
+            source["items"].append({
+                "item_id": item_id,
+                "materials": {"text": copy.deepcopy(material), "translation": copy.deepcopy(material)},
+            })
+        return examples, {"schema_version": 1, "sources": [source]}
+
     def test_synthetic_fixture_validates_but_cannot_publish(self):
         self.assertEqual(self.check_fixture().returncode, 0)
         self.assertIn("synthetic", self.check_fixture(publish=True).stderr)
@@ -116,6 +157,51 @@ class PilotExampleTests(unittest.TestCase):
         )
         result = self.check_fixture(examples=examples, publish=True)
         self.assertIn("holdout leakage", result.stderr)
+
+    def test_publish_rejects_assessment_answer_inside_visible_practice_text(self):
+        examples, sources = self.reviewed_source_backed_pack()
+        baseline = self.check_fixture(examples=examples, sources=sources, publish=True)
+        self.assertEqual(baseline.returncode, 0, baseline.stderr)
+
+        practice = next(item for item in examples["examples"] if item["id"] == "ex-price-practice")
+        practice["text_nfc"] = "Čaj — 90 dinara."
+        practice["target"].update(surface="Čaj — 90 dinara", end=len("Čaj — 90 dinara"))
+        result = self.check_fixture(examples=examples, sources=sources, publish=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("holdout leakage", result.stderr)
+
+    def test_publish_rejects_assessment_answer_inside_visible_input_text(self):
+        examples, sources = self.reviewed_source_backed_pack()
+        input_item = next(item for item in examples["examples"] if item["id"] == "ex-price-practice-input")
+        input_item["text_nfc"] = "Čaj — 90 dinara. Primer."
+        input_item["target"].update(surface="Čaj — 90 dinara", end=len("Čaj — 90 dinara"))
+        result = self.check_fixture(examples=examples, sources=sources, publish=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("holdout leakage", result.stderr)
+
+    def test_publish_rejects_assessment_answer_inside_visible_translation(self):
+        examples, sources = self.reviewed_source_backed_pack()
+        practice = next(item for item in examples["examples"] if item["id"] == "ex-price-practice")
+        practice["translation_ru_nfc"] = "Чай стоит 90 dinara."
+        result = self.check_fixture(examples=examples, sources=sources, publish=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("holdout leakage", result.stderr)
+
+    def test_publish_ignores_assessment_answer_inside_larger_tokens(self):
+        for field, visible_text in (
+            ("text_nfc", "Čaj — 190 dinara."),
+            ("text_nfc", "Čaj — 90 dinaraza."),
+            ("translation_ru_nfc", "Чай стоит 190 dinara."),
+            ("translation_ru_nfc", "Чай стоит 90 dinaraza."),
+        ):
+            with self.subTest(field=field, visible_text=visible_text):
+                examples, sources = self.reviewed_source_backed_pack()
+                practice = next(item for item in examples["examples"] if item["id"] == "ex-price-practice")
+                practice[field] = visible_text
+                if field == "text_nfc":
+                    practice["target"].update(surface=visible_text[:-1], end=len(visible_text) - 1)
+                result = self.check_fixture(examples=examples, sources=sources, publish=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_missing_translation_or_source_permission_is_rejected(self):
         examples = copy.deepcopy(self.examples)

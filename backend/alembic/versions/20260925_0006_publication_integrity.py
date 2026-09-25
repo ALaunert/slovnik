@@ -28,6 +28,16 @@ def _sqlite_guard(table: str) -> None:
             END
         """))
     op.execute(sa.text(f"""
+        CREATE TRIGGER {table}_published_parent_move
+        BEFORE UPDATE OF lexical_unit_id ON {table}
+        FOR EACH ROW
+        WHEN (SELECT status FROM language_lexical_units WHERE id = OLD.lexical_unit_id)
+             IS NOT 'draft'
+        BEGIN
+            SELECT RAISE(ABORT, 'cannot move child from non-draft lexical unit');
+        END
+    """))
+    op.execute(sa.text(f"""
         CREATE TRIGGER {table}_published_status
         BEFORE UPDATE OF status ON {table}
         FOR EACH ROW
@@ -51,6 +61,7 @@ def upgrade() -> None:
         op.execute(sa.text("""
             CREATE FUNCTION require_draft_lexical_parent() RETURNS trigger AS $$
             DECLARE parent_status text;
+            DECLARE old_parent_status text;
             BEGIN
                 SELECT status INTO parent_status
                 FROM language_lexical_units WHERE id = NEW.lexical_unit_id FOR UPDATE;
@@ -59,6 +70,11 @@ def upgrade() -> None:
                         RAISE EXCEPTION 'cannot add child to non-draft lexical unit';
                     END IF;
                 ELSIF NEW.lexical_unit_id IS DISTINCT FROM OLD.lexical_unit_id THEN
+                    SELECT status INTO old_parent_status
+                    FROM language_lexical_units WHERE id = OLD.lexical_unit_id FOR UPDATE;
+                    IF old_parent_status IS DISTINCT FROM 'draft' THEN
+                        RAISE EXCEPTION 'cannot move child from non-draft lexical unit';
+                    END IF;
                     IF parent_status IS DISTINCT FROM 'draft' THEN
                         RAISE EXCEPTION 'cannot add child to non-draft lexical unit';
                     END IF;
@@ -84,6 +100,7 @@ def downgrade() -> None:
         for table in ("language_senses", "language_forms"):
             op.execute(sa.text(f"DROP TRIGGER {table}_draft_parent_insert"))
             op.execute(sa.text(f"DROP TRIGGER {table}_draft_parent_move"))
+            op.execute(sa.text(f"DROP TRIGGER {table}_published_parent_move"))
             op.execute(sa.text(f"DROP TRIGGER {table}_published_status"))
     elif dialect == "postgresql":
         for table in ("language_senses", "language_forms"):

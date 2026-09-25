@@ -73,11 +73,11 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - A read-only v1 evidence classifier and adapter count first, confirmed repaired, unverified retry, assisted, self-reported, exposed, unresolved and unknown observations without changing learner projection or selection. Mixed first/final verdicts and hints without proven timing stay unknown; confirmed repair requires an incorrect linked parent. Delayed context counts require a prior known context and explicit held-out marker. Historical shadow snapshots lacking context family/revision cannot establish independent occasions.
 
 - Newly issued quizzes snapshot private v1 answer keys in their stored question plans. Public start responses expose only prompts/options; grading, self-check reveal and correction text use the issued key, while older plans still use legacy mutable vocabulary semantics. Multiple-choice labels are normalized and deduplicated; distractor candidates are read in bounded batches until enough distinct labels are found. Positions are shuffled with fresh issuance randomness, and an item with fewer than two distinct choices is omitted. Completion response v2 retains the mixed practice score and reports objective first attempts, successful repairs and subjective remembered ratings separately. Legacy/mixed key plans and old cached results show an unavailable breakdown; an empty objective denominator is not measured.
-- The four-outcome written pilot manifest and CEFR crosswalk are provisional file-backed drafts with separate input, practice and assessment families. Publish validation checks the pilot manifest, requires approved source-backed examples for each outcome and role, and rejects assessment answers exposed through practice text or answer variants. Eight synthetic example/answer fixtures exercise the validation contract but are explicitly unpublishable. No independent example table is justified by these fixtures. Qualified Serbian L2 educator approval and rights review remain publication gates.
+- The four-outcome written pilot manifest and CEFR crosswalk are provisional file-backed drafts with separate input, practice and assessment families. Publish validation checks the pilot manifest, requires approved source-backed examples for each outcome and role, and rejects exact assessment answer phrases exposed through input/practice text, translations or answer variants after script normalization. Eight synthetic example/answer fixtures exercise the validation contract but are explicitly unpublishable. No independent example table is justified by these fixtures. Qualified Serbian L2 educator approval and rights review remain publication gates.
 - The [2026-09-25 provisional AI review](learning/astra-provisional-review.md) recommends revising the written pilot before learner use: task/target coverage, script conditions, answer policies and independent holdouts need further editorial work. All eight synthetic fixtures remain test-only; text/translation rights and qualified human sign-off remain pending. Both draft validators passed, publish-mode validation rejected the synthetic pack as expected, and 29 focused pilot/provenance/evidence tests passed. This review did not activate content or change progression.
 - A [private prototype revision contract](learning/a1-private-prototype-brief.md) narrows the next editorial draft to four written tasks with one primary target each, Latin script and one immediate candidate assessment family per outcome. Its 16 family IDs are unfilled authoring slots, not usable content or protected holdouts. Delayed assessment, rights, qualified review, learner activation and progression remain pending.
 
-- A caller-owned publication service can preflight and atomically commit catalog draft publication with curriculum retirement/activation. It checks written source rights, referenced target owners, graph validity and pinned bytes for referenced source artifacts. Before writing, it locks and rechecks legacy mappings, then stores a publication-request fingerprint with activation; active retries with different provenance or a missing older fingerprint are rejected. Lexical publication locks the parent and checks the final child set, while database guards reject later child insertion, moves or draft-status regression under a published parent. The standalone curriculum publish wrapper retains its behavior. This infrastructure has not activated the provisional pilot; publishable reviewed examples and item-level rights are still absent.
+- A caller-owned publication service can preflight and atomically commit catalog draft publication with curriculum retirement/activation. It checks written source rights, referenced target owners, graph validity and pinned bytes for referenced source artifacts. Before writing, it locks and rechecks legacy mappings, then stores a publication-request fingerprint with activation; active retries with different provenance or a missing older fingerprint are rejected. Lexical publication locks the parent and checks the final child set, while database guards reject later child insertion, moves into or out of a non-draft parent, and draft-status regression under a published parent. The standalone curriculum publish wrapper retains its behavior. This infrastructure has not activated the provisional pilot; publishable reviewed examples and item-level rights are still absent.
 - A production-identity threat model and executable route ownership inventory now cover all 20 current HTTP routes and synthetic legacy-linking cases. They are design artifacts only; trusted identity, account linking, editor roles and remote owner isolation are not implemented. P2-01a remains externally blocked pending provider/deployment and independent claim-proof decisions.
 
 ## Implemented User-Facing Capabilities
@@ -285,6 +285,10 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   response, JSON payloads are exact, loading/focus/completion states work, and maximum bounded
   unbroken content creates no mobile horizontal overflow. No e2e scenario calls a real backend or
   OpenAI.
+- Verified on 2026-09-25 after the follow-up review: full backend passed with `783 passed`
+  and four subtests using a disposable PostgreSQL database; SQLite and PostgreSQL migration
+  regressions, both draft pilot validators, expected synthetic publish rejection, Ruff, and
+  whitespace checks passed.
 - Verified on 2026-08-27 after review remediation: full backend passed with `674 passed, 16 skipped`;
   targeted catalog/quiz/curriculum/selection/schema regressions, Ruff, whitespace, fresh migration
   upgrade, the explicit ORM/migration domain-schema parity regression, and the read-only catalog
@@ -297,10 +301,10 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 ## Known Limitations / Deferred Scope
 
-- Quiz practice scores count successful retries and self-checks alongside objectively scored
-  responses. Multiple-choice generation keeps the correct answer out of the first position when
-  multiple choices exist; grading reads current vocabulary rather than a frozen answer key.
-  These measurement limitations and proposed fixes are documented in `docs/learning/audit.md`.
+- Legacy quiz practice scores count successful retries and self-checks alongside objectively
+  scored responses. Newly issued plans use frozen answer keys and randomized choice positions;
+  older plans retain grading against mutable vocabulary. The historical measurement limitations
+  and implemented corrections are documented in `docs/learning/audit.md` and above.
 - The internal curriculum can satisfy a hard prerequisite after one deterministic success, using
   a monotonic competence peak. This is a technical policy, not calibrated mastery evidence.
 - Real authentication and authorization are deferred.

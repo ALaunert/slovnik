@@ -42,6 +42,20 @@ def _normalized_key(text, transliterate=False):
     return "".join(char for char in text if char.isalnum())
 
 
+def _normalized_tokens(text):
+    text = unicodedata.normalize("NFC", text).casefold().translate(CYR_TO_LAT)
+    return "".join(char if char.isalnum() else " " for char in text).split()
+
+
+def _contains_answer(text, variant):
+    visible = _normalized_tokens(text)
+    answer = _normalized_tokens(variant)
+    return bool(answer) and any(
+        visible[index:index + len(answer)] == answer
+        for index in range(len(visible) - len(answer) + 1)
+    )
+
+
 def validate(examples, curriculum, sources, publish=False):
     errors = []
     try:
@@ -69,6 +83,7 @@ def validate(examples, curriculum, sources, publish=False):
     }
     seen_ids, policy_ids = set(), set()
     split_keys = {"assessment": set(), "other": set()}
+    visible_texts, assessment_answers = [], []
     covered_outcome_roles = set()
     requested_items = set()
     for item in examples["examples"]:
@@ -133,6 +148,11 @@ def validate(examples, curriculum, sources, publish=False):
         if not _nonempty(item["leakage_group"]):
             errors.append(f"leakage group missing: {example_id}")
         bucket = "assessment" if role == "assessment" else "other"
+        if publish:
+            if role == "assessment":
+                assessment_answers.extend(answer["accepted_variants"])
+            elif role in ("input", "practice"):
+                visible_texts.extend((text, translation))
         for key in (
             "group:" + item["leakage_group"],
             "serbian:" + _normalized_key(text, transliterate=True),
@@ -150,6 +170,11 @@ def validate(examples, curriculum, sources, publish=False):
                     errors.append(f"missing publish coverage: {outcome['id']}/{role}")
     if split_keys["assessment"] & split_keys["other"]:
         errors.append("holdout leakage: same group, Serbian text/answer variant or translation across split")
+    if publish and any(
+        _contains_answer(text, variant)
+        for text in visible_texts for variant in assessment_answers if _nonempty(variant)
+    ):
+        errors.append("holdout leakage: assessment answer variant appears in visible input/practice text or translation")
     if publish and requested_items:
         errors.extend(validate_manifest(
             sources, requested_uses={"redistribution", "adaptation"},

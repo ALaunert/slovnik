@@ -1155,6 +1155,67 @@ def test_publication_integrity_migration_guards_new_children_and_round_trips(
     }
 
 
+def assert_publication_guard_rejects_moving_child_out(engine, child_table):
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO language_lexical_units
+                (id, kind, status, revision, created_at, updated_at)
+            VALUES
+                ('published-parent', 'word', 'draft', 1,
+                 '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00'),
+                ('draft-parent', 'word', 'draft', 1,
+                 '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00')
+        """))
+        if child_table == "language_senses":
+            connection.execute(text("""
+                INSERT INTO language_senses
+                    (id, lexical_unit_id, glosses, examples, status, revision)
+                VALUES ('published-child', 'published-parent', '[]', '[]', 'draft', 1)
+            """))
+        else:
+            connection.execute(text("""
+                INSERT INTO language_forms
+                    (id, lexical_unit_id, form_kind, orthographies,
+                     morph_features, status, revision)
+                VALUES ('published-child', 'published-parent', 'citation',
+                        '[]', '{}', 'draft', 1)
+            """))
+        connection.execute(text(f"""
+            UPDATE {child_table} SET status = 'published' WHERE id = 'published-child'
+        """))
+        connection.execute(text("""
+            UPDATE language_lexical_units SET status = 'published'
+            WHERE id = 'published-parent'
+        """))
+
+    with pytest.raises(SQLAlchemyError, match="cannot move child from non-draft lexical unit"):
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                UPDATE {child_table} SET lexical_unit_id = 'draft-parent'
+                WHERE id = 'published-child'
+            """))
+    with engine.connect() as connection:
+        assert connection.scalar(text(f"""
+            SELECT lexical_unit_id FROM {child_table} WHERE id = 'published-child'
+        """)) == "published-parent"
+
+
+@pytest.mark.parametrize("child_table", ["language_senses", "language_forms"])
+def test_sqlite_publication_guard_rejects_moving_child_out_of_published_parent(
+    migration_database, child_table
+):
+    _, engine = migration_database
+    assert_publication_guard_rejects_moving_child_out(engine, child_table)
+
+
+@pytest.mark.parametrize("child_table", ["language_senses", "language_forms"])
+def test_postgresql_publication_guard_rejects_moving_child_out_of_published_parent(
+    postgresql_migration_database, child_table
+):
+    _, engine, _ = postgresql_migration_database
+    assert_publication_guard_rejects_moving_child_out(engine, child_table)
+
+
 def test_postgresql_publication_guard_rejects_child_after_parent_publish(
     postgresql_migration_database,
 ):
