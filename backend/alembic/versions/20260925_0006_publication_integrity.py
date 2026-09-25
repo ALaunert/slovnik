@@ -18,11 +18,13 @@ depends_on: str | Sequence[str] | None = None
 def _sqlite_guard(table: str) -> None:
     for operation in ("INSERT", "UPDATE OF lexical_unit_id"):
         suffix = "insert" if operation == "INSERT" else "move"
+        changed_parent = "" if operation == "INSERT" else "NEW.lexical_unit_id IS NOT OLD.lexical_unit_id AND "
         op.execute(sa.text(f"""
             CREATE TRIGGER {table}_draft_parent_{suffix}
             BEFORE {operation} ON {table}
             FOR EACH ROW
-            WHEN (SELECT status FROM language_lexical_units WHERE id = NEW.lexical_unit_id) IS NOT 'draft'
+            WHEN {changed_parent}(SELECT status FROM language_lexical_units WHERE id = NEW.lexical_unit_id)
+                 IS NOT 'draft'
             BEGIN
                 SELECT RAISE(ABORT, 'cannot add child to non-draft lexical unit');
             END
@@ -31,7 +33,8 @@ def _sqlite_guard(table: str) -> None:
         CREATE TRIGGER {table}_published_parent_move
         BEFORE UPDATE OF lexical_unit_id ON {table}
         FOR EACH ROW
-        WHEN (SELECT status FROM language_lexical_units WHERE id = OLD.lexical_unit_id)
+        WHEN NEW.lexical_unit_id IS NOT OLD.lexical_unit_id
+         AND (SELECT status FROM language_lexical_units WHERE id = OLD.lexical_unit_id)
              IS NOT 'draft'
         BEGIN
             SELECT RAISE(ABORT, 'cannot move child from non-draft lexical unit');

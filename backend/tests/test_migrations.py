@@ -1198,6 +1198,11 @@ def assert_publication_guard_rejects_moving_child_out(engine, child_table):
         assert connection.scalar(text(f"""
             SELECT lexical_unit_id FROM {child_table} WHERE id = 'published-child'
         """)) == "published-parent"
+    with engine.begin() as connection:
+        connection.execute(text(f"""
+            UPDATE {child_table} SET lexical_unit_id = lexical_unit_id
+            WHERE id = 'published-child'
+        """))
 
 
 @pytest.mark.parametrize("child_table", ["language_senses", "language_forms"])
