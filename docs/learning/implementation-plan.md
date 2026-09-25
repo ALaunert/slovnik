@@ -76,6 +76,8 @@ Status: approved implementation in progress. Checklist marks verified work; unma
 
 The P0 fixtures and pilot brief are review inputs, not approved learning content. P1-03a preparation stopped when automatic approval review rejected a new review-packet test as outside its interpreted authorization; the existing synthetic contract and editorial brief remain available for a qualified reviewer. No rights or educator approval has been inferred.
 
+A [separate AI-provisional private revision contract](a1-private-prototype-brief.md) now narrows authoring to four written tasks, one target each, Latin only and one immediate candidate assessment family per outcome. Its 16 family IDs are reserved slots, not authored items. It does not clear P1-03a, P1-04b, rights, human review or delayed-probe gates; the P0 manifest and eight synthetic fixtures remain test-only. Next: author a separate candidate pack with public prompts/private keys, verify source and language decisions, then run draft preflight without activation.
+
 | Task | Status | Exact resume condition |
 | --- | --- | --- |
 | P1-03a | `blocked_external` | Qualified Serbian L2 reviewer approves the four-outcome/holdout brief; source text and translation rights are documented item by item, then examples receive recorded bilingual review. |

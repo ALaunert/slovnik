@@ -1,6 +1,6 @@
 # Slovnik Product State
 
-Last audited: 2026-09-24 (Compose setup verified: 2026-09-24; core runtime audit: 2026-08-27)
+Last audited: 2026-09-25 (Compose setup verified: 2026-09-24; core runtime audit: 2026-08-27)
 
 ## Product Summary
 
@@ -74,6 +74,8 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 - Newly issued quizzes snapshot private v1 answer keys in their stored question plans. Public start responses expose only prompts/options; grading, self-check reveal and correction text use the issued key, while older plans still use legacy mutable vocabulary semantics. Multiple-choice labels are normalized and deduplicated, positions are shuffled with fresh issuance randomness, and an item with fewer than two distinct choices is omitted. Completion response v2 retains the mixed practice score and reports objective first attempts, successful repairs and subjective remembered ratings separately. Legacy/mixed key plans and old cached results show an unavailable breakdown; an empty objective denominator is not measured.
 - The four-outcome written pilot manifest and CEFR crosswalk are provisional file-backed drafts with separate input, practice and assessment families. Eight synthetic example/answer fixtures exercise the validation contract but are explicitly unpublishable. No independent example table is justified by these fixtures. Qualified Serbian L2 educator approval and rights review remain publication gates.
+- The [2026-09-25 provisional AI review](learning/astra-provisional-review.md) recommends revising the written pilot before learner use: task/target coverage, script conditions, answer policies and independent holdouts need further editorial work. All eight synthetic fixtures remain test-only; text/translation rights and qualified human sign-off remain pending. Both draft validators passed, publish-mode validation rejected the synthetic pack as expected, and 29 focused pilot/provenance/evidence tests passed. This review did not activate content or change progression.
+- A [private prototype revision contract](learning/a1-private-prototype-brief.md) narrows the next editorial draft to four written tasks with one primary target each, Latin script and one immediate candidate assessment family per outcome. Its 16 family IDs are unfilled authoring slots, not usable content or protected holdouts. Delayed assessment, rights, qualified review, learner activation and progression remain pending.
 
 - A caller-owned publication service can preflight and atomically commit catalog draft publication with curriculum retirement/activation. Written source rights, all referenced target owners, stale legacy mappings, graph validity and active-version idempotence are checked before commit. The existing standalone curriculum publish wrapper retains its behavior. This infrastructure has not activated the provisional pilot; publishable reviewed examples and item-level rights are still absent.
 - A production-identity threat model and executable route ownership inventory now cover all 20 current HTTP routes and synthetic legacy-linking cases. They are design artifacts only; trusted identity, account linking, editor roles and remote owner isolation are not implemented. P2-01a remains externally blocked pending provider/deployment and independent claim-proof decisions.
