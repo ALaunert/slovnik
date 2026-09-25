@@ -285,8 +285,8 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   response, JSON payloads are exact, loading/focus/completion states work, and maximum bounded
   unbroken content creates no mobile horizontal overflow. No e2e scenario calls a real backend or
   OpenAI.
-- Verified on 2026-09-25 after the follow-up review: full backend passed with `783 passed`
-  and four subtests using a disposable PostgreSQL database; SQLite and PostgreSQL migration
+- Verified on 2026-09-25 after the follow-up review: full backend passed with `785 passed`
+  and eight subtests using a disposable PostgreSQL database; SQLite and PostgreSQL migration
   regressions, both draft pilot validators, expected synthetic publish rejection, Ruff, and
   whitespace checks passed.
 - Verified on 2026-08-27 after review remediation: full backend passed with `674 passed, 16 skipped`;

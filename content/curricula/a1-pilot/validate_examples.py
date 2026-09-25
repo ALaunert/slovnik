@@ -152,7 +152,7 @@ def validate(examples, curriculum, sources, publish=False):
             if role == "assessment":
                 assessment_answers.extend(answer["accepted_variants"])
             elif role in ("input", "practice"):
-                visible_texts.extend((text, translation))
+                visible_texts.extend((text, translation, *answer["accepted_variants"]))
         for key in (
             "group:" + item["leakage_group"],
             "serbian:" + _normalized_key(text, transliterate=True),
@@ -174,7 +174,7 @@ def validate(examples, curriculum, sources, publish=False):
         _contains_answer(text, variant)
         for text in visible_texts for variant in assessment_answers if _nonempty(variant)
     ):
-        errors.append("holdout leakage: assessment answer variant appears in visible input/practice text or translation")
+        errors.append("holdout leakage: assessment answer variant appears in visible input/practice content")
     if publish and requested_items:
         errors.extend(validate_manifest(
             sources, requested_uses={"redistribution", "adaptation"},

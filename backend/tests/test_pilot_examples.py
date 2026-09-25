@@ -187,6 +187,28 @@ class PilotExampleTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("holdout leakage", result.stderr)
 
+    def test_publish_rejects_assessment_answer_inside_visible_answer_variant(self):
+        for example_id in ("ex-price-practice", "ex-price-practice-input"):
+            with self.subTest(example_id=example_id):
+                examples, sources = self.reviewed_source_backed_pack()
+                baseline = self.check_fixture(examples=examples, sources=sources, publish=True)
+                self.assertEqual(baseline.returncode, 0, baseline.stderr)
+
+                visible = next(item for item in examples["examples"] if item["id"] == example_id)
+                visible["answer_policy"]["accepted_variants"].append("Cena je 90 dinara")
+                result = self.check_fixture(examples=examples, sources=sources, publish=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("holdout leakage", result.stderr)
+
+    def test_publish_ignores_larger_tokens_in_practice_answer_variant(self):
+        for variant in ("Cena je 190 dinara", "Cena je 90 dinaraza"):
+            with self.subTest(variant=variant):
+                examples, sources = self.reviewed_source_backed_pack()
+                practice = next(item for item in examples["examples"] if item["id"] == "ex-price-practice")
+                practice["answer_policy"]["accepted_variants"].append(variant)
+                result = self.check_fixture(examples=examples, sources=sources, publish=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_publish_ignores_assessment_answer_inside_larger_tokens(self):
         for field, visible_text in (
             ("text_nfc", "Čaj — 190 dinara."),
