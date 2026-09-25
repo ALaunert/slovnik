@@ -77,7 +77,7 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - The [2026-09-25 provisional AI review](learning/astra-provisional-review.md) recommends revising the written pilot before learner use: task/target coverage, script conditions, answer policies and independent holdouts need further editorial work. All eight synthetic fixtures remain test-only; text/translation rights and qualified human sign-off remain pending. Both draft validators passed, publish-mode validation rejected the synthetic pack as expected, and 29 focused pilot/provenance/evidence tests passed. This review did not activate content or change progression.
 - A [private prototype revision contract](learning/a1-private-prototype-brief.md) narrows the next editorial draft to four written tasks with one primary target each, Latin script and one immediate candidate assessment family per outcome. Its 16 family IDs are unfilled authoring slots, not usable content or protected holdouts. Delayed assessment, rights, qualified review, learner activation and progression remain pending.
 
-- A caller-owned publication service can preflight and atomically commit catalog draft publication with curriculum retirement/activation. It checks written source rights, referenced target owners, graph validity and pinned bytes for referenced source artifacts. Before writing, it locks and rechecks legacy mappings, then stores a publication-request fingerprint with activation; active retries with different provenance or a missing older fingerprint are rejected. Lexical publication locks the parent and checks the final child set, while database guards reject later child insertion, moves into or out of a non-draft parent, and draft-status regression under a published parent. The standalone curriculum publish wrapper retains its behavior. This infrastructure has not activated the provisional pilot; publishable reviewed examples and item-level rights are still absent.
+- A caller-owned publication service can preflight and atomically commit catalog draft publication with curriculum retirement/activation. It checks written source rights, referenced target owners, graph validity and pinned bytes for referenced source artifacts. Before writing, it locks and rechecks legacy mappings, then stores a publication-request fingerprint with activation; active retries with different provenance or a missing older fingerprint are rejected. Lexical publication locks the parent and checks the final child set. Database guards reject later child insertion, moves into or out of a non-draft parent, child deletion, parent deletion, and reverse parent-status transitions; published-to-retired remains permitted. They also reject child status changes that disagree with a non-draft parent. Direct SQL payload edits and unsynchronized direct SQL retirement are outside this guard contract. The standalone curriculum publish wrapper retains its behavior. This infrastructure has not activated the provisional pilot; publishable reviewed examples and item-level rights are still absent.
 - A production-identity threat model and executable route ownership inventory now cover all 20 current HTTP routes and synthetic legacy-linking cases. They are design artifacts only; trusted identity, account linking, editor roles and remote owner isolation are not implemented. P2-01a remains externally blocked pending provider/deployment and independent claim-proof decisions.
 
 ## Implemented User-Facing Capabilities
@@ -183,7 +183,8 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   Catalog, Curriculum, Practice & History, and Learner Progress. It preserves all legacy rows and
   is reversible back to `20260725_0004`.
 - Migration `20260925_0006_publication_integrity.py` adds a nullable publication-request
-  fingerprint and guards child writes under published lexical units on SQLite and PostgreSQL.
+  fingerprint and guards child membership/deletion and parent deletion/status regression for
+  non-draft lexical units on SQLite and PostgreSQL.
   Existing active versions without a fingerprint remain readable but cannot claim an identical
   retry through the composed publication service.
 - Learning events are immutable and idempotent per learner/key. Learner target state is a replayable
@@ -285,7 +286,7 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   response, JSON payloads are exact, loading/focus/completion states work, and maximum bounded
   unbroken content creates no mobile horizontal overflow. No e2e scenario calls a real backend or
   OpenAI.
-- Verified on 2026-09-25 after the follow-up review: full backend passed with `785 passed`
+- Verified on 2026-09-25 after the follow-up review: full backend passed with `805 passed`
   and eight subtests using a disposable PostgreSQL database; SQLite and PostgreSQL migration
   regressions, both draft pilot validators, expected synthetic publish rejection, Ruff, and
   whitespace checks passed.
