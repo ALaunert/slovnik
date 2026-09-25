@@ -76,7 +76,7 @@ def _distractors(db: Session, word: VocabularyItem) -> list[str]:
         return []
     choices = [correct_label]
     seen = {correct_label.casefold()}
-    rows = db.scalars(
+    candidates = (
         select(VocabularyItem.russian_translation)
         .where(VocabularyItem.id != word.id)
         .order_by(
@@ -85,14 +85,21 @@ def _distractors(db: Session, word: VocabularyItem) -> list[str]:
             VocabularyItem.id,
         )
     )
-    for value in rows:
-        label = _choice_label(value)
-        normalized = label.casefold()
-        if label and normalized not in seen:
-            choices.append(label)
-            seen.add(normalized)
-        if len(choices) == 4:
+    batch_size = 32
+    offset = 0
+    while len(choices) < 4:
+        rows = list(db.scalars(candidates.limit(batch_size).offset(offset)))
+        for value in rows:
+            label = _choice_label(value)
+            normalized = label.casefold()
+            if label and normalized not in seen:
+                choices.append(label)
+                seen.add(normalized)
+            if len(choices) == 4:
+                break
+        if len(rows) < batch_size:
             break
+        offset += batch_size
     if len(choices) < 2:
         return []
     SystemRandom().shuffle(choices)

@@ -1,6 +1,7 @@
 """Transaction and preflight checks for catalog/curriculum publication composition."""
 
 import os
+import hashlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -24,7 +25,7 @@ from app.models import VocabularyItem
 from app.repositories.catalog import CatalogRepository
 from app.repositories.curriculum import CurriculumRepository
 from app.domain_models.curriculum import CurriculumVersionRecord
-from app.domain_models.catalog import LanguageForm
+from app.domain_models.catalog import LanguageForm, LanguageSense
 from app.services.content_publication_service import (
     ContentPublicationService,
     PublicationPreflightError,
@@ -118,6 +119,74 @@ def test_repeat_publication_is_idempotent(engine):
         assert repeat.changed_ids == ()
         assert CatalogRepository(session).get_construction(construction.id).revision == 2
         assert CurriculumRepository(session, CatalogRepository(session)).get(curriculum.id).published_at == NOW
+
+
+def test_active_repeat_rejects_changed_source_mapping_or_manifest(engine):
+    construction, curriculum = draft_pair()
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        publisher = ContentPublicationService(session)
+        publisher.publish(request(construction, curriculum), published_at=NOW)
+        changed_manifest = source_manifest()
+        changed_manifest["sources"][0]["release_id"] = "different-release"
+        with pytest.raises(PublicationPreflightError, match="publication request differs"):
+            publisher.publish(request(construction, curriculum, changed_manifest), published_at=NOW)
+        different_mapping = PublicationRequest(
+            curriculum_version_id=curriculum.id,
+            construction_ids=(construction.id,),
+            source_item_ids_by_catalog_id={construction.id: ("example-1", "example-2")},
+            source_manifest=source_manifest(),
+        )
+        with pytest.raises(PublicationPreflightError, match="publication request differs"):
+            publisher.publish(different_mapping, published_at=NOW)
+
+
+def test_missing_or_changed_pinned_artifact_blocks_publication(engine, tmp_path, monkeypatch):
+    construction, curriculum = draft_pair()
+    import app.services.content_publication_service as publication_module
+    monkeypatch.setattr(publication_module, "SOURCE_MANIFEST_ROOT", tmp_path)
+    sources = source_manifest()
+    sources["sources"][0]["artifact"] = {
+        "path": "pinned.txt", "sha256": hashlib.sha256(b"approved").hexdigest(),
+    }
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        with pytest.raises(PublicationPreflightError, match="artifact file is missing"):
+            ContentPublicationService(session).publish(
+                request(construction, curriculum, sources), published_at=NOW)
+        (tmp_path / "pinned.txt").write_bytes(b"changed")
+        with pytest.raises(PublicationPreflightError, match="artifact checksum mismatch"):
+            ContentPublicationService(session).publish(
+                request(construction, curriculum, sources), published_at=NOW)
+        (tmp_path / "pinned.txt").write_bytes(b"approved")
+        ContentPublicationService(session).publish(
+            request(construction, curriculum, sources), published_at=NOW)
+
+
+def test_pinned_artifact_change_after_preflight_blocks_commit(engine, tmp_path, monkeypatch):
+    construction, curriculum = draft_pair()
+    import app.services.content_publication_service as publication_module
+    monkeypatch.setattr(publication_module, "SOURCE_MANIFEST_ROOT", tmp_path)
+    artifact = tmp_path / "pinned.txt"
+    artifact.write_bytes(b"approved")
+    sources = source_manifest()
+    sources["sources"][0]["artifact"] = {
+        "path": "pinned.txt", "sha256": hashlib.sha256(b"approved").hexdigest(),
+    }
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        original_preflight = ContentPublicationService.preflight
+
+        def replace_after_preflight(publisher, request, *, published_at):
+            report = original_preflight(publisher, request, published_at=published_at)
+            artifact.write_bytes(b"replaced")
+            return report
+
+        monkeypatch.setattr(ContentPublicationService, "preflight", replace_after_preflight)
+        with pytest.raises(PublicationPreflightError, match="artifact checksum mismatch"):
+            ContentPublicationService(session).publish(
+                request(construction, curriculum, sources), published_at=NOW)
+        assert CatalogRepository(session).get_construction(construction.id).status is ContentStatus.DRAFT
 
 
 def test_active_repeat_rejects_different_published_catalog_ids(engine):
@@ -492,3 +561,88 @@ def test_child_revision_change_during_lexical_publish_fails_closed(engine, monke
         session.rollback()
     with Session(engine) as session:
         assert CatalogRepository(session).get(unit_id).status is ContentStatus.DRAFT
+
+
+def test_new_child_during_lexical_publish_fails_closed(engine, monkeypatch):
+    unit_id, sense_id, form_id, extra_id = (str(uuid4()) for _ in range(4))
+    unit = LexicalUnit(
+        id=unit_id, kind=EntryKind.WORD,
+        senses=(Sense(sense_id, unit_id, (Gloss("ru", "вода"),)),),
+        forms=(Form(form_id, unit_id, FormKind.CITATION,
+                    (OrthographicForm(Script.CYRILLIC, "вода"),
+                     OrthographicForm(Script.LATIN, "voda"))),),
+    )
+    with Session(engine) as session:
+        catalog = CatalogRepository(session)
+        catalog.add(unit)
+        session.commit()
+        original_get = catalog.get
+
+        def insert_child_after_snapshot(item_id):
+            stale = original_get(item_id)
+            session.add(LanguageSense(
+                id=extra_id, lexical_unit_id=unit_id,
+                glosses=[{"language": "ru", "text": "новое"}],
+                notes=None, examples=[], status="draft", revision=1,
+            ))
+            session.flush()
+            return stale
+
+        monkeypatch.setattr(catalog, "get", insert_child_after_snapshot)
+        with pytest.raises(ValueError, match="child set changed before publication"):
+            catalog.publish_lexical_unit_if_draft(unit_id)
+        session.rollback()
+    with Session(engine) as session:
+        assert CatalogRepository(session).get(unit_id).status is ContentStatus.DRAFT
+        assert session.get(LanguageSense, extra_id) is None
+
+
+def test_legacy_word_change_after_preflight_blocks_commit(engine, monkeypatch):
+    unit_id, sense_id, form_id, version_id = (str(uuid4()) for _ in range(4))
+    word = VocabularyItem(
+        serbian_cyrillic="вода", serbian_latin="voda", russian_translation="вода",
+        cefr_level="A1", theme="daily-life",
+    )
+    with Session(engine) as session:
+        session.add(word)
+        session.flush()
+        fingerprint = vocabulary_source_fingerprint(word)
+        unit = LexicalUnit(
+            id=unit_id, kind=EntryKind.WORD, legacy_vocabulary_item_id=word.id,
+            senses=(Sense(sense_id, unit_id, (Gloss("ru", "вода"),)),),
+            forms=(Form(form_id, unit_id, FormKind.CITATION,
+                        (OrthographicForm(Script.CYRILLIC, "вода"),
+                         OrthographicForm(Script.LATIN, "voda")),
+                        morph_features={"bootstrap": {"source_fingerprint": fingerprint}}),),
+        )
+        target = TargetSpec(TargetKind.SENSE, sense_id, Capability.RECOGNIZE_MEANING,
+                            Modality.WRITTEN)
+        draft = CurriculumVersion(
+            id=version_id, curriculum_code="late-edit", version_number=1,
+            created_at=NOW - timedelta(days=1),
+            nodes=(CurriculumNode(id=str(uuid4()), curriculum_version_id=version_id,
+                                  target=target, priority=50, outcome_code="A1.test"),),
+        )
+        catalog = CatalogRepository(session)
+        catalog.add(unit)
+        CurriculumRepository(session, catalog).add(draft)
+        session.commit()
+        packet = PublicationRequest(
+            curriculum_version_id=version_id, lexical_unit_ids=(unit_id,),
+            source_item_ids_by_catalog_id={unit_id: ("example-1",)},
+            source_manifest=source_manifest(),
+            expected_legacy_fingerprints={word.id: fingerprint},
+        )
+        original_preflight = ContentPublicationService.preflight
+
+        def late_edit(publisher, request, *, published_at):
+            report = original_preflight(publisher, request, published_at=published_at)
+            session.execute(update(VocabularyItem).where(VocabularyItem.id == word.id).values(
+                russian_translation="изменено"))
+            return report
+
+        monkeypatch.setattr(ContentPublicationService, "preflight", late_edit)
+        with pytest.raises(PublicationPreflightError, match="stale legacy mapping"):
+            ContentPublicationService(session).publish(packet, published_at=NOW)
+        session.rollback()
+        assert catalog.get(unit_id).status is ContentStatus.DRAFT

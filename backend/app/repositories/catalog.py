@@ -161,7 +161,17 @@ class CatalogRepository:
         self._session = session
 
     def add(self, lexical_unit: LexicalUnit) -> None:
-        self._session.add(_lexical_record(lexical_unit))
+        record = _lexical_record(lexical_unit)
+        if lexical_unit.status is ContentStatus.PUBLISHED:
+            # Bootstrap can create an already published aggregate. Insert its
+            # children while the new parent is draft, then expose the complete
+            # aggregate as published in the same transaction.
+            record.status = ContentStatus.DRAFT.value
+            self._session.add(record)
+            self._session.flush()
+            record.status = ContentStatus.PUBLISHED.value
+        else:
+            self._session.add(record)
 
     def get(self, lexical_unit_id: str) -> LexicalUnit | None:
         record = self._session.get(LanguageLexicalUnit, lexical_unit_id)
@@ -235,6 +245,14 @@ class CatalogRepository:
         return published
 
     def publish_lexical_unit_if_draft(self, lexical_unit_id: str) -> LexicalUnit:
+        # The FK check in a child INSERT takes a key-share lock in PostgreSQL.
+        # A full parent lock makes publication and guarded child insertion serialize.
+        self._session.scalar(
+            select(LanguageLexicalUnit)
+            .where(LanguageLexicalUnit.id == lexical_unit_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         draft = self.get(lexical_unit_id)
         if draft is None:
             raise ValueError(f"lexical unit missing: {lexical_unit_id}")
@@ -271,4 +289,13 @@ class CatalogRepository:
             )
             if changed.rowcount != 1:
                 raise ValueError(f"form changed before publication: {form.id}")
+        current_senses = set(self._session.scalars(
+            select(LanguageSense.id).where(LanguageSense.lexical_unit_id == lexical_unit_id)
+        ))
+        current_forms = set(self._session.scalars(
+            select(LanguageForm.id).where(LanguageForm.lexical_unit_id == lexical_unit_id)
+        ))
+        if (current_senses != {sense.id for sense in draft.senses}
+                or current_forms != {form.id for form in draft.forms}):
+            raise ValueError(f"child set changed before publication: {lexical_unit_id}")
         return published

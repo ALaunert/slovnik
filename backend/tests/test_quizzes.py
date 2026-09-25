@@ -3,7 +3,7 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, event, select
 
 from app.models import QuizAttempt, UserWordProgress, VocabularyItem
 
@@ -145,6 +145,48 @@ def test_choice_labels_are_normalized_unique_and_scan_past_duplicates(db_session
 
     assert len(choices) == 4
     assert {"сёло", "слово 2", "слово 5", "слово 6"} == set(choices)
+
+
+def test_choice_reads_are_bounded_and_continue_past_long_duplicate_run(db_session, seeded_words):
+    from app.services.quiz_service import _distractors
+
+    for word in seeded_words:
+        word.russian_translation = "same"
+    db_session.add_all(
+        VocabularyItem(
+            serbian_cyrillic=f"дупликат {index}",
+            serbian_latin=f"duplikat {index}",
+            russian_translation="same",
+            cefr_level="A1",
+            theme="daily",
+        )
+        for index in range(70)
+    )
+    db_session.add(VocabularyItem(
+        serbian_cyrillic="различито",
+        serbian_latin="razlicito",
+        russian_translation="different",
+        cefr_level="A1",
+        theme="daily",
+    ))
+    db_session.commit()
+
+    candidate_queries = []
+
+    def capture_candidate_query(connection, cursor, statement, parameters, context, executemany):
+        if "vocabulary_items.russian_translation" in statement and "vocabulary_items.id !=" in statement:
+            candidate_queries.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", capture_candidate_query)
+    try:
+        choices = _distractors(db_session, seeded_words[0])
+    finally:
+        event.remove(engine, "before_cursor_execute", capture_candidate_query)
+
+    assert set(choices) == {"same", "different"}
+    assert len(candidate_queries) > 1
+    assert all("LIMIT" in statement.upper() for statement in candidate_queries)
 
 
 @pytest.mark.parametrize(

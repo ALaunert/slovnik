@@ -9,6 +9,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
+import hashlib
+import json
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -19,6 +22,7 @@ from app.domain.catalog import ContentStatus, FormKind
 from app.domain.curriculum import CurriculumStatus
 from app.domain.shared import TargetKind
 from app.domain_models.catalog import LanguageForm, LanguageSense
+from app.domain_models.curriculum import CurriculumVersionRecord
 from app.models import VocabularyItem
 from app.repositories.catalog import CatalogRepository
 from app.repositories.curriculum import CurriculumRepository
@@ -28,7 +32,50 @@ from app.services.curriculum_service import (
     CurriculumService,
     _is_one_active_conflict,
 )
-from app.source_manifest import validate_manifest
+from app.source_manifest import validate_manifest, verify_source_artifact
+
+
+SOURCE_MANIFEST_ROOT = Path(__file__).resolve().parents[3] / "content" / "sources"
+
+
+def _request_fingerprint(request: PublicationRequest) -> str:
+    payload = {
+        "schema_version": 1,
+        "curriculum_version_id": request.curriculum_version_id,
+        "source_manifest": request.source_manifest,
+        "source_item_ids_by_catalog_id": {
+            key: sorted(value) for key, value in sorted(request.source_item_ids_by_catalog_id.items())
+        },
+        "lexical_unit_ids": sorted(request.lexical_unit_ids),
+        "construction_ids": sorted(request.construction_ids),
+        "expected_legacy_fingerprints": {
+            str(key): value for key, value in sorted(request.expected_legacy_fingerprints.items())
+        },
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _artifact_errors(request: PublicationRequest) -> list[str]:
+    source_ids = {
+        source_id
+        for linked in request.source_item_ids_by_catalog_id.values()
+        for source_id in linked
+    }
+    errors: list[str] = []
+    for source in request.source_manifest.get("sources", []):
+        if not isinstance(source, dict):
+            continue
+        if not any(isinstance(item, dict) and item.get("item_id") in source_ids
+                   for item in source.get("items", [])):
+            continue
+        artifact = source.get("artifact")
+        if not isinstance(artifact, dict) or not artifact.get("path") or not artifact.get("sha256"):
+            continue
+        error = verify_source_artifact(source, SOURCE_MANIFEST_ROOT)
+        if error is not None:
+            errors.append(f"source {source.get('source_id')}: {error}")
+    return errors
 
 
 @dataclass(frozen=True)
@@ -93,6 +140,10 @@ class ContentPublicationService:
         if set(request.source_item_ids_by_catalog_id) - referenced_ids:
             rejected.append("unrelated catalog id in source mapping")
         if draft is not None and draft.status is CurriculumStatus.ACTIVE:
+            version_record = self._session.get(CurriculumVersionRecord, draft.id)
+            if (version_record is None
+                    or version_record.publication_request_fingerprint != _request_fingerprint(request)):
+                rejected.append("publication request differs from active version")
             if (set(request.lexical_unit_ids) != referenced_lexical
                     or set(request.construction_ids) != referenced_construction):
                 rejected.append("active curriculum repeat must name its referenced catalog owners")
@@ -120,7 +171,10 @@ class ContentPublicationService:
             legacy_id = unit.legacy_vocabulary_item_id
             if legacy_id is not None:
                 expected = request.expected_legacy_fingerprints.get(legacy_id)
-                word = self._session.scalar(select(VocabularyItem).where(VocabularyItem.id == legacy_id))
+                word = self._session.scalar(
+                    select(VocabularyItem).where(VocabularyItem.id == legacy_id)
+                    .execution_options(populate_existing=True)
+                )
                 citation_forms = tuple(form for form in unit.forms if form.form_kind in
                                        (FormKind.CITATION, FormKind.FIXED))
                 bootstrap = (citation_forms[0].morph_features.get("bootstrap")
@@ -163,6 +217,7 @@ class ContentPublicationService:
                     for material in ("text", "translation"):
                         if material not in source_item.get("materials", {}):
                             rejected.append(f"source {material} rights missing: {source_item['item_id']}")
+        rejected.extend(_artifact_errors(request))
 
         if draft is not None and draft.status is CurriculumStatus.DRAFT:
             try:
@@ -191,6 +246,22 @@ class ContentPublicationService:
         if not report.changed_ids:
             return report
         try:
+            artifact_errors = _artifact_errors(request)
+            if artifact_errors:
+                raise PublicationPreflightError(PublicationPreflight(
+                    changed_ids=(), rejected=tuple(artifact_errors),
+                ))
+            # Recheck after preflight. The PostgreSQL row locks acquired here remain
+            # held through activation; populate_existing avoids a stale identity map.
+            for legacy_id, expected in sorted(request.expected_legacy_fingerprints.items()):
+                word = self._session.scalar(
+                    select(VocabularyItem).where(VocabularyItem.id == legacy_id)
+                    .with_for_update().execution_options(populate_existing=True)
+                )
+                if word is None or vocabulary_source_fingerprint(word) != expected:
+                    raise PublicationPreflightError(PublicationPreflight(
+                        changed_ids=(), rejected=(f"stale legacy mapping: {legacy_id}",)
+                    ))
             for item_id in request.lexical_unit_ids:
                 self._catalog.publish_lexical_unit_if_draft(item_id)
             for item_id in request.construction_ids:
@@ -199,6 +270,9 @@ class ContentPublicationService:
             CurriculumService(self._session, self._catalog).publish_in_transaction(
                 request.curriculum_version_id, published_at=published_at,
             )
+            version_record = self._session.get(CurriculumVersionRecord, request.curriculum_version_id)
+            assert version_record is not None
+            version_record.publication_request_fingerprint = _request_fingerprint(request)
             self._session.commit()
             return report
         except IntegrityError as error:

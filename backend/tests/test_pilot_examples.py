@@ -43,6 +43,14 @@ class PilotExampleTests(unittest.TestCase):
         examples["examples"][0]["family_id"] = "missing"
         self.assertIn("unresolved family", self.check_fixture(examples=examples).stderr)
 
+    def test_example_validation_rejects_overlapping_curriculum_families(self):
+        curriculum = copy.deepcopy(self.curriculum)
+        outcome = curriculum["outcomes"][0]
+        outcome["families"]["assessment"].append(outcome["families"]["practice"][0])
+        result = self.check_fixture(curriculum=curriculum)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("practice/assessment family overlap", result.stderr)
+
     def test_missing_source_item_is_rejected(self):
         examples = copy.deepcopy(self.examples)
         examples["examples"][0]["source"]["item_id"] = "missing"
@@ -73,6 +81,41 @@ class PilotExampleTests(unittest.TestCase):
         examples["examples"][1]["id"] = examples["examples"][0]["id"]
         self.assertIn("duplicate example id", self.check_fixture(examples=examples).stderr)
         self.assertIn("draft", self.check_fixture(publish=True).stderr)
+
+    def test_reviewed_empty_pack_cannot_publish_without_outcome_role_coverage(self):
+        examples = {"schema_version": 1, "status": "reviewed", "examples": []}
+        result = self.check_fixture(examples=examples, publish=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing publish coverage", result.stderr)
+        self.assertIn("A1.PERSONAL_DETAILS/input", result.stderr)
+
+    def test_reviewed_pack_requires_each_outcome_role(self):
+        examples = copy.deepcopy(self.examples)
+        examples["status"] = "reviewed"
+        for item in examples["examples"]:
+            item["review_status"] = "approved"
+            item["answer_policy"]["review_status"] = "approved"
+        examples["examples"] = [
+            item for item in examples["examples"]
+            if item["id"] != "ex-location-holdout"
+        ]
+        result = self.check_fixture(examples=examples, publish=True)
+        self.assertIn("A1.LOCATION_INFO/assessment", result.stderr)
+        self.assertIn("A1.LOCATION_INFO/input", result.stderr)
+
+    def test_practice_answer_variant_cannot_reveal_assessment_answer(self):
+        examples = copy.deepcopy(self.examples)
+        examples["status"] = "reviewed"
+        for item in examples["examples"]:
+            item["review_status"] = "approved"
+            item["answer_policy"]["review_status"] = "approved"
+        practice = next(item for item in examples["examples"] if item["id"] == "ex-request-practice")
+        assessment = next(item for item in examples["examples"] if item["id"] == "ex-request-holdout")
+        practice["answer_policy"]["accepted_variants"].append(
+            assessment["answer_policy"]["accepted_variants"][0]
+        )
+        result = self.check_fixture(examples=examples, publish=True)
+        self.assertIn("holdout leakage", result.stderr)
 
     def test_missing_translation_or_source_permission_is_rejected(self):
         examples = copy.deepcopy(self.examples)

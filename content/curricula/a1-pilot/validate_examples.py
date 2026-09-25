@@ -1,6 +1,7 @@
 """Validate draft example/answer fixtures against pilot and P0-04 source contracts."""
 
 import argparse
+import importlib.util
 import json
 import sys
 import unicodedata
@@ -10,6 +11,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "backend"))
 from app.source_manifest import validate_manifest  # noqa: E402
+
+_manifest_spec = importlib.util.spec_from_file_location(
+    "a1_pilot_manifest_validator", Path(__file__).with_name("validate.py")
+)
+if _manifest_spec is None or _manifest_spec.loader is None:
+    raise ImportError("pilot manifest validator unavailable")
+_manifest_module = importlib.util.module_from_spec(_manifest_spec)
+_manifest_spec.loader.exec_module(_manifest_module)
+validate_curriculum = _manifest_module.validate
 
 
 CYR_TO_LAT = str.maketrans({
@@ -34,6 +44,10 @@ def _normalized_key(text, transliterate=False):
 
 def validate(examples, curriculum, sources, publish=False):
     errors = []
+    try:
+        validate_curriculum(curriculum)
+    except (ValueError, KeyError, TypeError, IndexError) as error:
+        return [f"pilot manifest invalid: {error}"]
     if examples.get("schema_version") != 1:
         errors.append("unsupported example schema version")
     if examples.get("status") != "synthetic_test_only" and not publish:
@@ -55,6 +69,7 @@ def validate(examples, curriculum, sources, publish=False):
     }
     seen_ids, policy_ids = set(), set()
     split_keys = {"assessment": set(), "other": set()}
+    covered_outcome_roles = set()
     requested_items = set()
     for item in examples["examples"]:
         example_id = item["id"]
@@ -111,18 +126,30 @@ def validate(examples, curriculum, sources, publish=False):
             errors.append(f"draft answer policy cannot publish: {example_id}")
         if not publish and answer["review_status"] != "draft_unreviewed":
             errors.append(f"synthetic answer policy must remain draft: {example_id}")
+        if (publish and role in ("input", "practice", "assessment")
+                and source_ref in source_items and item["review_status"] == "approved"
+                and answer["review_status"] == "approved"):
+            covered_outcome_roles.add((item["outcome_id"], role))
         if not _nonempty(item["leakage_group"]):
             errors.append(f"leakage group missing: {example_id}")
         bucket = "assessment" if role == "assessment" else "other"
         for key in (
             "group:" + item["leakage_group"],
-            "text:" + _normalized_key(text, transliterate=True),
+            "serbian:" + _normalized_key(text, transliterate=True),
             "translation:" + _normalized_key(translation),
         ):
             split_keys[bucket].add(key)
+        for variant in answer["accepted_variants"]:
+            if _nonempty(variant):
+                split_keys[bucket].add("serbian:" + _normalized_key(variant, transliterate=True))
 
+    if publish:
+        for outcome in curriculum["outcomes"]:
+            for role in ("input", "practice", "assessment"):
+                if (outcome["id"], role) not in covered_outcome_roles:
+                    errors.append(f"missing publish coverage: {outcome['id']}/{role}")
     if split_keys["assessment"] & split_keys["other"]:
-        errors.append("holdout leakage: same group, transliteration or translation across split")
+        errors.append("holdout leakage: same group, Serbian text/answer variant or translation across split")
     if publish and requested_items:
         errors.extend(validate_manifest(
             sources, requested_uses={"redistribution", "adaptation"},
