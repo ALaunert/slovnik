@@ -1,6 +1,6 @@
 # Slovnik Product State
 
-Last audited: 2026-09-24 (Compose setup verified: 2026-09-24; core runtime audit: 2026-08-27)
+Last audited: 2026-09-25 (Compose setup verified: 2026-09-24; core runtime audit: 2026-08-27)
 
 ## Product Summary
 
@@ -44,6 +44,42 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   A strong implementation-level audit is recorded in `docs/progress/document-audit-2026-08-26.md`;
   initiative-wide status and mandatory follow-ups are tracked in `docs/progress/PROGRESS.md`.
 
+## Learning Research and Proposed Roadmap
+
+- A documentation-only learning audit on 2026-09-24 cross-checked the public trainer and internal
+  foundation against code and researched language-learning evidence and Serbian resources.
+  Start with [the current-system audit](learning/audit.md) and [prioritized roadmap](learning/roadmap.md).
+- Supporting documents cover [research and evidence confidence](learning/research.md),
+  [Serbian resources and release-specific licenses](learning/serbian-resources.md),
+  [the proposed learning model](learning/learning-model.md), and
+  [the proposed content pipeline](learning/content-pipeline.md).
+- The proposal preserves the four-context foundation and prioritizes trustworthy assessment,
+  source provenance and reviewed communicative content before a small written A1 pilot.
+  Corpus ingestion, revised readiness rules, contextual practice and outcome evaluation remain
+  proposed work; this audit implements none of them and does not supersede the accepted ADR.
+- The follow-up [learning review](learning/review.md) corrected P0 dependencies and narrowed
+  P0 to evidence definitions, quiz integrity, file-backed provenance/pilot contracts and
+  read-only diagnostics. The [P0 implementation plan](learning/implementation-plan.md)
+  recommends P0-01 first. Separate example tables, corpus/lexicon imports and a new readiness
+  policy require demonstrated need or pilot evidence; none is implemented by this review.
+- Current CEFR settings are preferences/content labels, `learned` is a self-rating streak, and
+  internal competence/frontier values are unvalidated heuristics. The repository does not
+  demonstrate delayed learning gains, full A1 coverage or communicative proficiency.
+
+## Learning Roadmap Implementation
+
+- P0 evidence definitions are versioned in `docs/testing/learning-evaluation.md`, with six invented, hand-reconciled histories. First unaided scored responses, assisted responses, repairs, self-ratings, exposures and unresolved verdicts have separate measurement rules; the historical quiz score remains a mixed practice score. These fixtures are specification examples, not observed learning results.
+- A file-backed source manifest validator checks recorded rights separately for text, translation and audio, relevant uses, attribution and pinned artifact checksums. The checked-in manifest contains no approved real-world sources; legal and educator review are still required before publication.
+- A read-only v1 evidence classifier and adapter count first, confirmed repaired, unverified retry, assisted, self-reported, exposed, unresolved and unknown observations without changing learner projection or selection. Mixed first/final verdicts and hints without proven timing stay unknown; confirmed repair requires an incorrect linked parent. Delayed context counts require a prior known context and explicit held-out marker. Historical shadow snapshots lacking context family/revision cannot establish independent occasions.
+
+- Newly issued quizzes snapshot private v1 answer keys in their stored question plans. Public start responses expose only prompts/options; grading, self-check reveal and correction text use the issued key, while older plans still use legacy mutable vocabulary semantics. Multiple-choice labels are normalized and deduplicated; distractor candidates are read in bounded batches until enough distinct labels are found. Positions are shuffled with fresh issuance randomness, and an item with fewer than two distinct choices is omitted. Completion response v2 retains the mixed practice score and reports objective first attempts, successful repairs and subjective remembered ratings separately. Legacy/mixed key plans and old cached results show an unavailable breakdown; an empty objective denominator is not measured.
+- The four-outcome written pilot manifest and CEFR crosswalk are provisional file-backed drafts with separate input, practice and assessment families. Publish validation checks the pilot manifest, requires approved source-backed examples for each outcome and role, and rejects exact assessment answer phrases exposed through input/practice text, translations or answer variants after script normalization. Eight synthetic example/answer fixtures exercise the validation contract but are explicitly unpublishable. No independent example table is justified by these fixtures. Qualified Serbian L2 educator approval and rights review remain publication gates.
+- The [2026-09-25 provisional AI review](learning/astra-provisional-review.md) recommends revising the written pilot before learner use: task/target coverage, script conditions, answer policies and independent holdouts need further editorial work. All eight synthetic fixtures remain test-only; text/translation rights and qualified human sign-off remain pending. Both draft validators passed, publish-mode validation rejected the synthetic pack as expected, and 29 focused pilot/provenance/evidence tests passed. This review did not activate content or change progression.
+- A [private prototype revision contract](learning/a1-private-prototype-brief.md) narrows the next editorial draft to four written tasks with one primary target each, Latin script and one immediate candidate assessment family per outcome. Its 16 family IDs are unfilled authoring slots, not usable content or protected holdouts. Delayed assessment, rights, qualified review, learner activation and progression remain pending.
+
+- A caller-owned publication service can preflight and atomically commit catalog draft publication with curriculum retirement/activation. It checks written source rights, referenced target owners, graph validity and pinned bytes for referenced source artifacts. Before writing, it locks and rechecks legacy mappings, then stores a publication-request fingerprint with activation; active retries with different provenance or a missing older fingerprint are rejected. Lexical publication locks the parent and checks the final child set. Database guards reject later child insertion, actual moves into or out of a non-draft parent, child deletion, parent deletion, and reverse parent-status transitions; no-op parent-ID updates and published-to-retired transitions remain permitted. They also reject child status changes that disagree with a non-draft parent. Direct SQL payload edits and unsynchronized direct SQL retirement are outside this guard contract. The standalone curriculum publish wrapper retains its behavior. This infrastructure has not activated the provisional pilot; publishable reviewed examples and item-level rights are still absent.
+- A production-identity threat model and executable route ownership inventory now cover all 20 current HTTP routes and synthetic legacy-linking cases. They are design artifacts only; trusted identity, account linking, editor roles and remote owner isolation are not implemented. P2-01a remains externally blocked pending provider/deployment and independent claim-proof decisions.
+
 ## Implemented User-Facing Capabilities
 
 - User entry screen creates or loads a profile by `userId`; the last `userId` and UI language are stored in browser localStorage.
@@ -57,14 +93,16 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - Structured stress is rendered by emphasizing the full stressed syllable in both Serbian scripts
   in the vocabulary list and the shared new-word/review card. The legacy free-form stress marker
   remains metadata fallback when structured stress is absent.
-- Daily new-word session selects unseen words at the learner's preferred level up to `daily_new_word_count`; completion records per-user progress.
+- Daily new-word session selects unseen words at the learner's preferred level up to
+  `daily_new_word_count` per fetch; completing another batch on the same day is possible.
+  Completion records exposure and per-user progress, not an elicited recall answer.
 - Review is productive Russian-to-Serbian recall: each due card initially exposes only the Russian
   cue, level, and theme; reveal shows the Serbian answer and details; and one Again, Hard, Good, or
   Easy rating must be saved before the learner advances.
 - Daily and weekly quizzes use three question types: Serbian-to-Russian multiple choice, Russian-to-Serbian typing, and remembered/forgot self-check with answer reveal.
 - Incorrect quiz answers mark words weak and can be repeated once per question. Quiz completion is blocked until required repeats are answered.
 - Weekly quiz includes words touched this calendar week plus weak words; correct weekly answers clear weak status.
-- Results page shows score, question count, weak-word count, and mistake details from `sessionStorage`.
+- Results page labels the legacy score as a practice result and shows question count, weak-word count, and mistake details from `sessionStorage`. New completion results also show separate first unaided objective answers, corrected items and self-reported remembered counts; old cached results show that breakdown as unavailable.
 - UI copy exists for Russian (`ru`) and Serbian (`sr`); the static HTML document language remains `ru`.
 
 ## Backend Architecture and API Areas
@@ -144,6 +182,11 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - Migration `20260826_0005_domain_foundation.py` adds 11 domain tables for Language
   Catalog, Curriculum, Practice & History, and Learner Progress. It preserves all legacy rows and
   is reversible back to `20260725_0004`.
+- Migration `20260925_0006_publication_integrity.py` adds a nullable publication-request
+  fingerprint and guards child membership/deletion and parent deletion/status regression for
+  non-draft lexical units on SQLite and PostgreSQL.
+  Existing active versions without a fingerprint remain readable but cannot claim an identical
+  retry through the composed publication service.
 - Learning events are immutable and idempotent per learner/key. Learner target state is a replayable
   projection with explicit baseline, competence, memory-v1 and evidence cursor fields.
 - A technical A1 curriculum pilot and deterministic selector exist internally. They are not a
@@ -152,9 +195,9 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   scheduling state as follows:
   - Again: ten minutes, stored interval `0`, streak reset, mark weak.
   - Hard: one day, streak reset, preserve weak state.
-  - Good: two days initially, otherwise double the current interval up to 180 days; increment the
+  - Good: two days when the current interval is below two, otherwise double it up to 180 days; increment the
     streak and clear weak state.
-  - Easy: four days initially, otherwise triple the current interval up to 365 days; increment the
+  - Easy: four days when the current interval is below four, otherwise triple it up to 365 days; increment the
     streak and clear weak state.
 - Three consecutive Good/Easy ratings set status to `learned`; Again and Hard reset that streak and
   put the word in `reviewing`. An incorrect quiz answer marks the word weak and clears
@@ -190,6 +233,11 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 ## Verification and Test Coverage
 
+- Learning-roadmap implementation verification on 2026-09-24 in the isolated worktree: full backend suite `746 passed, 17 skipped`; Ruff `app tests` and `git diff --check` passed. All 87 frontend unit tests, Vue typecheck and Vite production build passed. P0 pilot and synthetic example validators passed; publish mode rejected all draft/synthetic examples. The PostgreSQL concurrency tests were skipped because `SLOVNIK_TEST_POSTGRES_ADMIN_URL` was unset. No new DB migration or live content activation was performed.
+- Learning-audit verification on 2026-09-24: the targeted learning, quiz, projection, curriculum,
+  selector, catalog and domain/practice contract suites passed with `312 passed, 5 skipped`.
+  The skipped cases require `SLOVNIK_TEST_POSTGRES_ADMIN_URL`; this audit did not run PostgreSQL
+  integration, frontend or full-stack suites. Documentation references and whitespace were checked.
 - Compose setup in `README.md` uses `docker compose up -d --build` after copying `.env.example` to `.env`; the existing host-run workflow remains available. Changing frontend npm dependencies requires `docker compose run --rm frontend npm ci` because its dependency volume persists. Compose configuration validation confirms all three published ports use host `127.0.0.1`.
 - Verified on 2026-09-24 in a distinct disposable Compose project: configuration and frontend environment assertions passed; both images built; PostgreSQL became healthy; Alembic reached `20260826_0005 (head)` before Uvicorn started; the API health and Vite HTML endpoints responded; a temporary Vue edit appeared through Vite; vocabulary stayed at zero across a backend restart and became three only after manual seed; the container frontend build and all 83 unit tests passed.
 - A separate 30-second PostgreSQL init-script smoke test reproduced premature readiness from a socket-only probe and an exhausted healthcheck retry budget. The Compose healthcheck now probes TCP on `127.0.0.1` with a 45-second startup grace period. On a fresh disposable volume, PostgreSQL stayed unready during initialization, then became healthy; backend migrations reached `20260826_0005 (head)` before Uvicorn, and `/api/health` returned OK.
@@ -238,6 +286,10 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   response, JSON payloads are exact, loading/focus/completion states work, and maximum bounded
   unbroken content creates no mobile horizontal overflow. No e2e scenario calls a real backend or
   OpenAI.
+- Verified on 2026-09-25 after the follow-up review: full backend passed with `805 passed`
+  and eight subtests using a disposable PostgreSQL database; SQLite and PostgreSQL migration
+  regressions, both draft pilot validators, expected synthetic publish rejection, Ruff, and
+  whitespace checks passed.
 - Verified on 2026-08-27 after review remediation: full backend passed with `674 passed, 16 skipped`;
   targeted catalog/quiz/curriculum/selection/schema regressions, Ruff, whitespace, fresh migration
   upgrade, the explicit ORM/migration domain-schema parity regression, and the read-only catalog
@@ -250,6 +302,12 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 ## Known Limitations / Deferred Scope
 
+- Legacy quiz practice scores count successful retries and self-checks alongside objectively
+  scored responses. Newly issued plans use frozen answer keys and randomized choice positions;
+  older plans retain grading against mutable vocabulary. The historical measurement limitations
+  and implemented corrections are documented in `docs/learning/audit.md` and above.
+- The internal curriculum can satisfy a hard prerequisite after one deterministic success, using
+  a monotonic competence peak. This is a technical policy, not calibrated mastery evidence.
 - Real authentication and authorization are deferred.
 - Native mobile apps, audio pronunciation, bulk import, social features, and payments are not implemented.
 - The legacy scheduler remains authoritative. Shadow mode can retain mapped review/quiz evidence,

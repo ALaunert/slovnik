@@ -136,4 +136,37 @@ describe("QuizView", () => {
     );
     expect(wrapper.text()).toContain("вода");
   });
+
+  it("completes a sparse quiz containing typing and self-check only", async () => {
+    vi.mocked(startQuiz).mockResolvedValueOnce({
+      attempt_id: 22,
+      quiz_type: "daily",
+      questions: [
+        { word_id: 1, question_type: "ru_to_sr_typing", prompt: "спасибо", choices: [] },
+        { word_id: 1, question_type: "remembered_forgot_self_check", prompt: "хвала / hvala", choices: [] },
+      ],
+    });
+    vi.mocked(submitQuizAnswer).mockResolvedValue({ is_correct: true, repeat_word: false, is_weak: false });
+    vi.mocked(revealQuizAnswer).mockResolvedValue({ answer: "спасибо" });
+    vi.mocked(completeQuiz).mockResolvedValue({ score: 2, total_questions: 2, weak_word_ids: [], mistakes: [] });
+
+    const wrapper = mount(QuizView);
+    await flushPromises();
+    expect(wrapper.findAll(".choice-grid button")).toHaveLength(0);
+    await wrapper.get('input[aria-label="Ответ"]').setValue("hvala");
+    await wrapper.get("form").trigger("submit.prevent");
+    await flushPromises();
+    await buttonByText(wrapper, "Дальше").trigger("click");
+    await flushPromises();
+    await buttonByText(wrapper, "Показать перевод").trigger("click");
+    await flushPromises();
+    await buttonByText(wrapper, "Помню").trigger("click");
+    await flushPromises();
+    await buttonByText(wrapper, "Дальше").trigger("click");
+    await flushPromises();
+
+    expect(submitQuizAnswer).toHaveBeenCalledTimes(2);
+    expect(completeQuiz).toHaveBeenCalledWith("learner-1", 22);
+    expect(routerPush).toHaveBeenCalledWith("/results");
+  });
 });

@@ -262,7 +262,19 @@ export type QuizQuestion = {
 };
 
 export type QuizStart = { attempt_id: number; quiz_type: string; questions: QuizQuestion[] };
-export type QuizCompletion = { score: number; total_questions: number; weak_word_ids: number[]; mistakes: Record<string, unknown>[] };
+export type QuizCompletion = {
+  score: number;
+  total_questions: number;
+  weak_word_ids: number[];
+  mistakes: Record<string, unknown>[];
+  result_version?: 2;
+  first_attempt_correct?: number;
+  first_attempt_eligible?: number;
+  first_attempt_status?: "available" | "not_measured" | "unavailable";
+  recovered_objective_items?: number;
+  self_report_remembered?: number;
+  self_report_total?: number;
+};
 
 export async function startQuiz(userId: string, quizType: "daily" | "weekly" = "daily"): Promise<QuizStart> {
   const response = await fetch(`${API_BASE_URL}/api/quizzes/${encodeURIComponent(userId)}/start`, {
