@@ -2,7 +2,9 @@ from datetime import datetime
 import unicodedata
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.learner_time import validate_zone
 
 
 def _normalize_nfc(value: str) -> str:
@@ -17,6 +19,12 @@ class ProfileUpdate(BaseModel):
     preferred_level: Literal["A1", "A2", "B1", "B2", "C1", "C2"] | None = None
     daily_new_word_count: int | None = Field(default=None, ge=1, le=50)
     ui_language: Literal["ru", "sr"] | None = None
+    timezone: str | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value):
+        return validate_zone(value) if value is not None else None
 
 
 class ProfileRead(BaseModel):
@@ -24,6 +32,9 @@ class ProfileRead(BaseModel):
     preferred_level: Literal["A1", "A2", "B1", "B2", "C1", "C2"]
     daily_new_word_count: int
     ui_language: Literal["ru", "sr"]
+    timezone: str
+    effective_timezone: str
+    allocation_window: dict
 
     model_config = {"from_attributes": True}
 
@@ -229,3 +240,11 @@ class QuizCompleteRead(BaseModel):
     total_questions: int
     weak_word_ids: list[int]
     mistakes: list[dict]
+    answer_key_status: Literal["frozen", "legacy"]
+    result_version: Literal[2]
+    breakdown_status: Literal["available", "unavailable"]
+    first_attempt_correct: int | None
+    first_attempt_eligible: int | None
+    recovered_objective_items: int | None
+    self_report_remembered: int | None
+    self_report_total: int | None

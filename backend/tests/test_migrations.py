@@ -1342,7 +1342,13 @@ def test_postgresql_migration_round_trip(postgresql_migration_database):
         "review_interval_days": 0,
         "review_streak": 0,
     }
-    assert read_seeded_legacy_snapshot(engine) == legacy_snapshot
+    upgraded_snapshot = read_seeded_legacy_snapshot(engine)
+    upgraded_profile = upgraded_snapshot["profile"]
+    assert upgraded_profile.pop("timezone") == "UTC"
+    assert upgraded_profile.pop("previous_timezone") == "UTC"
+    assert upgraded_profile.pop("timezone_change_at") is None
+    assert upgraded_profile.pop("timezone_window_start") is None
+    assert upgraded_snapshot == legacy_snapshot
 
     engine.dispose()
     command.downgrade(config, "20260725_0004")

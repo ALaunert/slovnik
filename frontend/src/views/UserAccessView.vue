@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import { createOrLoadProfile } from "../api/client";
 import { messages } from "../i18n/messages";
 import { sessionStore } from "../stores/session";
 
 const router = useRouter();
+const route = useRoute();
 const userId = ref(sessionStore.userId.value);
 const error = ref("");
 const isLoading = ref(false);
@@ -24,7 +25,7 @@ async function start() {
     const profile = await createOrLoadProfile(trimmed);
     sessionStore.setUserId(trimmed);
     sessionStore.setUiLanguage(profile.ui_language);
-    await router.push("/dashboard");
+    await router.push(route.query.next === "practice" ? "/practice" : "/dashboard");
   } catch {
     error.value = copy.value.loadProfileError;
   } finally {
@@ -37,6 +38,7 @@ async function start() {
   <main class="page narrow-page">
     <section class="panel access-panel">
       <h1>{{ copy.appTitle }}</h1>
+      <p><RouterLink to="/textbook">{{ copy.textbookReadWithoutProfile }}</RouterLink></p>
       <form class="stack" @submit.prevent="start">
         <label>
           {{ copy.userIdLabel }}

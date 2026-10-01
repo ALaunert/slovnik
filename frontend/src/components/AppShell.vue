@@ -15,6 +15,7 @@ const navLabel = computed(() => (sessionStore.uiLanguage.value === "sr" ? "Glavn
       <RouterLink class="brand" to="/dashboard">{{ copy.appTitle }}</RouterLink>
       <nav :aria-label="navLabel">
         <RouterLink to="/dashboard">{{ copy.dashboard }}</RouterLink>
+        <RouterLink to="/textbook">{{ copy.textbook }}</RouterLink>
         <RouterLink to="/new-words">{{ copy.newWords }}</RouterLink>
         <RouterLink to="/review">{{ copy.review }}</RouterLink>
         <RouterLink to="/vocabulary">{{ copy.vocabulary }}</RouterLink>

@@ -411,6 +411,24 @@ def test_failed_replacement_publication_is_atomic(curriculum_engine) -> None:
         assert repository.get(invalid_second.id).status is CurriculumStatus.DRAFT
 
 
+def test_caller_owned_publication_can_roll_back_activation(curriculum_engine) -> None:
+    resolver = _TargetResolver({TARGET_A_ID})
+    with Session(curriculum_engine) as session:
+        repository = CurriculumRepository(session, resolver)
+        repository.add(_draft())
+        session.commit()
+
+        published = CurriculumService(session, resolver).publish_in_transaction(
+            VERSION_ID, published_at=NOW
+        )
+        assert published.status is CurriculumStatus.ACTIVE
+        assert repository.get(VERSION_ID).status is CurriculumStatus.ACTIVE
+        session.rollback()
+
+    with Session(curriculum_engine) as session:
+        assert CurriculumRepository(session, resolver).get(VERSION_ID).status is CurriculumStatus.DRAFT
+
+
 def test_failed_activation_rolls_back_the_flushed_retirement(
     curriculum_engine,
     monkeypatch,

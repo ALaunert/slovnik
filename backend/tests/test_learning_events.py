@@ -171,6 +171,7 @@ def make_request(*, scorer="deterministic", outcome="correct"):
         ("deterministic", "correct", "response_evaluated"),
         ("deterministic", "incorrect", "response_evaluated"),
         ("deterministic", "partial", "response_evaluated"),
+        ("deterministic", "unresolved", "response_evaluated"),
         ("self_report", "unknown", "response_evaluated"),
         ("model_assisted", "correct", "response_evaluated"),
     ],
@@ -437,6 +438,29 @@ def test_learning_event_repository_sqlite_round_trip_uses_database_clock(
     assert restored.occurred_at.utcoffset() == timedelta(0)
     assert restored.feedback.delivered_at.utcoffset() == timedelta(0)
     assert restored.to_observation_payload() == event.to_observation_payload()
+
+
+def test_unresolved_response_round_trips_with_its_first_answer(db_session) -> None:
+    from app.domain.practice import build_learning_event
+    from app.repositories.practice import PracticeRepository
+
+    _, activity = seed_practice(db_session)
+    repository = PracticeRepository(db_session)
+    request = make_request(outcome="unresolved")
+    event = build_learning_event(
+        activity,
+        request,
+        created_at=repository.database_now(),
+        received_at=repository.database_now(),
+    )
+    repository.add_learning_event(event)
+    db_session.commit()
+    db_session.expire_all()
+
+    restored = repository.get_learning_event("learner-1", "request-1")
+    assert restored is not None
+    assert restored.evaluation_outcome.value == "unresolved"
+    assert restored.first_response == request.first_response
 
 
 def seed_practice(db_session, *, activity=None, learner_id="learner-1"):

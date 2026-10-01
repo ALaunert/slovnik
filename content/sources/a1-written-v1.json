@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "slovnik-original-written-2026-09-27",
+      "source_type": "authored",
+      "item_id": "a1-written-v1",
+      "author": "Codex model-assisted original material for Slovnik; no human author commissioned",
+      "release": "a1-written-v1",
+      "pinned_release": "a1-written-v1",
+      "checksum": "a3dbd3bb5a7871a59b3796ac86b8fb4211ee3b936c06bafd0de33bf6439c0a35",
+      "pinned_checksum": "a3dbd3bb5a7871a59b3796ac86b8fb4211ee3b936c06bafd0de33bf6439c0a35",
+      "checksum_scope": "bank_digest excluding publication_decision",
+      "source_url": null,
+      "attribution": "Slovnik original model-assisted material, 2026-09-27; internally checked",
+      "rights": {
+        "text": {
+          "status": "approved",
+          "uses": [
+            "analysis",
+            "pilot_display"
+          ],
+          "license": "Project-owner permission for local written pilot display only",
+          "evidence": "agreement:project-owner decision 2026-09-27 recorded in content/examples/a1-written-v1-decision.md#решение-владельца",
+          "reviewer": "Slovnik project owner (user in this task)",
+          "reviewed_at": "2026-09-27",
+          "scope": "Exact eight model-assisted originals and separately composed Russian translations; no third-party source sentences, translations or audio"
+        },
+        "translation": {
+          "status": "approved",
+          "uses": [
+            "analysis",
+            "pilot_display"
+          ],
+          "license": "Project-owner permission for local written pilot display only",
+          "evidence": "agreement:project-owner decision 2026-09-27 recorded in content/examples/a1-written-v1-decision.md#решение-владельца",
+          "reviewer": "Slovnik project owner (user in this task)",
+          "reviewed_at": "2026-09-27",
+          "scope": "Exact eight model-assisted originals and separately composed Russian translations; no third-party source sentences, translations or audio"
+        }
+      },
+      "audio": null
+    }
+  ]
+}

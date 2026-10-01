@@ -183,6 +183,24 @@ def test_partial_counts_as_native_deterministic_evidence() -> None:
     assert projected.evidence.deterministic_count == 1
 
 
+def test_unresolved_response_is_recorded_without_progress_or_schedule_credit() -> None:
+    from app.services.learner_projection_service import project_event
+
+    initial = _neutral_state()
+    projected = project_event(
+        initial,
+        FakeLearningEvent(
+            event_id="24242424-2424-4242-8424-242424242424",
+            evaluation_outcome="unresolved",
+        ),
+    )
+
+    assert projected.competence == initial.competence
+    assert projected.memory == initial.memory
+    assert projected.evidence.count == 1
+    assert projected.evidence.deterministic_count == 0
+
+
 def test_first_exposure_sets_one_day_hold_without_competence_credit() -> None:
     from app.services.learner_projection_service import project_event
 

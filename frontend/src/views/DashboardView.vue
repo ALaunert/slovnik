@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { RouterLink } from "vue-router";
 
-import { createOrLoadProfile, updateProfile, type Profile } from "../api/client";
+import { createOrLoadProfile, getPracticeAvailability, updateProfile, type Profile } from "../api/client";
 import { messages } from "../i18n/messages";
 import { sessionStore } from "../stores/session";
 
@@ -11,16 +11,23 @@ const languages = [
   { value: "ru", label: "Русский" },
   { value: "sr", label: "Srpski" },
 ];
-const settings = reactive({ preferred_level: "A1", daily_new_word_count: 5, ui_language: "ru" });
+const settings = reactive({ preferred_level: "A1", daily_new_word_count: 5, ui_language: "ru", timezone: "UTC" });
+const effectiveTimezone = ref("UTC");
+const zoneChangeAt = ref<string | null>(null);
+const timezoneChoices = ["UTC", "Europe/Belgrade", "Europe/Moscow", "Asia/Tbilisi", "Asia/Almaty", "America/New_York"];
 const status = ref("");
 const error = ref("");
 const userId = sessionStore.userId;
+const practiceAvailable = ref(false);
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 
 function applyProfile(profile: Profile) {
   settings.preferred_level = profile.preferred_level;
   settings.daily_new_word_count = profile.daily_new_word_count;
   settings.ui_language = profile.ui_language;
+  settings.timezone = profile.timezone ?? "UTC";
+  effectiveTimezone.value = profile.effective_timezone ?? "UTC";
+  zoneChangeAt.value = profile.allocation_window?.transition ? profile.allocation_window.end : null;
   sessionStore.setUiLanguage(profile.ui_language);
 }
 
@@ -33,6 +40,11 @@ onMounted(async () => {
   }
 });
 
+onMounted(async () => {
+  try { practiceAvailable.value = await getPracticeAvailability(); }
+  catch { practiceAvailable.value = false; }
+});
+
 async function saveSettings() {
   if (!userId.value) return;
   error.value = "";
@@ -41,6 +53,7 @@ async function saveSettings() {
     preferred_level: settings.preferred_level,
     daily_new_word_count: Math.min(50, Math.max(1, Number(settings.daily_new_word_count))),
     ui_language: settings.ui_language,
+    timezone: settings.timezone,
   };
   try {
     applyProfile(await updateProfile(userId.value, payload));
@@ -62,11 +75,13 @@ async function saveSettings() {
     </header>
 
     <nav class="action-grid" :aria-label="copy.mainActions">
+      <RouterLink class="action-card" to="/textbook">{{ copy.textbook }}</RouterLink>
       <RouterLink class="action-card" to="/new-words">{{ copy.newWords }}</RouterLink>
       <RouterLink class="action-card" to="/review">{{ copy.review }}</RouterLink>
       <RouterLink class="action-card" to="/quiz?type=daily">{{ copy.dailyQuiz }}</RouterLink>
       <RouterLink class="action-card" to="/quiz?type=weekly">{{ copy.weeklyQuiz }}</RouterLink>
       <RouterLink class="action-card" to="/vocabulary">{{ copy.vocabulary }}</RouterLink>
+      <RouterLink v-if="practiceAvailable" class="action-card" to="/practice">{{ copy.practiceTitle }}</RouterLink>
     </nav>
 
     <section class="panel">
@@ -96,8 +111,18 @@ async function saveSettings() {
             </option>
           </select>
         </label>
+        <label>
+          {{ copy.timezoneLabel }}
+          <input v-model="settings.timezone" name="timezone" list="timezone-choices" required maxlength="80" />
+          <datalist id="timezone-choices">
+            <option v-for="zone in timezoneChoices" :key="zone" :value="zone" />
+          </datalist>
+        </label>
         <button type="submit">{{ copy.save }}</button>
       </form>
+      <p>{{ copy.timezoneEffective }} {{ effectiveTimezone }}</p>
+      <p>{{ copy.timezonePolicy }}</p>
+      <p v-if="zoneChangeAt">{{ copy.timezonePending }} {{ zoneChangeAt }}</p>
       <p v-if="status" class="success">{{ status }}</p>
       <p v-if="error" class="error">{{ error }}</p>
     </section>

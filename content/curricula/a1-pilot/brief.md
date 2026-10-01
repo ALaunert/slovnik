@@ -1,0 +1,9 @@
+# Four-task written pilot — editorial draft
+
+The [manifest](manifest.json) proposes four selected everyday outcomes: personal details, a simple request, a price lookup and a location message. Each has a bounded input, written task, separate practice and held-out assessment family, primary capability, script conditions and rubric. Family separation is an editorial promise to write genuinely different prompts; different IDs alone do not prove independence. The proposed soft order is a design hypothesis. No hard prerequisite is justified by the present evidence.
+
+The CEFR crosswalk is a **hypothesis** from `docs/learning/learning-model.md`, with edition, scale and printed page recorded in the manifest. The written request is a rehearsal of an interaction descriptor. The four tasks cannot establish oral skill, listening skill, complete A1 coverage or CEFR attainment. The existing three-word seed and its hard edge are technical examples, not evidence for this pilot's order.
+
+Before P1 publication, the project owner must record an internal source-based decision for each selected construction, phrase, translation, accepted answer and permission, following `docs/learning/solo-development-readiness.md`. Source locators, independent descriptions for nontrivial rules, orthography/variant checks, authorship and separate rights must be logged. Unresolved language or rights decisions keep an item draft or remove it from the pack. The fixtures created in P0 are contract tests and are not activated content.
+
+Assessment plans must reserve prompts from the assessment families before practice is authored. Review the rubrics for intended information, target form, support, script and unresolved answer handling; do not score a valid but unlisted response as wrong without a reviewed policy. A later evaluation must record first responses, repairs and missing probes separately under `docs/testing/learning-evaluation.md`.

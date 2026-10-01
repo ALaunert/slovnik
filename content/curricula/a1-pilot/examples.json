@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "status": "draft",
+  "examples": [
+    {
+      "id": "personal-practice-1",
+      "outcome_id": "A1.PERSONAL_DETAILS",
+      "role": "practice",
+      "context_family": "personal-profile-practice",
+      "source_id": "slovnik-draft-pilot-2026-09",
+      "text": "Ја сам Ана.",
+      "script": "cyrillic",
+      "target_ref": "personal-details-written",
+      "target_span": [
+        0,
+        6
+      ],
+      "translation": "Я Ана.",
+      "translation_status": "draft",
+      "accepted_answers": [
+        "Ја сам Ана.",
+        "Зовем се Ана."
+      ],
+      "answer_policy_status": "draft",
+      "review": {
+        "status": "draft",
+        "reviewer": null,
+        "date": null,
+        "source_locators": []
+      }
+    },
+    {
+      "id": "personal-assess-1",
+      "outcome_id": "A1.PERSONAL_DETAILS",
+      "role": "assessment",
+      "context_family": "personal-registration-holdout",
+      "source_id": "slovnik-draft-pilot-2026-09",
+      "text": "Moje ime je Mila.",
+      "script": "latin",
+      "target_ref": "personal-details-written",
+      "target_span": [
+        0,
+        8
+      ],
+      "translation": "Меня зовут Мила.",
+      "translation_status": "draft",
+      "accepted_answers": [
+        "Moje ime je Mila."
+      ],
+      "answer_policy_status": "draft",
+      "review": {
+        "status": "draft",
+        "reviewer": null,
+        "date": null,
+        "source_locators": []
+      }
+    },
+    {
+      "id": "request-practice-1",
+      "outcome_id": "A1.SIMPLE_REQUEST",
+      "role": "practice",
+      "context_family": "request-counter-practice",
+      "source_id": "slovnik-draft-pilot-2026-09",
+      "text": "Molim jednu vodu.",
+      "script": "latin",
+      "target_ref": "simple-request-written",
+      "target_span": [
+        0,
+        16
+      ],
+      "translation": "Пожалуйста, одну воду.",
+      "translation_status": "draft",
+      "accepted_answers": [
+        "Molim jednu vodu.",
+        "Želim jednu vodu."
+      ],
+      "answer_policy_status": "draft",
+      "review": {
+        "status": "draft",
+        "reviewer": null,
+        "date": null,
+        "source_locators": []
+      }
+    },
+    {
+      "id": "request-assess-1",
+      "outcome_id": "A1.SIMPLE_REQUEST",
+      "role": "assessment",
+      "context_family": "request-kiosk-holdout",
+      "source_id": "slovnik-draft-pilot-2026-09",
+      "text": "Желим једну кафу.",
+      "script": "cyrillic",
+      "target_ref": "simple-request-written",
+      "target_span": [
+        0,
+        16
+      ],
+      "translation": "Я хочу один кофе.",
+      "translation_status": "draft",
+      "accepted_answers": [
+        "Желим једну кафу."
+      ],
+      "answer_policy_status": "draft",
+      "review": {
+        "status": "draft",
+        "reviewer": null,
+        "date": null,
+        "source_locators": []
+      }
+    },
+    {
+      "id": "price-practice-1",
+      "outcome_id": "A1.PRICE_INFO",
+      "role": "practice",
+      "context_family": "price-shop-practice",
+      "source_id": "slovnik-draft-pilot-2026-09",
+      "text": "Хлеб кошта 100 динара.",
+      "script": "cyrillic",
+      "target_ref": "price-reading-written",
+      "target_span": [
+        11,
+        14
+      ],
+      "translation": "Хлеб стоит 100 динаров.",
+      "translation_status": "draft",
+      "accepted_answers": [
+        "100",
+        "100 динара"
+      ],
+      "answer_policy_status": "draft",
+      "review": {
+        "status": "draft",
+        "reviewer": null,
+        "date": null,
+        "source_locators": []
+      }
+    },
+    {
+      "id": "price-assess-1",
+      "outcome_id": "A1.PRICE_INFO",
+      "role": "assessment",
+      "context_family": "price-service-holdout",
+      "source_id": "slovnik-draft-pilot-2026-09",
+      "text": "Sok košta 120 dinara.",
+      "script": "latin",
+      "target_ref": "price-reading-written",
+      "target_span": [
+        10,
+        13
+      ],
+      "translation": "Сок стоит 120 динаров.",
+      "translation_status": "draft",
+      "accepted_answers": [
+        "120"
+      ],
+      "answer_policy_status": "draft",
+      "review": {
+        "status": "draft",
+        "reviewer": null,
+        "date": null,
+        "source_locators": []
+      }
+    },
+    {
+      "id": "location-practice-1",
+      "outcome_id": "A1.LOCATION_INFO",
+      "role": "practice",
+      "context_family": "location-library-practice",
+      "source_id": "slovnik-draft-pilot-2026-09",
+      "text": "Библиотека је овде.",
+      "script": "cyrillic",
+      "target_ref": "location-message-written",
+      "target_span": [
+        14,
+        18
+      ],
+      "translation": "Библиотека здесь.",
+      "translation_status": "draft",
+      "accepted_answers": [
+        "Библиотека је овде."
+      ],
+      "answer_policy_status": "draft",
+      "review": {
+        "status": "draft",
+        "reviewer": null,
+        "date": null,
+        "source_locators": []
+      }
+    },
+    {
+      "id": "location-assess-1",
+      "outcome_id": "A1.LOCATION_INFO",
+      "role": "assessment",
+      "context_family": "location-office-holdout",
+      "source_id": "slovnik-draft-pilot-2026-09",
+      "text": "Škola je tamo.",
+      "script": "latin",
+      "target_ref": "location-message-written",
+      "target_span": [
+        9,
+        13
+      ],
+      "translation": "Школа там.",
+      "translation_status": "draft",
+      "accepted_answers": [
+        "Škola je tamo."
+      ],
+      "answer_policy_status": "draft",
+      "review": {
+        "status": "draft",
+        "reviewer": null,
+        "date": null,
+        "source_locators": []
+      }
+    }
+  ]
+}

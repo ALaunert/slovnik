@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "note": "Synthetic specification examples, not observations of Slovnik learners or legacy database rows.",
+  "histories": [
+    {
+      "id": "wrong_then_correct_retry",
+      "learner_id": "fixture-1",
+      "target_id": "target-1",
+      "presentations": [
+        {"id": "p1", "context_family": "shop-a", "offered_at": "2026-01-01T10:01:00+00:00", "display_status": "shown", "shown_at": "2026-01-01T10:01:05+00:00"}
+      ],
+      "activities": [
+        {"id": "a1", "context_family": "shop-a", "offered_at": "2026-01-01T10:00:00+00:00", "support": "none", "response": {"kind": "scored", "at": "2026-01-01T10:00:20+00:00", "outcome": "incorrect"}},
+        {"id": "a2", "context_family": "shop-a", "offered_at": "2026-01-01T10:02:00+00:00", "support": "none", "retry_of": "a1", "response": {"kind": "scored", "at": "2026-01-01T10:02:20+00:00", "outcome": "correct"}}
+      ],
+      "expected": {"presentations": [1, 1], "first_unaided": [0, 1], "retry": [1, 1], "unresolved": [0, 2]}
+    },
+    {
+      "id": "hint_then_correct",
+      "learner_id": "fixture-2",
+      "target_id": "target-2",
+      "presentations": [],
+      "activities": [
+        {"id": "a1", "context_family": "route-a", "offered_at": "2026-01-01T10:00:00+00:00", "support": "hint", "support_at": "2026-01-01T10:00:30+00:00", "response": {"kind": "scored", "at": "2026-01-01T10:01:00+00:00", "outcome": "correct"}}
+      ],
+      "expected": {"assisted": [1, 1], "unresolved": [0, 1]}
+    },
+    {
+      "id": "self_rating_after_reveal",
+      "learner_id": "fixture-3",
+      "target_id": "target-3",
+      "presentations": [
+        {"id": "p1", "context_family": "home-a", "offered_at": "2026-01-01T10:00:30+00:00", "display_status": "shown", "shown_at": "2026-01-01T10:01:00+00:00"},
+        {"id": "p2", "context_family": "home-b", "offered_at": "2026-01-01T10:03:00+00:00", "display_status": "not_shown", "shown_at": null}
+      ],
+      "activities": [
+        {"id": "a1", "context_family": "home-a", "offered_at": "2026-01-01T10:00:00+00:00", "support": "reveal", "support_at": "2026-01-01T10:01:00+00:00", "response": {"kind": "self_report", "at": "2026-01-01T10:02:00+00:00", "rating": "good"}}
+      ],
+      "expected": {"presentations": [1, 2], "self_report": [1, 1]}
+    },
+    {
+      "id": "same_context_again",
+      "learner_id": "fixture-4",
+      "target_id": "target-4",
+      "presentations": [],
+      "activities": [
+        {"id": "a1", "context_family": "price-a", "offered_at": "2026-01-01T10:00:00+00:00", "support": "none", "response": {"kind": "scored", "at": "2026-01-01T10:00:20+00:00", "outcome": "correct"}},
+        {"id": "a2", "context_family": "price-a", "offered_at": "2026-01-02T10:00:00+00:00", "support": "none", "response": {"kind": "scored", "at": "2026-01-02T10:00:20+00:00", "outcome": "correct"}}
+      ],
+      "expected": {"first_unaided": [1, 1], "same_context": [1, 1], "unresolved": [0, 2]}
+    },
+    {
+      "id": "delayed_new_context_with_missing_probe",
+      "learner_id": "fixture-5",
+      "target_id": "target-5",
+      "presentations": [],
+      "activities": [
+        {"id": "a1", "context_family": "station-a", "offered_at": "2026-01-01T10:00:00+00:00", "support": "none", "response": {"kind": "scored", "at": "2026-01-01T10:00:20+00:00", "outcome": "correct"}},
+        {"id": "a2", "context_family": "station-b", "offered_at": "2026-01-09T10:00:00+00:00", "display_status": "shown", "shown_at": "2026-01-09T10:00:05+00:00", "support": "none", "probe_horizon_days": 7, "response": {"kind": "scored", "at": "2026-01-09T10:00:20+00:00", "outcome": "correct"}},
+        {"id": "a3", "context_family": "station-c", "offered_at": "2026-01-17T10:00:00+00:00", "support": "none", "probe_horizon_days": 7, "response": null}
+      ],
+      "expected": {"first_unaided": [2, 2], "delayed_7d": [1, 1, 2, 1, 0], "unresolved": [0, 2]}
+    },
+    {
+      "id": "ambiguous_answer",
+      "learner_id": "fixture-6",
+      "target_id": "target-6",
+      "presentations": [],
+      "activities": [
+        {"id": "a1", "context_family": "request-a", "offered_at": "2026-01-01T10:00:00+00:00", "support": "none", "response": {"kind": "scored", "at": "2026-01-01T10:00:20+00:00", "outcome": "unresolved", "reason": "ambiguous_valid_variant"}}
+      ],
+      "expected": {"unresolved": [1, 1]}
+    }
+  ]
+}

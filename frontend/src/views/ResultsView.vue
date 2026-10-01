@@ -17,6 +17,7 @@ const results = computed(() => {
 });
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
 const title = computed(() => (results.value.quizType === "weekly" ? copy.value.weeklyResults : copy.value.results));
+const hasBreakdown = computed(() => results.value.result_version === 2 && results.value.breakdown_status === "available");
 
 function questionTypeLabel(questionType: string) {
   if (questionType === "sr_to_ru_choice") return copy.value.srToRuChoice;
@@ -32,9 +33,20 @@ function questionTypeLabel(questionType: string) {
       <RouterLink to="/dashboard">{{ copy.backToDashboard }}</RouterLink>
     </header>
     <section class="panel result-grid">
-      <div><strong>{{ results.score }}</strong><span>{{ copy.correctCount }}</span></div>
+      <div><strong>{{ results.score }}</strong><span>{{ copy.practiceScore }}</span></div>
       <div><strong>{{ results.total_questions }}</strong><span>{{ copy.questionCount }}</span></div>
       <div><strong>{{ results.weak_word_ids.length }}</strong><span>{{ copy.weakWordCount }}</span></div>
+    </section>
+    <section class="panel stack">
+      <p>{{ copy.practiceScoreNote }}</p>
+      <p v-if="results.answer_key_status === 'legacy'">{{ copy.legacyKeyNote }}</p>
+      <h2>{{ copy.breakdownTitle }}</h2>
+      <p v-if="!hasBreakdown">{{ copy.breakdownUnavailable }}</p>
+      <template v-else>
+        <p>{{ copy.firstAnswer }}: {{ results.first_attempt_eligible > 0 ? `${results.first_attempt_correct} / ${results.first_attempt_eligible}` : copy.notMeasured }}</p>
+        <p>{{ copy.recoveredOnRetry }}: {{ results.recovered_objective_items }}</p>
+        <p>{{ copy.selfRatedRemembered }}: {{ results.self_report_remembered }} / {{ results.self_report_total }}</p>
+      </template>
     </section>
     <section v-if="results.mistakes.length > 0" class="panel stack">
       <h2>{{ copy.mistakes }}</h2>

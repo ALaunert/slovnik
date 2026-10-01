@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "id": "a1-written-pilot-v1",
+  "status": "prepared_for_local",
+  "curriculum_code": "slovnik-written-a1",
+  "version_number": 1,
+  "version_id": "3082e687-db28-5774-82a8-4f709a592cd7",
+  "created_at": "2026-09-30T12:00:00+00:00",
+  "pilot_file": "curricula/a1-pilot/manifest.json",
+  "bank_file": "examples/a1-written-v1.json",
+  "sources_file": "sources/a1-written-v1.json",
+  "pilot_digest": "e55fefb0c50185e8889ef6eabe0baa821e922c81dc7d3217ffe0b400afdd69ab",
+  "bank_digest": "a3dbd3bb5a7871a59b3796ac86b8fb4211ee3b936c06bafd0de33bf6439c0a35",
+  "rights_digest": "c00ba8ed0bbe0a72813f4a829ae149eedc2dc830b02a849e52adc7a456631ff7",
+  "targets": [
+    {
+      "outcome_code": "A1.PERSONAL_DETAILS",
+      "cefr": {
+        "edition": "Companion Volume 2020",
+        "scale": "Notes, messages and forms",
+        "page": 84
+      },
+      "editorial_target_ref": "personal-details-written",
+      "target_kind": "construction",
+      "capability": "apply_construction",
+      "catalog_id": "68e06af4-c5cc-50e5-beaa-1d818b2af616",
+      "catalog_code": "personal-fields-written-r1",
+      "catalog_revision": 1,
+      "title": "Поля личных данных",
+      "description": "Письменное заполнение трёх полей вымышленной формы по источнику.",
+      "node_id": "9b917537-9276-510e-a0b1-f2bb1fd3c4ae",
+      "priority": 100,
+      "practice_families": [
+        "personal-profile-practice"
+      ],
+      "assessment_family": "personal-registration-holdout",
+      "practice_example_id": "a1-written-personal-profile",
+      "assessment_example_id": "a1-written-personal-registration",
+      "answer_policies": [
+        {
+          "id": "a1-written-personal-profile-answers",
+          "revision": 1
+        },
+        {
+          "id": "a1-written-personal-registration-answers",
+          "revision": 1
+        }
+      ],
+      "source": {
+        "id": "slovnik-original-written-2026-09-27",
+        "release": "a1-written-v1",
+        "checksum": "a3dbd3bb5a7871a59b3796ac86b8fb4211ee3b936c06bafd0de33bf6439c0a35"
+      },
+      "catalog_key": "personal-fields-written"
+    },
+    {
+      "outcome_code": "A1.SIMPLE_REQUEST",
+      "cefr": {
+        "edition": "Companion Volume 2020",
+        "scale": "Obtaining goods and services",
+        "page": 78
+      },
+      "editorial_target_ref": "simple-request-written",
+      "target_kind": "construction",
+      "capability": "apply_construction",
+      "catalog_id": "a80fbe04-4fb0-5ca6-8c35-ba150364e0a9",
+      "catalog_code": "polite-request-written-r1",
+      "catalog_revision": 1,
+      "title": "Письменная просьба",
+      "description": "Узкая формула вежливой просьбы об одном указанном предмете.",
+      "node_id": "57c22243-bccb-5d24-87f5-6a1d6733b526",
+      "priority": 90,
+      "practice_families": [
+        "request-counter-practice"
+      ],
+      "assessment_family": "request-kiosk-holdout",
+      "practice_example_id": "a1-written-request-counter",
+      "assessment_example_id": "a1-written-request-kiosk",
+      "answer_policies": [
+        {
+          "id": "a1-written-request-counter-answers",
+          "revision": 1
+        },
+        {
+          "id": "a1-written-request-kiosk-answers",
+          "revision": 1
+        }
+      ],
+      "source": {
+        "id": "slovnik-original-written-2026-09-27",
+        "release": "a1-written-v1",
+        "checksum": "a3dbd3bb5a7871a59b3796ac86b8fb4211ee3b936c06bafd0de33bf6439c0a35"
+      },
+      "catalog_key": "polite-request-written"
+    },
+    {
+      "outcome_code": "A1.PRICE_INFO",
+      "cefr": {
+        "edition": "Companion Volume 2020",
+        "scale": "Reading for orientation",
+        "page": 56
+      },
+      "editorial_target_ref": "price-reading-written",
+      "target_kind": "construction",
+      "capability": "apply_construction",
+      "catalog_id": "9bab787d-fd95-521a-b83f-1e68740cefae",
+      "catalog_code": "price-notice-written-r1",
+      "catalog_revision": 1,
+      "title": "Чтение ценового объявления",
+      "description": "Сопоставление предмета и цифры в коротком объявлении с двумя ценами.",
+      "node_id": "5a5cae15-cdcc-57c9-943f-3bfa48b4245a",
+      "priority": 80,
+      "practice_families": [
+        "price-shop-practice"
+      ],
+      "assessment_family": "price-service-holdout",
+      "practice_example_id": "a1-written-price-shop",
+      "assessment_example_id": "a1-written-price-service",
+      "answer_policies": [
+        {
+          "id": "a1-written-price-shop-answers",
+          "revision": 1
+        },
+        {
+          "id": "a1-written-price-service-answers",
+          "revision": 1
+        }
+      ],
+      "source": {
+        "id": "slovnik-original-written-2026-09-27",
+        "release": "a1-written-v1",
+        "checksum": "a3dbd3bb5a7871a59b3796ac86b8fb4211ee3b936c06bafd0de33bf6439c0a35"
+      },
+      "catalog_key": "price-notice-written"
+    },
+    {
+      "outcome_code": "A1.LOCATION_INFO",
+      "cefr": {
+        "edition": "Companion Volume 2020",
+        "scale": "Notes, messages and forms",
+        "page": 84
+      },
+      "editorial_target_ref": "location-message-written",
+      "target_kind": "construction",
+      "capability": "apply_construction",
+      "catalog_id": "7c617c70-a547-5a40-a90d-c1fe8a5fd27b",
+      "catalog_code": "meeting-location-written-r1",
+      "catalog_revision": 1,
+      "title": "Сообщение о месте встречи",
+      "description": "Короткое письменное сообщение с местом названной встречи.",
+      "node_id": "dab87b66-fa75-50df-8d43-5fe4d80a51bd",
+      "priority": 70,
+      "practice_families": [
+        "location-library-practice"
+      ],
+      "assessment_family": "location-office-holdout",
+      "practice_example_id": "a1-written-location-library",
+      "assessment_example_id": "a1-written-location-office",
+      "answer_policies": [
+        {
+          "id": "a1-written-location-library-answers",
+          "revision": 1
+        },
+        {
+          "id": "a1-written-location-office-answers",
+          "revision": 1
+        }
+      ],
+      "source": {
+        "id": "slovnik-original-written-2026-09-27",
+        "release": "a1-written-v1",
+        "checksum": "a3dbd3bb5a7871a59b3796ac86b8fb4211ee3b936c06bafd0de33bf6439c0a35"
+      },
+      "catalog_key": "meeting-location-written"
+    }
+  ],
+  "edges": [
+    {
+      "from": "A1.PERSONAL_DETAILS",
+      "to": "A1.SIMPLE_REQUEST",
+      "kind": "soft"
+    },
+    {
+      "from": "A1.SIMPLE_REQUEST",
+      "to": "A1.PRICE_INFO",
+      "kind": "soft"
+    },
+    {
+      "from": "A1.PRICE_INFO",
+      "to": "A1.LOCATION_INFO",
+      "kind": "soft"
+    }
+  ]
+}

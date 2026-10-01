@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "bank_digest": "a3dbd3bb5a7871a59b3796ac86b8fb4211ee3b936c06bafd0de33bf6439c0a35",
+  "review_kind": "internal_source_and_task_check",
+  "human_gold": false,
+  "cases": [
+    {"id": "G01", "class": "approved_form", "example_id": "a1-written-personal-profile", "answer": "Име: Нина\nПрезиме: Павловић\nГрад: Ниш", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G02", "class": "approved_form", "example_id": "a1-written-personal-registration", "answer": "Grad: Užice\nPrezime: Ilić\nIme: Ognjen", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G03", "class": "approved_sentence", "example_id": "a1-written-request-counter", "answer": "Молим воду.", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G04", "class": "approved_sentence", "example_id": "a1-written-request-kiosk", "answer": "Molim čaj.", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G05", "class": "approved_price", "example_id": "a1-written-price-shop", "answer": "60", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G06", "class": "approved_price", "example_id": "a1-written-price-service", "answer": "150", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G07", "class": "approved_sentence", "example_id": "a1-written-location-library", "answer": "Састанак је у школи.", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G08", "class": "approved_sentence", "example_id": "a1-written-location-office", "answer": "Sastanak je u hotelu.", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G09", "class": "reviewed_script", "example_id": "a1-written-request-counter", "answer": "Molim vodu.", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G10", "class": "reviewed_script", "example_id": "a1-written-location-library", "answer": "Sastanak je u školi.", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G11", "class": "wrong_numeral", "example_id": "a1-written-price-shop", "answer": "95", "reference_label": "incorrect", "expected_verdict": "incorrect"},
+    {"id": "G12", "class": "missing_field", "example_id": "a1-written-personal-profile", "answer": "Име: Нина\nПрезиме: Павловић", "reference_label": "incorrect", "expected_verdict": "incorrect"},
+    {"id": "G13", "class": "wrong_referent", "example_id": "a1-written-request-counter", "answer": "Молим сок.", "reference_label": "incorrect", "expected_verdict": "unresolved"},
+    {"id": "G14", "class": "wrong_referent", "example_id": "a1-written-location-library", "answer": "Састанак је у хотелу.", "reference_label": "incorrect", "expected_verdict": "unresolved"},
+    {"id": "G15", "class": "reviewed_script_digraph", "example_id": "a1-written-personal-registration", "answer": "Име: Огњен\nПрезиме: Илић\nГрад: Ужице", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "G16", "class": "reviewed_script", "example_id": "a1-written-request-kiosk", "answer": "Молим чај.", "reference_label": "correct", "expected_verdict": "correct"},
+    {"id": "U01", "class": "alternate_order", "example_id": "a1-written-request-counter", "answer": "Воду молим.", "reference_label": null, "expected_verdict": "unresolved"},
+    {"id": "U02", "class": "inflection", "example_id": "a1-written-request-counter", "answer": "Молим вода.", "reference_label": null, "expected_verdict": "unresolved"},
+    {"id": "U03", "class": "elliptic", "example_id": "a1-written-location-library", "answer": "У школи.", "reference_label": null, "expected_verdict": "unresolved"},
+    {"id": "U04", "class": "diacritic_missing", "example_id": "a1-written-location-library", "answer": "Sastanak je u skoli.", "reference_label": null, "expected_verdict": "unresolved"}
+  ]
+}

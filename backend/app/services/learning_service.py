@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any, Literal, TypedDict
 
@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import UserWordProgress, VocabularyItem
+from app.learner_time import calendar_window
 from app.services.profile_service import get_or_create_profile
 from app.services.shadow_learning_service import (
     ShadowLearningFailure,
@@ -56,7 +57,7 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
-def _is_review_due(progress: UserWordProgress, now: datetime) -> bool:
+def _is_review_due(progress: UserWordProgress, now: datetime, today_start: datetime | None = None) -> bool:
     next_review_at = _as_utc(progress.next_review_at)
     if next_review_at is not None:
         return next_review_at <= now
@@ -65,9 +66,9 @@ def _is_review_due(progress: UserWordProgress, now: datetime) -> bool:
 
     first_seen_at = _as_utc(progress.first_seen_at)
     last_seen_at = _as_utc(progress.last_seen_at)
-    today = now.date()
+    today_start = today_start or now.replace(hour=0, minute=0, second=0, microsecond=0)
     return all(
-        value is None or value.date() < today
+        value is None or value < today_start
         for value in (first_seen_at, last_seen_at)
     )
 
@@ -273,9 +274,9 @@ def complete_new_words(db: Session, user_id: str, word_ids: list[int]) -> list[U
 
 
 def get_review_words(db: Session, user_id: str) -> list[ReviewWord]:
-    get_or_create_profile(db, user_id)
+    profile = get_or_create_profile(db, user_id)
     now = datetime.now(timezone.utc)
-    today_start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+    today_start = calendar_window(profile, now).start
     due_rows = list(
         db.scalars(
             select(UserWordProgress)
@@ -378,7 +379,8 @@ def get_review_status(db: Session, user_id: str, word_id: int) -> bool:
     )
     if progress is None or progress.status not in {"seen", "reviewing", "learned"}:
         raise ValueError("Word has not been seen by this user")
-    return _is_review_due(progress, datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    return _is_review_due(progress, now, calendar_window(get_or_create_profile(db, user_id), now).start)
 
 
 def grade_review(
@@ -399,7 +401,7 @@ def grade_review(
         raise ValueError("Word has not been seen by this user")
 
     now = datetime.now(timezone.utc)
-    if not _is_review_due(progress, now):
+    if not _is_review_due(progress, now, calendar_window(get_or_create_profile(db, user_id), now).start):
         raise ValueError("Word is not currently due for review")
 
     locked_due_at = _as_utc(progress.next_review_at)

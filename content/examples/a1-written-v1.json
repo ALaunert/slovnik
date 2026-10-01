@@ -1,0 +1,586 @@
+{
+  "schema_version": 2,
+  "id": "a1-written-v1",
+  "revision": 1,
+  "status": "internally_checked",
+  "examples": [
+    {
+      "id": "a1-written-personal-profile",
+      "revision": 1,
+      "source_item_key": "personal-profile",
+      "outcome_id": "A1.PERSONAL_DETAILS",
+      "role": "practice",
+      "context_family": "personal-profile-practice",
+      "duplicate_cluster": "personal-profile",
+      "source_id": "slovnik-original-written-2026-09-27",
+      "original_text": "Име: Нина\nПрезиме: Павловић\nГрад: Ниш",
+      "text": "Име: Нина\nПрезиме: Павловић\nГрад: Ниш",
+      "script": "cyrillic",
+      "target_ref": "personal-details-written",
+      "target_span": [
+        10,
+        17
+      ],
+      "translation": "Имя: Нина; фамилия: Павлович; город: Ниш.",
+      "translation_status": "internally_checked",
+      "accepted_answers": [
+        "Име: Нина\nПрезиме: Павловић\nГрад: Ниш"
+      ],
+      "answer_policy_status": "internally_checked",
+      "register": "neutral",
+      "privacy": "fictional",
+      "provenance": {
+        "text": "original_model_assisted",
+        "translation": "original_model_assisted",
+        "author": "Codex for Slovnik, 2026-09-27; no human author or external reviewer",
+        "source_sentences_imported": false
+      },
+      "task": {
+        "input": "Вымышленная карточка участника: Nina Pavlović · Niš. Нужно оформить профиль клуба.\nПоля профиля: Име / Презиме / Град.",
+        "instruction_ru": "Заполните три поля данными карточки; это не ваши личные данные. Можно последовательно использовать кириллицу или латиницу.",
+        "format": "form",
+        "response_mode": "finite_reviewed_set"
+      },
+      "answer_policy": {
+        "id": "a1-written-personal-profile-answers",
+        "revision": 1,
+        "normalization": [
+          "NFC",
+          "trim"
+        ],
+        "unlisted": "unresolved",
+        "fields": {
+          "ime": [
+            "Нина",
+            "Nina"
+          ],
+          "prezime": [
+            "Павловић",
+            "Pavlović"
+          ],
+          "grad": [
+            "Ниш",
+            "Niš"
+          ]
+        },
+        "scoring": "per_field",
+        "absent_field": "missing"
+      },
+      "review": {
+        "status": "internally_checked",
+        "reviewer": "Codex internal source-based pass",
+        "date": "2026-09-27",
+        "source_locators": [
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-1-Zdravo-1.pdf#page=4 (alphabet)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=174 (grad)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=175 (ime)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=189 (prezime)"
+        ],
+        "naturalness": "Краткие подписи полей, не обрывок предложения; вымышленное имя не является данными реального человека.",
+        "target_alignment": "Три соответствия поле–значение; отдельная оценка поля, не генерация свободной автобиографии.",
+        "answerability": "Ключ конечный; контекст явно задаёт единственный референт. Неперечисленный ответ требует разбора.",
+        "variants": "Нина/Nina, Павловић/Pavlović, Ниш/Niš сверены по алфавиту. Порядок полей не влияет на смысл.",
+        "translation": "Русский смысл составлен отдельно: проверены значения, референт и все числа/имена. Не перевод чужого примера.",
+        "disagreements": []
+      },
+      "content_hash": "425108ba8aff5c55e78d6f1b919c617afd9d343307a7a97734ec6345a25e0ed9"
+    },
+    {
+      "id": "a1-written-personal-registration",
+      "revision": 1,
+      "source_item_key": "personal-registration",
+      "outcome_id": "A1.PERSONAL_DETAILS",
+      "role": "assessment",
+      "context_family": "personal-registration-holdout",
+      "duplicate_cluster": "personal-registration",
+      "source_id": "slovnik-original-written-2026-09-27",
+      "original_text": "Grad: Užice\nPrezime: Ilić\nIme: Ognjen",
+      "text": "Grad: Užice\nPrezime: Ilić\nIme: Ognjen",
+      "script": "latin",
+      "target_ref": "personal-details-written",
+      "target_span": [
+        12,
+        19
+      ],
+      "translation": "Город: Ужице; фамилия: Илич; имя: Огнен.",
+      "translation_status": "internally_checked",
+      "accepted_answers": [
+        "Grad: Užice\nPrezime: Ilić\nIme: Ognjen"
+      ],
+      "answer_policy_status": "internally_checked",
+      "register": "neutral",
+      "privacy": "fictional",
+      "provenance": {
+        "text": "original_model_assisted",
+        "translation": "original_model_assisted",
+        "author": "Codex for Slovnik, 2026-09-27; no human author or external reviewer",
+        "source_sentences_imported": false
+      },
+      "task": {
+        "input": "Вымышленное сообщение для регистрации: «Moje ime je Ognjen. Moje prezime je Ilić. Moj grad je Užice.»\nФорма регистрации просит поля в порядке Grad / Prezime / Ime.",
+        "instruction_ru": "Заполните форму по сообщению. Не копируйте целые предложения; впишите значение каждого поля. Допустимы оба сербских письма.",
+        "format": "form",
+        "response_mode": "finite_reviewed_set"
+      },
+      "answer_policy": {
+        "id": "a1-written-personal-registration-answers",
+        "revision": 1,
+        "normalization": [
+          "NFC",
+          "trim"
+        ],
+        "unlisted": "unresolved",
+        "fields": {
+          "ime": [
+            "Ognjen",
+            "Огњен"
+          ],
+          "prezime": [
+            "Ilić",
+            "Илић"
+          ],
+          "grad": [
+            "Užice",
+            "Ужице"
+          ]
+        },
+        "scoring": "per_field",
+        "absent_field": "missing"
+      },
+      "review": {
+        "status": "internally_checked",
+        "reviewer": "Codex internal source-based pass",
+        "date": "2026-09-27",
+        "source_locators": [
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-1-Zdravo-1.pdf#page=3 (biti)",
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-1-Zdravo-1.pdf#page=4 (alphabet)",
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-2-Moja-dobra-prijateljica-2.pdf#page=5 (possessives)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=175 (ime)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=189 (prezime)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=174 (grad)"
+        ],
+        "naturalness": "Короткое сообщение администратора ограничено тремя фактами; moje/moj соответствует роду поля.",
+        "target_alignment": "Извлечение из сообщения и изменение порядка полей, в отличие от карточки профиля.",
+        "answerability": "Ключ конечный; контекст явно задаёт единственный референт. Неперечисленный ответ требует разбора.",
+        "variants": "Ognjen/Огњен, Ilić/Илић, Užice/Ужице. Русское Огнен — смысловой перевод имени, не допустимый сербский ключ.",
+        "translation": "Русский смысл составлен отдельно: проверены значения, референт и все числа/имена. Не перевод чужого примера.",
+        "disagreements": []
+      },
+      "content_hash": "1be6d95811fd82e4393e2f3bd194c1680b87d41fefc46410d7b8f62ef0086bd8"
+    },
+    {
+      "id": "a1-written-request-counter",
+      "revision": 1,
+      "source_item_key": "request-counter",
+      "outcome_id": "A1.SIMPLE_REQUEST",
+      "role": "practice",
+      "context_family": "request-counter-practice",
+      "duplicate_cluster": "request-counter",
+      "source_id": "slovnik-original-written-2026-09-27",
+      "original_text": "Молим воду.",
+      "text": "Молим воду.",
+      "script": "cyrillic",
+      "target_ref": "simple-request-written",
+      "target_span": [
+        0,
+        10
+      ],
+      "translation": "Воду, пожалуйста.",
+      "translation_status": "internally_checked",
+      "accepted_answers": [
+        "Молим воду."
+      ],
+      "answer_policy_status": "internally_checked",
+      "register": "polite_neutral",
+      "privacy": "fictional",
+      "provenance": {
+        "text": "original_model_assisted",
+        "translation": "original_model_assisted",
+        "author": "Codex for Slovnik, 2026-09-27; no human author or external reviewer",
+        "source_sentences_imported": false
+      },
+      "task": {
+        "input": "Вымышленная стойка напитков: вода доступна, сок закончился. Вы хотите воду. Сотрудник принимает короткую письменную просьбу.",
+        "instruction_ru": "Напишите вежливую просьбу о воде. Не пишите, что вода уже у вас.",
+        "format": "sentence",
+        "response_mode": "finite_reviewed_set"
+      },
+      "answer_policy": {
+        "id": "a1-written-request-counter-answers",
+        "revision": 1,
+        "normalization": [
+          "NFC",
+          "trim"
+        ],
+        "unlisted": "unresolved",
+        "equivalent_script_answers": [
+          "Molim vodu."
+        ]
+      },
+      "review": {
+        "status": "internally_checked",
+        "reviewer": "Codex internal source-based pass",
+        "date": "2026-09-27",
+        "source_locators": [
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=51 (Molim + akuzativ)",
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/09/Lekcija-3-Sta-Sto-imamo-2.pdf#page=3 (voda/vodu)",
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-1-Zdravo-1.pdf#page=4 (alphabet)"
+        ],
+        "naturalness": "Нейтральная короткая просьба; воду — проверенная форма объекта.",
+        "target_alignment": "Нужны функция просьбы и выбранный напиток; письменная репетиция, не устный навык.",
+        "answerability": "Ключ конечный; контекст явно задаёт единственный референт. Неперечисленный ответ требует разбора.",
+        "variants": "Латиница Molim vodu. — та же запись, не новая проверочная семья. Желаю/хочу и развёрнутые просьбы пока unresolved.",
+        "translation": "Русский смысл составлен отдельно: проверены значения, референт и все числа/имена. Не перевод чужого примера.",
+        "disagreements": []
+      },
+      "content_hash": "0cc80b8b2a549256f32d352ec2f73546835c4301d4936d18957166ad7f3af1d6"
+    },
+    {
+      "id": "a1-written-request-kiosk",
+      "revision": 1,
+      "source_item_key": "request-kiosk",
+      "outcome_id": "A1.SIMPLE_REQUEST",
+      "role": "assessment",
+      "context_family": "request-kiosk-holdout",
+      "duplicate_cluster": "request-kiosk",
+      "source_id": "slovnik-original-written-2026-09-27",
+      "original_text": "Molim čaj.",
+      "text": "Molim čaj.",
+      "script": "latin",
+      "target_ref": "simple-request-written",
+      "target_span": [
+        0,
+        9
+      ],
+      "translation": "Чай, пожалуйста.",
+      "translation_status": "internally_checked",
+      "accepted_answers": [
+        "Molim čaj."
+      ],
+      "answer_policy_status": "internally_checked",
+      "register": "polite_neutral",
+      "privacy": "fictional",
+      "provenance": {
+        "text": "original_model_assisted",
+        "translation": "original_model_assisted",
+        "author": "Codex for Slovnik, 2026-09-27; no human author or external reviewer",
+        "source_sentences_imported": false
+      },
+      "task": {
+        "input": "Вымышленный киоск принимает записки. Меню: A — kafa, B — čaj. Покупатель отметил B. Работнику нужна фраза с названием напитка, а не буква заказа.",
+        "instruction_ru": "Составьте вежливую записку заказа по отмеченной позиции B. Не добавляйте количество или состав напитка.",
+        "format": "sentence",
+        "response_mode": "finite_reviewed_set"
+      },
+      "answer_policy": {
+        "id": "a1-written-request-kiosk-answers",
+        "revision": 1,
+        "normalization": [
+          "NFC",
+          "trim"
+        ],
+        "unlisted": "unresolved",
+        "equivalent_script_answers": [
+          "Молим чај."
+        ]
+      },
+      "review": {
+        "status": "internally_checked",
+        "reviewer": "Codex internal source-based pass",
+        "date": "2026-09-27",
+        "source_locators": [
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=51 (Molim + akuzativ)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=53 (čaj)",
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/09/Lekcija-3-Sta-Sto-imamo-2.pdf#page=3 (masculine accusative)",
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-1-Zdravo-1.pdf#page=4 (alphabet)"
+        ],
+        "naturalness": "Узкая формула; čaj сохраняет форму в выбранной роли.",
+        "target_alignment": "Перевод позиции меню в записку; нет слова molim в исходном меню и нет образца ответа.",
+        "answerability": "Ключ конечный; контекст явно задаёт единственный референт. Неперечисленный ответ требует разбора.",
+        "variants": "Молим чај. — эквивалентное письмо. Обратный порядок Čaj, molim. правдоподобен, но не включён без отдельной проверки.",
+        "translation": "Русский смысл составлен отдельно: проверены значения, референт и все числа/имена. Не перевод чужого примера.",
+        "disagreements": []
+      },
+      "content_hash": "4a6c2a8f015daee26b262b02ddae1ffe70429142112927aa037e5efa32ca3398"
+    },
+    {
+      "id": "a1-written-price-shop",
+      "revision": 1,
+      "source_item_key": "price-shop",
+      "outcome_id": "A1.PRICE_INFO",
+      "role": "practice",
+      "context_family": "price-shop-practice",
+      "duplicate_cluster": "price-shop",
+      "source_id": "slovnik-original-written-2026-09-27",
+      "original_text": "Хлеб — 95 дин.\nВода — 60 дин.",
+      "text": "Хлеб — 95 дин.\nВода — 60 дин.",
+      "script": "cyrillic",
+      "target_ref": "price-reading-written",
+      "target_span": [
+        22,
+        24
+      ],
+      "translation": "Хлеб — 95 динаров; вода — 60 динаров.",
+      "translation_status": "internally_checked",
+      "accepted_answers": [
+        "60"
+      ],
+      "answer_policy_status": "internally_checked",
+      "register": "neutral",
+      "privacy": "fictional",
+      "provenance": {
+        "text": "original_model_assisted",
+        "translation": "original_model_assisted",
+        "author": "Codex for Slovnik, 2026-09-27; no human author or external reviewer",
+        "source_sentences_imported": false
+      },
+      "task": {
+        "input": "Вымышленная полочная табличка:\nХлеб — 95 дин.\nВода — 60 дин.",
+        "instruction_ru": "Сколько стоит вода? Запишите только цифры, без валюты.",
+        "format": "price_notice",
+        "response_mode": "finite_reviewed_set"
+      },
+      "answer_policy": {
+        "id": "a1-written-price-shop-answers",
+        "revision": 1,
+        "normalization": [
+          "NFC",
+          "trim"
+        ],
+        "unlisted": "unresolved",
+        "scoring": "item_price_match",
+        "currency": "RSD",
+        "queried_item": "Вода",
+        "expected_numeral": "60"
+      },
+      "review": {
+        "status": "internally_checked",
+        "reviewer": "Codex internal source-based pass",
+        "date": "2026-09-27",
+        "source_locators": [
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/09/Lekcija-3-Sta-Sto-imamo-2.pdf#page=3 (voda)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=128 (prices in dinara)"
+        ],
+        "naturalness": "Два самостоятельных товарных ярлыка; рубрика требует чтения соответствия, не падежа числительного.",
+        "target_alignment": "Цена воды среди двух строк; неверный товар отличим от неверного числа.",
+        "answerability": "Ключ конечный; контекст явно задаёт единственный референт. Неперечисленный ответ требует разбора.",
+        "variants": "Только 60 для этого формата. Запись словами или с валютой — unresolved, не автоматически ошибочная.",
+        "translation": "Русский смысл составлен отдельно: проверены значения, референт и все числа/имена. Не перевод чужого примера.",
+        "disagreements": []
+      },
+      "content_hash": "e5920085d95b91e7c980567387ce0d7bdd6d164f96c0e050ff0747e528a1c01c"
+    },
+    {
+      "id": "a1-written-price-service",
+      "revision": 1,
+      "source_item_key": "price-service",
+      "outcome_id": "A1.PRICE_INFO",
+      "role": "assessment",
+      "context_family": "price-service-holdout",
+      "duplicate_cluster": "price-service",
+      "source_id": "slovnik-original-written-2026-09-27",
+      "original_text": "Cena (RSD) | Piće\n110 | Čaj\n150 | Kafa",
+      "text": "Cena (RSD) | Piće\n110 | Čaj\n150 | Kafa",
+      "script": "latin",
+      "target_ref": "price-reading-written",
+      "target_span": [
+        28,
+        31
+      ],
+      "translation": "Цена в динарах / напиток: 110 — чай; 150 — кофе.",
+      "translation_status": "internally_checked",
+      "accepted_answers": [
+        "150"
+      ],
+      "answer_policy_status": "internally_checked",
+      "register": "neutral",
+      "privacy": "fictional",
+      "provenance": {
+        "text": "original_model_assisted",
+        "translation": "original_model_assisted",
+        "author": "Codex for Slovnik, 2026-09-27; no human author or external reviewer",
+        "source_sentences_imported": false
+      },
+      "task": {
+        "input": "Вымышленный ценник кафе, цена стоит в левой колонке:\nCena (RSD) | Piće\n110 | Čaj\n150 | Kafa",
+        "instruction_ru": "Найдите цену кофе (kafa) и запишите только цифры. Не считайте сумму заказа.",
+        "format": "price_notice",
+        "response_mode": "finite_reviewed_set"
+      },
+      "answer_policy": {
+        "id": "a1-written-price-service-answers",
+        "revision": 1,
+        "normalization": [
+          "NFC",
+          "trim"
+        ],
+        "unlisted": "unresolved",
+        "scoring": "item_price_match",
+        "currency": "RSD",
+        "queried_item": "Kafa",
+        "expected_numeral": "150"
+      },
+      "review": {
+        "status": "internally_checked",
+        "reviewer": "Codex internal source-based pass",
+        "date": "2026-09-27",
+        "source_locators": [
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=48 (drinks)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=51 (price questions)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=128 (dinara)"
+        ],
+        "naturalness": "Короткая таблица кафе; суммы вымышленные, не информация о текущих ценах.",
+        "target_alignment": "Другая ориентация таблицы, набор товаров и семейство; кофе расположен во второй строке.",
+        "answerability": "Ключ конечный; контекст явно задаёт единственный референт. Неперечисленный ответ требует разбора.",
+        "variants": "Только 150; 110 относится к другому товару. Валюта/словесные числа вне узкого ключа.",
+        "translation": "Русский смысл составлен отдельно: проверены значения, референт и все числа/имена. Не перевод чужого примера.",
+        "disagreements": []
+      },
+      "content_hash": "ffe787fc29de77af7f01fdac26e66ecbef3ca72db0d28af468a15afb8098de90"
+    },
+    {
+      "id": "a1-written-location-library",
+      "revision": 1,
+      "source_item_key": "location-library",
+      "outcome_id": "A1.LOCATION_INFO",
+      "role": "practice",
+      "context_family": "location-library-practice",
+      "duplicate_cluster": "location-library",
+      "source_id": "slovnik-original-written-2026-09-27",
+      "original_text": "Састанак је у школи.",
+      "text": "Састанак је у школи.",
+      "script": "cyrillic",
+      "target_ref": "location-message-written",
+      "target_span": [
+        12,
+        19
+      ],
+      "translation": "Встреча проходит в школе.",
+      "translation_status": "internally_checked",
+      "accepted_answers": [
+        "Састанак је у школи."
+      ],
+      "answer_policy_status": "internally_checked",
+      "register": "neutral",
+      "privacy": "fictional",
+      "provenance": {
+        "text": "original_model_assisted",
+        "translation": "original_model_assisted",
+        "author": "Codex for Slovnik, 2026-09-27; no human author or external reviewer",
+        "source_sentences_imported": false
+      },
+      "task": {
+        "input": "Вымышленная учебная группа раньше встречалась в библиотеке. Сегодня место изменено: школа. Знакомый спрашивает: «Где је састанак?»",
+        "instruction_ru": "Ответьте коротким сообщением и назовите сегодняшнее место встречи. Укажите встречу, а не собственное местоположение.",
+        "format": "sentence",
+        "response_mode": "finite_reviewed_set"
+      },
+      "answer_policy": {
+        "id": "a1-written-location-library-answers",
+        "revision": 1,
+        "normalization": [
+          "NFC",
+          "trim"
+        ],
+        "unlisted": "unresolved",
+        "equivalent_script_answers": [
+          "Sastanak je u školi."
+        ]
+      },
+      "review": {
+        "status": "internally_checked",
+        "reviewer": "Codex internal source-based pass",
+        "date": "2026-09-27",
+        "source_locators": [
+          "https://www.studyserbian.com/proba/grammar/nouns_locative_case.asp (Table 1, u/na for location)",
+          "https://leda.cz/download/LedaCz-Srbstina-nejen-pro-samouky-ukazka-7808.pdf#page=6 (u školi)",
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-1-Zdravo-1.pdf#page=3 (biti)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=177 (sastanak in lexical definition)"
+        ],
+        "naturalness": "Ясный референт встречи; je после подлежащего, место u školi сверено в двух описаниях.",
+        "target_alignment": "Сообщение об изменённом месте, а не изолированное «здесь» без референта.",
+        "answerability": "Ключ конечный; контекст явно задаёт единственный референт. Неперечисленный ответ требует разбора.",
+        "variants": "Sastanak je u školi. — эквивалентное письмо. U školi. и иной порядок оставлены unresolved.",
+        "translation": "Русский смысл составлен отдельно: проверены значения, референт и все числа/имена. Не перевод чужого примера.",
+        "disagreements": []
+      },
+      "content_hash": "a937c2926f60ddfb6209bbbdf526ee89ee0858346ff08da1db61229a77387e07"
+    },
+    {
+      "id": "a1-written-location-office",
+      "revision": 1,
+      "source_item_key": "location-office",
+      "outcome_id": "A1.LOCATION_INFO",
+      "role": "assessment",
+      "context_family": "location-office-holdout",
+      "duplicate_cluster": "location-office",
+      "source_id": "slovnik-original-written-2026-09-27",
+      "original_text": "Sastanak je u hotelu.",
+      "text": "Sastanak je u hotelu.",
+      "script": "latin",
+      "target_ref": "location-message-written",
+      "target_span": [
+        12,
+        20
+      ],
+      "translation": "Встреча проходит в гостинице.",
+      "translation_status": "internally_checked",
+      "accepted_answers": [
+        "Sastanak je u hotelu."
+      ],
+      "answer_policy_status": "internally_checked",
+      "register": "neutral",
+      "privacy": "fictional",
+      "provenance": {
+        "text": "original_model_assisted",
+        "translation": "original_model_assisted",
+        "author": "Codex for Slovnik, 2026-09-27; no human author or external reviewer",
+        "source_sentences_imported": false
+      },
+      "task": {
+        "input": "Вымышленный офис прислал план: sastanak / hotel / 18:00; ručak / škola / 13:00. Коллега спрашивает: «Gde je sastanak?»",
+        "instruction_ru": "Напишите одно сообщение с местом встречи по плану. Не отвечайте, где обед, и не описывайте маршрут.",
+        "format": "sentence",
+        "response_mode": "finite_reviewed_set"
+      },
+      "answer_policy": {
+        "id": "a1-written-location-office-answers",
+        "revision": 1,
+        "normalization": [
+          "NFC",
+          "trim"
+        ],
+        "unlisted": "unresolved",
+        "equivalent_script_answers": [
+          "Састанак је у хотелу."
+        ]
+      },
+      "review": {
+        "status": "internally_checked",
+        "reviewer": "Codex internal source-based pass",
+        "date": "2026-09-27",
+        "source_locators": [
+          "https://www.studyserbian.com/proba/grammar/nouns_locative_case.asp (Table 1, masculine locative -u; location with u)",
+          "https://leda.cz/download/LedaCz-Srbstina-nejen-pro-samouky-ukazka-7808.pdf#page=6 (biti with u)",
+          "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-1-Zdravo-1.pdf#page=9 (hotel)",
+          "https://serbiversum.com/wp-content/uploads/2023/09/Zbirka-tekstova-i-zadataka-za-nastavnike-i-ucenike-srednje-skole.pdf#page=177 (sastanak in lexical definition)"
+        ],
+        "naturalness": "Одна ограниченная формула состояния; hotelu следует проверенному регулярному образцу.",
+        "target_alignment": "Два события в плане, требуется выбрать место встречи; это не замена существительного в тренировочном промпте.",
+        "answerability": "Ключ конечный; контекст явно задаёт единственный референт. Неперечисленный ответ требует разбора.",
+        "variants": "Састанак је у хотелу. — эквивалентное письмо. Сообщения со временем и свободные перефразирования unresolved.",
+        "translation": "Русский смысл составлен отдельно: проверены значения, референт и все числа/имена. Не перевод чужого примера.",
+        "disagreements": []
+      },
+      "content_hash": "0945b8916eb6498a0556f454f733be15317c3682c2bc790ae5aaa37c9446b556"
+    }
+  ],
+  "publication_decision": {
+    "status": "approved",
+    "owner": "Slovnik project owner (user in this task)",
+    "date": "2026-09-27",
+    "content_digest": "a3dbd3bb5a7871a59b3796ac86b8fb4211ee3b936c06bafd0de33bf6439c0a35",
+    "rights_digest": "c00ba8ed0bbe0a72813f4a829ae149eedc2dc830b02a849e52adc7a456631ff7",
+    "evidence": "content/examples/a1-written-v1-decision.md#решение-владельца"
+  }
+}
