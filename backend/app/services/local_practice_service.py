@@ -28,7 +28,7 @@ from app.repositories.practice import PracticeRepository
 from app.repositories.progress import ProgressRepository
 from app.reviewed_example_bank import bank_digest, rights_digest
 from app.services.answer_policy import ReviewedAnswerPolicy
-from app.services.content_publication_service import ContentPublicationService
+from app.services.reviewed_pilot_publication_service import ContentPublicationService
 from app.services.learner_projection_service import LearnerProjectionService
 from app.services.learning_event_service import LearningEventService
 from app.services.next_activity_service import NextActivityService

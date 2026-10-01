@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base
 from app.models import UserProfile
-from app.services.content_publication_service import ContentPublicationService
+from app.services.reviewed_pilot_publication_service import ContentPublicationService
 from app.services.reviewed_pilot_pack import load_reviewed_pilot_bundle
 
 

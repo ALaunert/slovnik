@@ -12,7 +12,7 @@ from app.domain_models.practice import ActivityInstanceModel, LearningEventModel
 from app.domain_models.progress import LearnerTargetStateModel
 from app.main import app
 from app.models import UserProfile
-from app.services.content_publication_service import ContentPublicationService
+from app.services.reviewed_pilot_publication_service import ContentPublicationService
 from app.services.reviewed_pilot_pack import load_reviewed_pilot_bundle
 
 

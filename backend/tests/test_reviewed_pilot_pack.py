@@ -7,7 +7,7 @@ from uuid import uuid5
 import pytest
 
 from app.domain.curriculum import CurriculumStatus
-from app.services.content_publication_service import ContentPublicationService
+from app.services.reviewed_pilot_publication_service import ContentPublicationService
 from app.services.reviewed_pilot_pack import PILOT_PACK_NAMESPACE, load_reviewed_pilot_bundle
 
 

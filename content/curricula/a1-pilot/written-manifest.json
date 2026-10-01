@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "status": "draft",
+  "scope": "Four proposed written everyday tasks for adult Russian-speaking learners; no oral, listening, full A1 or CEFR attainment claim.",
+  "cefr_source_url": "https://rm.coe.int/common-european-framework-of-reference-for-languages-learning-teaching/16809ea0d4",
+  "publication_gate": "Internal source-based content, answer, translation and rights decision required for each selected item before P1 activation.",
+  "outcomes": [
+    {
+      "id": "A1.PERSONAL_DETAILS",
+      "cefr": {"edition": "Companion Volume 2020", "scale": "Notes, messages and forms", "page": 84},
+      "input": "Fictional short registration prompt with only name, place and one requested field.",
+      "written_task": "Fill requested details in a short fictional registration form.",
+      "rubric": "Score each requested field separately; record legibility and target form separately; accept reviewed Cyrillic or Latin spellings; an absent field is not a wrong grammar form.",
+      "primary_target": {"id": "personal-details-written", "capability": "produce_bounded_form"},
+      "script_conditions": "Prompt may be Cyrillic or Latin; response may use either script consistently; no transliteration duplicate as a new assessment.",
+      "practice_families": ["personal-profile-practice"],
+      "assessment_family": "personal-registration-holdout",
+      "hypothesis": "A fictional form can probe selected written personal details, not general conversation or all A1 forms."
+    },
+    {
+      "id": "A1.SIMPLE_REQUEST",
+      "cefr": {"edition": "Companion Volume 2020", "scale": "Obtaining goods and services", "page": 78},
+      "input": "Short fictional counter notice naming one available item.",
+      "written_task": "Write a bounded polite request for that item.",
+      "rubric": "Score intended item and request function separately from a reviewed target phrase; unresolved but plausible alternatives require editorial review.",
+      "primary_target": {"id": "simple-request-written", "capability": "produce_bounded_request"},
+      "script_conditions": "Read and write either script; no spoken interaction is assessed.",
+      "practice_families": ["request-counter-practice"],
+      "assessment_family": "request-kiosk-holdout",
+      "hypothesis": "A written rehearsal of a request samples a narrow function, not the oral descriptor itself."
+    },
+    {
+      "id": "A1.PRICE_INFO",
+      "cefr": {"edition": "Companion Volume 2020", "scale": "Reading for orientation", "page": 56},
+      "input": "Short fictional price notice with two labelled items.",
+      "written_task": "Find and write the price of the named item.",
+      "rubric": "Score item–price match and numeral separately; do not infer broader menu reading or number agreement.",
+      "primary_target": {"id": "price-reading-written", "capability": "recognize_written_information"},
+      "script_conditions": "Notice script is recorded; digits are allowed for the answer.",
+      "practice_families": ["price-shop-practice"],
+      "assessment_family": "price-service-holdout",
+      "hypothesis": "A two-item notice can test a selected written price lookup without establishing general reading level."
+    },
+    {
+      "id": "A1.LOCATION_INFO",
+      "cefr": {"edition": "Companion Volume 2020", "scale": "Notes, messages and forms", "page": 84},
+      "input": "Fictional message asking where an identified meeting place is.",
+      "written_task": "Write one short location message about that place.",
+      "rubric": "Score referent and location separately from a reviewed location construction; do not score route-giving or spoken directions.",
+      "primary_target": {"id": "location-message-written", "capability": "produce_bounded_location"},
+      "script_conditions": "Prompt script is recorded; reviewed answers may use either Serbian script.",
+      "practice_families": ["location-library-practice"],
+      "assessment_family": "location-office-holdout",
+      "hypothesis": "A short written message samples location expression, not navigation competence."
+    }
+  ],
+  "proposed_hard_edges": [],
+  "proposed_edges": [
+    {"from": "A1.PERSONAL_DETAILS", "to": "A1.SIMPLE_REQUEST", "kind": "soft"},
+    {"from": "A1.SIMPLE_REQUEST", "to": "A1.PRICE_INFO", "kind": "soft"},
+    {"from": "A1.PRICE_INFO", "to": "A1.LOCATION_INFO", "kind": "soft"}
+  ]
+}

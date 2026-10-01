@@ -1,7 +1,7 @@
 # P1-04b: prepared written pilot publication revision
 
 Date: 2026-09-30. [Publication manifest](publication-v1.json) is the reproducible file for
-the **active revision 1 in the local PostgreSQL database**. It pins the [four-outcome brief](manifest.json), the
+the **active revision 1 in the local PostgreSQL database**. It pins the [four-outcome brief](written-manifest.json), the
 [eight approved reviewed examples](../../examples/a1-written-v1.json), separate
 [text/translation rights](../../sources/a1-written-v1.json), source/revision digests, target
 mapping, answer-policy revisions, practice and held-out families, CEFR locator labels and the

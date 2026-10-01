@@ -76,11 +76,11 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   [fixture histories](../backend/tests/fixtures/learning/p0_01_histories.json) with checked totals.
   They define denominators, missingness and first-response/retry separation for later work; no
   metric reporting, learner evidence backfill or product behavior was added by P0-01 itself.
-- P0-07 has an unpublished [four-task written pilot draft](../content/curricula/a1-pilot/manifest.json)
+- P0-07 has an unpublished [four-task written pilot draft](../content/curricula/a1-pilot/written-manifest.json)
   and [editorial brief](../content/curricula/a1-pilot/brief.md). Each proposed outcome separates
   practice from assessment families and records a bounded rubric, script conditions and CEFR
   locator. All crosswalks and soft sequencing are hypotheses; no curriculum is activated.
-- P0-04 adds a versioned [file source/rights manifest](../content/sources/manifest.json) and
+- P0-04 adds a versioned [file source/rights manifest](../content/sources/written-pilot-manifest.json) and
   `app.content_provenance` validation for medium-specific use, release/checksum pins,
   attribution and recorded review. The checked-in pilot source is analysis-only with unknown
   publication rights; this is not a legal clearance or an approval of legacy content.
@@ -90,16 +90,17 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
   intentionally fails pending item-level language, translation and rights review. Existing
   embedded catalog examples and immutable activity snapshots suffice for these fixtures;
   independent example persistence remains conditional on demonstrated reuse or withdrawal.
-- P0-02 stores private version-2 answer keys in newly issued quiz-plan JSON for choice, typing
-  (both scripts) and self-check reveal. The start response exposes only prompt/options; grading,
-  reveal and corrections use the issued key. Version-1 plans retain mutable-vocabulary legacy
-  semantics, and completion labels key status; unknown versions are rejected. No old plan or
-  answer was rewritten, and shadow catalog-freshness checks remain in force.
+- P0-02 stores immutable private keys in newly issued quiz-plan JSON (`answer_key_version=1`)
+  for choice, typing (both scripts) and self-check reveal. The start response exposes only
+  prompt/options; grading, reveal and corrections use the issued key. Locally issued
+  `plan_version=2` keys remain readable after integration with PR #6. Unkeyed historical plans
+  retain legacy semantics; unknown/ambiguous key versions reject. No old plan or answer was
+  rewritten, and shadow catalog-freshness checks remain in force.
 - P0-08 removes the forced non-first correct choice, deduplicates Russian choice labels after
   NFC/whitespace/case normalization, and omits a choice question with fewer than two distinct
   labels. Typing and self-check remain available in sparse pools; actual issued count drives
   completion. Distinct labels are not proof of semantically distinct distractors.
-- P0-03 adds a version-2 quiz completion breakdown: objectively scored first answers,
+- P0-03 adds a quiz completion breakdown for frozen-key plans: objectively scored first answers,
   objective items corrected on retry, and first self-check remembered ratings. The existing
   `score/total_questions` remains a mixed practice result, now labelled as such in both UI
   languages. Old cached/legacy-key results show an unavailable breakdown; zero eligible
@@ -354,7 +355,7 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - Incorrect quiz answers mark words weak and can be repeated once per question. Quiz completion is blocked until required repeats are answered.
 - Weekly quiz includes words touched this calendar week plus weak words; correct weekly answers clear weak status.
 - Results page shows the mixed practice score, question and weak-word counts, mistakes and,
-  for version-2 results, separate first-answer, retry recovery and self-rating counts from
+  for frozen-key results, separate first-answer, retry recovery and self-rating counts from
   `sessionStorage`; old cached results show the breakdown as unavailable.
 - UI copy exists for Russian (`ru`) and Serbian (`sr`); the static HTML document language remains `ru`.
 
@@ -485,6 +486,27 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - There is no delete endpoint for vocabulary, no real auth, no roles, no rate limiting, and no CSRF/session hardening.
 
 ## Verification and Test Coverage
+
+- Final merge integration on 2026-10-01 preserves PR #6's canonical publication service,
+  request fingerprint and database/catalog guards on published lexical parents and children.
+  The reviewed written-bank publisher has a separate module and fingerprint discriminator;
+  changed editorial bundles reject, and pre-existing local NULL fingerprints can be pinned
+  only after an exact validated repeat with a locked recheck. Canonical source/pilot manifests
+  remain unchanged; the additional written contracts live in `written-pilot-manifest.json`
+  and `written-manifest.json` with separate validators and tests. Synthetic baseline fixtures
+  and both read-only evidence diagnostics remain available without changing projection v1.
+- Additive merge migration `20261001_0007` preserves both previously deployed revision IDs
+  (`20260925_0006`, `20261001_0006`). Upgrading from either executes the missing branch and
+  reaches one head; regression checks retain vocabulary, progress and an explicit timezone.
+  Local PostgreSQL reached `20261001_0007`; all 18 existing table counts and profile timezone
+  settings were preserved. No historical key, support context or observation is reconstructed.
+- Fresh integrated verification: full backend with PostgreSQL and real HTTP/Chromium passed
+  (`1058 passed`, eight subtests; no skipped tests); frontend unit checks (`126 passed`),
+  typecheck, production build and Chromium e2e (`15 passed`) passed. Ruff passed. The future
+  identity design inventory now covers 27 routes and seven synthetic claim scenarios; this
+  validates route coverage only. Authorization remains deferred, and local practice requires
+  the dedicated actual-loopback launcher. Three independent Astra reviews covered core,
+  publication/practice and reader/research; the delayed-probe start defect was corrected.
 
 - Final integration review on 2026-10-01 found and fixed a delayed-probe eligibility defect:
   an answer timestamp cannot stand in for unknown task display/start. Both 7/28-day analysis

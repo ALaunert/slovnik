@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "description": "Specification examples, not observed learners",
+  "cases": [
+    {
+      "id": "wrong_then_repair",
+      "events": [
+        {
+          "kind": "exposure",
+          "activity_id": "a1",
+          "target": "t1",
+          "context_family": "family-1",
+          "at": "2026-01-01T10:00:00+00:00"
+        },
+        {
+          "kind": "response",
+          "activity_id": "a1",
+          "target": "t1",
+          "context_family": "family-1",
+          "at": "2026-01-01T10:01:00+00:00",
+          "ordinal": 1,
+          "support": "none",
+          "source": "deterministic",
+          "outcome": "incorrect"
+        },
+        {
+          "kind": "response",
+          "activity_id": "a1-repair",
+          "target": "t1",
+          "context_family": "family-1",
+          "at": "2026-01-01T10:02:00+00:00",
+          "ordinal": 2,
+          "support": "none",
+          "source": "deterministic",
+          "outcome": "correct",
+          "repair_of": "a1"
+        }
+      ],
+      "expected": {
+        "first_eligible": 1,
+        "first_correct": 0,
+        "recovered": 1,
+        "assisted_correct": 0,
+        "self_reports": 0,
+        "unresolved": 0,
+        "distinct_contexts": 1,
+        "delayed_new_context_eligible": 0,
+        "delayed_new_context_correct": 0
+      }
+    },
+    {
+      "id": "hint_then_correct",
+      "events": [
+        {
+          "kind": "response",
+          "activity_id": "a2",
+          "target": "t2",
+          "context_family": "family-2",
+          "at": "2026-01-01T11:00:00+00:00",
+          "ordinal": 1,
+          "support": "hint",
+          "source": "deterministic",
+          "outcome": "correct",
+          "support_timing": "before_first"
+        }
+      ],
+      "expected": {
+        "first_eligible": 0,
+        "first_correct": 0,
+        "recovered": 0,
+        "assisted_correct": 1,
+        "self_reports": 0,
+        "unresolved": 0,
+        "distinct_contexts": 0,
+        "delayed_new_context_eligible": 0,
+        "delayed_new_context_correct": 0
+      }
+    },
+    {
+      "id": "self_rating",
+      "events": [
+        {
+          "kind": "response",
+          "activity_id": "a3",
+          "target": "t3",
+          "context_family": "family-3",
+          "at": "2026-01-01T12:00:00+00:00",
+          "ordinal": 1,
+          "support": "reveal",
+          "source": "self_report",
+          "outcome": "correct"
+        }
+      ],
+      "expected": {
+        "first_eligible": 0,
+        "first_correct": 0,
+        "recovered": 0,
+        "assisted_correct": 0,
+        "self_reports": 1,
+        "unresolved": 0,
+        "distinct_contexts": 0,
+        "delayed_new_context_eligible": 0,
+        "delayed_new_context_correct": 0
+      }
+    },
+    {
+      "id": "repeated_context",
+      "events": [
+        {
+          "kind": "response",
+          "activity_id": "a4",
+          "target": "t4",
+          "context_family": "same-family",
+          "at": "2026-01-01T13:00:00+00:00",
+          "ordinal": 1,
+          "support": "none",
+          "source": "deterministic",
+          "outcome": "correct"
+        },
+        {
+          "kind": "response",
+          "activity_id": "a5",
+          "target": "t4",
+          "context_family": "same-family",
+          "at": "2026-01-08T13:00:00+00:00",
+          "ordinal": 1,
+          "support": "none",
+          "source": "deterministic",
+          "outcome": "correct"
+        }
+      ],
+      "expected": {
+        "first_eligible": 2,
+        "first_correct": 2,
+        "recovered": 0,
+        "assisted_correct": 0,
+        "self_reports": 0,
+        "unresolved": 0,
+        "distinct_contexts": 1,
+        "delayed_new_context_eligible": 0,
+        "delayed_new_context_correct": 0
+      }
+    },
+    {
+      "id": "delayed_new_context",
+      "events": [
+        {
+          "kind": "response",
+          "activity_id": "a6",
+          "target": "t5",
+          "context_family": "original-family",
+          "at": "2026-01-01T14:00:00+00:00",
+          "ordinal": 1,
+          "support": "none",
+          "source": "deterministic",
+          "outcome": "correct"
+        },
+        {
+          "kind": "response",
+          "activity_id": "a7",
+          "target": "t5",
+          "context_family": "held-out-family",
+          "at": "2026-01-09T14:00:00+00:00",
+          "ordinal": 1,
+          "support": "none",
+          "source": "deterministic",
+          "outcome": "correct",
+          "held_out": true
+        }
+      ],
+      "expected": {
+        "first_eligible": 2,
+        "first_correct": 2,
+        "recovered": 0,
+        "assisted_correct": 0,
+        "self_reports": 0,
+        "unresolved": 0,
+        "distinct_contexts": 2,
+        "delayed_new_context_eligible": 1,
+        "delayed_new_context_correct": 1
+      }
+    },
+    {
+      "id": "ambiguous_answer",
+      "events": [
+        {
+          "kind": "response",
+          "activity_id": "a8",
+          "target": "t6",
+          "context_family": "family-8",
+          "at": "2026-01-01T15:00:00+00:00",
+          "ordinal": 1,
+          "support": "none",
+          "source": "deterministic",
+          "outcome": "unknown"
+        }
+      ],
+      "expected": {
+        "first_eligible": 0,
+        "first_correct": 0,
+        "recovered": 0,
+        "assisted_correct": 0,
+        "self_reports": 0,
+        "unresolved": 1,
+        "distinct_contexts": 0,
+        "delayed_new_context_eligible": 0,
+        "delayed_new_context_correct": 0
+      }
+    }
+  ]
+}

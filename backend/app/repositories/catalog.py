@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.domain.catalog import (
@@ -21,6 +21,8 @@ from app.domain.catalog import (
     UsageExample,
     plain_json,
 )
+from app.domain.shared import TargetKind
+from app.domain.target import TargetSpec
 from app.domain_models.catalog import (
     LanguageConstruction,
     LanguageForm,
@@ -159,7 +161,17 @@ class CatalogRepository:
         self._session = session
 
     def add(self, lexical_unit: LexicalUnit) -> None:
-        self._session.add(_lexical_record(lexical_unit))
+        record = _lexical_record(lexical_unit)
+        if lexical_unit.status is ContentStatus.PUBLISHED:
+            # Bootstrap can create an already published aggregate. Insert its
+            # children while the new parent is draft, then expose the complete
+            # aggregate as published in the same transaction.
+            record.status = ContentStatus.DRAFT.value
+            self._session.add(record)
+            self._session.flush()
+            record.status = ContentStatus.PUBLISHED.value
+        else:
+            self._session.add(record)
 
     def get(self, lexical_unit_id: str) -> LexicalUnit | None:
         record = self._session.get(LanguageLexicalUnit, lexical_unit_id)
@@ -201,3 +213,89 @@ class CatalogRepository:
             status=ContentStatus(record.status),
             revision=record.revision,
         )
+
+    def is_published(self, target: TargetSpec) -> bool:
+        record_type = {
+            TargetKind.SENSE: LanguageSense,
+            TargetKind.FORM: LanguageForm,
+            TargetKind.CONSTRUCTION: LanguageConstruction,
+        }[target.target_kind]
+        record = self._session.get(record_type, target.target_id)
+        if record is None or record.status != ContentStatus.PUBLISHED.value:
+            return False
+        if target.target_kind is TargetKind.CONSTRUCTION:
+            return True
+        parent = self._session.get(LanguageLexicalUnit, record.lexical_unit_id)
+        return parent is not None and parent.status == ContentStatus.PUBLISHED.value
+
+    def publish_construction_if_draft(self, construction_id: str) -> Construction:
+        draft = self.get_construction(construction_id)
+        if draft is None:
+            raise ValueError(f"construction missing: {construction_id}")
+        published = draft.publish()
+        changed = self._session.execute(
+            update(LanguageConstruction)
+            .where(LanguageConstruction.id == construction_id,
+                   LanguageConstruction.status == ContentStatus.DRAFT.value,
+                   LanguageConstruction.revision == draft.revision)
+            .values(status=ContentStatus.PUBLISHED.value, revision=published.revision)
+        )
+        if changed.rowcount != 1:
+            raise ValueError(f"construction changed before publication: {construction_id}")
+        return published
+
+    def publish_lexical_unit_if_draft(self, lexical_unit_id: str) -> LexicalUnit:
+        # The FK check in a child INSERT takes a key-share lock in PostgreSQL.
+        # A full parent lock makes publication and guarded child insertion serialize.
+        self._session.scalar(
+            select(LanguageLexicalUnit)
+            .where(LanguageLexicalUnit.id == lexical_unit_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        draft = self.get(lexical_unit_id)
+        if draft is None:
+            raise ValueError(f"lexical unit missing: {lexical_unit_id}")
+        published = draft.publish()
+        changed = self._session.execute(
+            update(LanguageLexicalUnit)
+            .where(LanguageLexicalUnit.id == lexical_unit_id,
+                   LanguageLexicalUnit.status == ContentStatus.DRAFT.value,
+                   LanguageLexicalUnit.revision == draft.revision)
+            .values(status=ContentStatus.PUBLISHED.value, revision=published.revision,
+                    updated_at=published.updated_at)
+        )
+        if changed.rowcount != 1:
+            raise ValueError(f"lexical unit changed before publication: {lexical_unit_id}")
+        for sense in draft.senses:
+            changed = self._session.execute(
+                update(LanguageSense)
+                .where(LanguageSense.id == sense.id,
+                       LanguageSense.lexical_unit_id == lexical_unit_id,
+                       LanguageSense.status == ContentStatus.DRAFT.value,
+                       LanguageSense.revision == sense.revision)
+                .values(status=ContentStatus.PUBLISHED.value, revision=sense.revision + 1)
+            )
+            if changed.rowcount != 1:
+                raise ValueError(f"sense changed before publication: {sense.id}")
+        for form in draft.forms:
+            changed = self._session.execute(
+                update(LanguageForm)
+                .where(LanguageForm.id == form.id,
+                       LanguageForm.lexical_unit_id == lexical_unit_id,
+                       LanguageForm.status == ContentStatus.DRAFT.value,
+                       LanguageForm.revision == form.revision)
+                .values(status=ContentStatus.PUBLISHED.value, revision=form.revision + 1)
+            )
+            if changed.rowcount != 1:
+                raise ValueError(f"form changed before publication: {form.id}")
+        current_senses = set(self._session.scalars(
+            select(LanguageSense.id).where(LanguageSense.lexical_unit_id == lexical_unit_id)
+        ))
+        current_forms = set(self._session.scalars(
+            select(LanguageForm.id).where(LanguageForm.lexical_unit_id == lexical_unit_id)
+        ))
+        if (current_senses != {sense.id for sense in draft.senses}
+                or current_forms != {form.id for form in draft.forms}):
+            raise ValueError(f"child set changed before publication: {lexical_unit_id}")
+        return published

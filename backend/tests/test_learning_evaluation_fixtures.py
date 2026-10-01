@@ -1,161 +1,96 @@
-"""Hand-checked P0-01 examples; no production metric implementation exists yet."""
+"""Freeze hand-reconciled learning observations before changing reporting."""
 
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
 
-FIXTURE = Path(__file__).parent / "fixtures/learning/p0_01_histories.json"
-WIDTHS = {
-    "presentations": 2,  # shown / offered
-    "first_unaided": 2,  # correct / resolved independent first responses
-    "assisted": 2,  # correct / resolved hinted first responses
-    "retry": 2,  # correct / resolved retry responses
-    "self_report": 2,  # good-or-easy / submitted ratings
-    "same_context": 2,  # correct / resolved repeated-context first responses
-    "delayed_7d": 5,  # correct / resolved / invited / missing / unresolved
-    "unresolved": 2,  # unresolved / submitted scored response candidates
-}
+FIXTURE = Path(__file__).parent / "fixtures" / "learning" / "baseline-v1.json"
+METRICS = (
+    "first_eligible",
+    "first_correct",
+    "recovered",
+    "assisted_correct",
+    "self_reports",
+    "unresolved",
+    "distinct_contexts",
+    "delayed_new_context_eligible",
+    "delayed_new_context_correct",
+)
 
 
-def _time(value: str) -> datetime:
-    result = datetime.fromisoformat(value)
-    assert result.tzinfo is not None and result.utcoffset() is not None
-    return result
-
-
-def _summarize(history: dict) -> dict[str, list[int]]:
-    counts = {name: [0] * width for name, width in WIDTHS.items()}
-    contacts: list[datetime] = []
-    shown_contexts: list[tuple[datetime, str]] = []
-    for presentation in history["presentations"]:
-        offered = _time(presentation["offered_at"])
-        assert presentation["context_family"]
-        assert presentation["display_status"] in {"shown", "not_shown"}
-        assert (presentation["shown_at"] is not None) == (
-            presentation["display_status"] == "shown"
-        )
-        counts["presentations"][1] += 1
-        if presentation["shown_at"] is not None:
-            shown = _time(presentation["shown_at"])
-            assert shown >= offered
-            counts["presentations"][0] += 1
-            contacts.append(shown)
-            shown_contexts.append((shown, presentation["context_family"]))
-
-    activities = history["activities"]
-    assert len({activity["id"] for activity in activities}) == len(activities)
-    assert [_time(a["offered_at"]) for a in activities] == sorted(
-        _time(a["offered_at"]) for a in activities
-    )
-    earlier: dict[str, dict] = {}
-    seen_contexts: set[str] = set()
-    for activity in activities:
-        offered = _time(activity["offered_at"])
-        context = activity["context_family"]
-        assert context and activity["support"] in {"none", "hint", "reveal"}
-        prior_same_context = context in seen_contexts or any(
-            family == context and shown < offered
-            for shown, family in shown_contexts
-        )
-        retry_of = activity.get("retry_of")
-        if retry_of is not None:
-            parent = earlier[retry_of]
-            assert parent["context_family"] == context
-            assert parent["response"]["outcome"] == "incorrect"
-            assert offered > _time(parent["response"]["at"])
-
-        horizon = activity.get("probe_horizon_days")
-        if horizon is not None:
-            prior_contacts = [at for at in contacts if at < offered]
-            assert horizon == 7 and prior_contacts
-            assert offered - max(prior_contacts) >= timedelta(days=horizon)
-            assert not prior_same_context and retry_of is None
-            assert activity["support"] == "none"
-            counts["delayed_7d"][2] += 1
-
-        response = activity["response"]
-        if response is None:
-            assert horizon is not None
-            counts["delayed_7d"][3] += 1
-            earlier[activity["id"]] = activity
+def _counts(events):
+    counts = dict.fromkeys(METRICS, 0)
+    first_seen_at = {}
+    seen_contexts = set()
+    first_by_activity = {}
+    for event in events:
+        if event["kind"] == "exposure":
             continue
-
-        responded = _time(response["at"])
-        assert responded >= offered
-        if activity["support"] == "none":
-            assert "support_at" not in activity
-        else:
-            assert offered <= _time(activity["support_at"]) < responded
-        if response["kind"] == "self_report":
-            assert horizon is None and retry_of is None
-            assert response["rating"] in {"again", "hard", "good", "easy"}
-            counts["self_report"][1] += 1
-            counts["self_report"][0] += response["rating"] in {"good", "easy"}
-        else:
-            assert response["kind"] == "scored"
-            outcome = response["outcome"]
-            assert outcome in {"correct", "incorrect", "unresolved"}
-            counts["unresolved"][1] += 1
-            if outcome == "unresolved":
-                assert response["reason"]
-                counts["unresolved"][0] += 1
-                if horizon is not None:
-                    counts["delayed_7d"][4] += 1
-            else:
-                if retry_of is not None:
-                    bucket = "retry"
-                elif activity["support"] != "none":
-                    bucket = "assisted"
-                elif prior_same_context:
-                    bucket = "same_context"
-                else:
-                    bucket = "first_unaided"
-                counts[bucket][1] += 1
-                counts[bucket][0] += outcome == "correct"
-                if horizon is not None:
-                    counts["delayed_7d"][1] += 1
-                    counts["delayed_7d"][0] += outcome == "correct"
-        contacts.append(responded)
-        seen_contexts.add(context)
-        earlier[activity["id"]] = activity
+        source = event["source"]
+        outcome = event["outcome"]
+        if source == "self_report":
+            counts["self_reports"] += 1
+            continue
+        if outcome == "unknown":
+            counts["unresolved"] += 1
+            continue
+        if source != "deterministic":
+            continue
+        if event["support"] != "none":
+            assert event.get("support_timing") == "before_first"
+            if outcome == "correct":
+                counts["assisted_correct"] += 1
+            continue
+        if event["ordinal"] > 1:
+            if outcome == "correct" and event.get("repair_of"):
+                parent = first_by_activity.get(event["repair_of"])
+                assert parent is not None and parent["target"] == event["target"]
+                assert parent["outcome"] == "incorrect"
+                counts["recovered"] += 1
+            continue
+        counts["first_eligible"] += 1
+        first_by_activity[event["activity_id"]] = event
+        counts["first_correct"] += int(outcome == "correct")
+        target = event["target"]
+        context = event.get("context_family")
+        when = datetime.fromisoformat(event["at"])
+        first_seen_at.setdefault(target, when)
+        if context and (target, context) not in seen_contexts:
+            has_prior_context = any(key[0] == target for key in seen_contexts)
+            seen_contexts.add((target, context))
+            counts["distinct_contexts"] += 1
+            if has_prior_context and event.get("held_out") is True and when - first_seen_at[target] >= timedelta(days=7):
+                counts["delayed_new_context_eligible"] += 1
+                counts["delayed_new_context_correct"] += int(outcome == "correct")
     return counts
 
 
-def test_p0_01_histories_match_hand_reconciled_truth_table() -> None:
+def test_frozen_histories_reconcile_with_hand_checked_totals():
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     assert fixture["schema_version"] == 1
-    histories = fixture["histories"]
-    assert {history["id"] for history in histories} == {
-        "wrong_then_correct_retry",
+    assert {case["id"] for case in fixture["cases"]} == {
+        "wrong_then_repair",
         "hint_then_correct",
-        "self_rating_after_reveal",
-        "same_context_again",
-        "delayed_new_context_with_missing_probe",
+        "self_rating",
+        "repeated_context",
+        "delayed_new_context",
         "ambiguous_answer",
     }
-    assert len({history["learner_id"] for history in histories}) == len(histories)
-
-    totals = {name: [0] * width for name, width in WIDTHS.items()}
-    for history in histories:
-        actual = _summarize(history)
-        expected = {
-            name: history["expected"].get(name, [0] * width)
-            for name, width in WIDTHS.items()
-        }
-        assert actual == expected, history["id"]
-        for name in WIDTHS:
-            totals[name] = [a + b for a, b in zip(totals[name], actual[name])]
-
-    assert totals == {
-        "presentations": [2, 3],
-        "first_unaided": [3, 4],
-        "assisted": [1, 1],
-        "retry": [1, 1],
-        "self_report": [1, 1],
-        "same_context": [1, 1],
-        "delayed_7d": [1, 1, 2, 1, 0],
-        "unresolved": [1, 8],
+    aggregate = dict.fromkeys(METRICS, 0)
+    for case in fixture["cases"]:
+        actual = _counts(case["events"])
+        assert actual == case["expected"], case["id"]
+        for metric in METRICS:
+            aggregate[metric] += actual[metric]
+    assert aggregate == {
+        "first_eligible": 5,
+        "first_correct": 4,
+        "recovered": 1,
+        "assisted_correct": 1,
+        "self_reports": 1,
+        "unresolved": 1,
+        "distinct_contexts": 4,
+        "delayed_new_context_eligible": 1,
+        "delayed_new_context_correct": 1,
     }
-    # The repaired answer is a retry success; its original first response stays wrong.
-    assert _summarize(histories[0])["first_unaided"] == [0, 1]

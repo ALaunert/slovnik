@@ -354,6 +354,7 @@ export type QuizCompletion = {
   score: number; total_questions: number; weak_word_ids: number[]; mistakes: Record<string, unknown>[];
   result_version?: 2; answer_key_status?: "frozen" | "legacy";
   breakdown_status?: "available" | "unavailable";
+  first_attempt_status?: "available" | "not_measured" | "unavailable";
   first_attempt_correct?: number | null; first_attempt_eligible?: number | null;
   recovered_objective_items?: number | null;
   self_report_remembered?: number | null; self_report_total?: number | null;

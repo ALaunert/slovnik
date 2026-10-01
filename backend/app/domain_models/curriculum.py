@@ -55,6 +55,7 @@ class CurriculumVersionRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    publication_request_fingerprint: Mapped[str | None] = mapped_column(Text)
 
     nodes: Mapped[list[CurriculumNodeRecord]] = relationship(
         back_populates="curriculum_version",

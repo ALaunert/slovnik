@@ -37,7 +37,7 @@ From `backend/`:
 
 ```bash
 .venv/bin/python -m app.reviewed_example_bank ../content/examples/a1-written-v1.json \
-  --pilot ../content/curricula/a1-pilot/manifest.json \
+  --pilot ../content/curricula/a1-pilot/written-manifest.json \
   --sources ../content/sources/a1-written-v1.json \
   --review-export ../content/examples/a1-written-v1-review.md
 ```

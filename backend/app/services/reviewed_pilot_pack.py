@@ -14,7 +14,7 @@ from app.domain.shared import Capability, Modality, TargetKind
 from app.domain.target import TargetSpec
 from app.pilot_examples import validate_pilot_examples
 from app.reviewed_example_bank import bank_digest, rights_digest
-from app.services.content_publication_service import PublicationBundle
+from app.services.reviewed_pilot_publication_service import PublicationBundle
 
 
 PILOT_PACK_NAMESPACE = UUID("c8432996-5ae3-4cb3-a089-780ae5cf8d3b")

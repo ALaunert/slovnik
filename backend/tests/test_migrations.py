@@ -1086,18 +1086,322 @@ def test_domain_migration_round_trip_preserves_legacy_rows(tmp_path, monkeypatch
     legacy_tables = set(inspect(engine).get_table_names())
     legacy_snapshot = read_seeded_legacy_snapshot(engine)
     engine.dispose()
-
     command.upgrade(config, "20260826_0005")
     assert set(inspect(engine).get_table_names()) == legacy_tables | DOMAIN_TABLES
     assert_domain_schema(engine)
     assert_domain_constraints_enforced(engine)
     assert read_seeded_legacy_snapshot(engine) == legacy_snapshot
     engine.dispose()
-
     command.downgrade(config, "20260725_0004")
     assert set(inspect(engine).get_table_names()) == legacy_tables
     assert read_seeded_legacy_snapshot(engine) == legacy_snapshot
     engine.dispose()
+
+
+def test_publication_integrity_migration_guards_new_children_and_round_trips(
+    migration_database,
+):
+    config, engine = migration_database
+    assert "publication_request_fingerprint" in {
+        column["name"] for column in inspect(engine).get_columns("curriculum_versions")
+    }
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO language_lexical_units
+                (id, kind, status, revision, created_at, updated_at)
+            VALUES ('test-unit', 'word', 'published', 2,
+                    '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00')
+        """))
+        connection.execute(text("""
+            INSERT INTO language_lexical_units
+                (id, kind, status, revision, created_at, updated_at)
+            VALUES ('draft-unit', 'word', 'draft', 1,
+                    '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00')
+        """))
+        connection.execute(text("""
+            INSERT INTO language_senses
+                (id, lexical_unit_id, glosses, examples, status, revision)
+            VALUES ('draft-sense', 'draft-unit', '[]', '[]', 'draft', 1)
+        """))
+        connection.execute(text("""
+            UPDATE language_lexical_units SET status = 'published' WHERE id = 'draft-unit'
+        """))
+        connection.execute(text("""
+            UPDATE language_senses SET status = 'published' WHERE id = 'draft-sense'
+        """))
+    with pytest.raises(SQLAlchemyError, match="cannot add child to non-draft lexical unit"):
+        with engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO language_senses
+                    (id, lexical_unit_id, glosses, examples, status, revision)
+                VALUES ('test-sense', 'test-unit', '[]', '[]', 'draft', 1)
+            """))
+    with pytest.raises(SQLAlchemyError, match="cannot add child to non-draft lexical unit"):
+        with engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO language_forms
+                    (id, lexical_unit_id, form_kind, orthographies, morph_features, status, revision)
+                VALUES ('test-form', 'test-unit', 'citation', '[]', '{}', 'draft', 1)
+            """))
+    with pytest.raises(SQLAlchemyError, match="child status must match non-draft lexical unit"):
+        with engine.begin() as connection:
+            connection.execute(text("""
+                UPDATE language_senses SET status = 'draft' WHERE id = 'draft-sense'
+            """))
+    engine.dispose()
+    command.downgrade(config, "20260826_0005")
+    assert "publication_request_fingerprint" not in {
+        column["name"] for column in inspect(engine).get_columns("curriculum_versions")
+    }
+
+
+def assert_publication_guard_rejects_moving_child_out(engine, child_table):
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO language_lexical_units
+                (id, kind, status, revision, created_at, updated_at)
+            VALUES
+                ('published-parent', 'word', 'draft', 1,
+                 '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00'),
+                ('draft-parent', 'word', 'draft', 1,
+                 '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00')
+        """))
+        if child_table == "language_senses":
+            connection.execute(text("""
+                INSERT INTO language_senses
+                    (id, lexical_unit_id, glosses, examples, status, revision)
+                VALUES ('published-child', 'published-parent', '[]', '[]', 'draft', 1)
+            """))
+        else:
+            connection.execute(text("""
+                INSERT INTO language_forms
+                    (id, lexical_unit_id, form_kind, orthographies,
+                     morph_features, status, revision)
+                VALUES ('published-child', 'published-parent', 'citation',
+                        '[]', '{}', 'draft', 1)
+            """))
+        connection.execute(text(f"""
+            UPDATE {child_table} SET status = 'published' WHERE id = 'published-child'
+        """))
+        connection.execute(text("""
+            UPDATE language_lexical_units SET status = 'published'
+            WHERE id = 'published-parent'
+        """))
+
+    with pytest.raises(SQLAlchemyError, match="cannot move child from non-draft lexical unit"):
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                UPDATE {child_table} SET lexical_unit_id = 'draft-parent'
+                WHERE id = 'published-child'
+            """))
+    with engine.connect() as connection:
+        assert connection.scalar(text(f"""
+            SELECT lexical_unit_id FROM {child_table} WHERE id = 'published-child'
+        """)) == "published-parent"
+    with engine.begin() as connection:
+        connection.execute(text(f"""
+            UPDATE {child_table} SET lexical_unit_id = lexical_unit_id
+            WHERE id = 'published-child'
+        """))
+
+
+@pytest.mark.parametrize("child_table", ["language_senses", "language_forms"])
+def test_sqlite_publication_guard_rejects_moving_child_out_of_published_parent(
+    migration_database, child_table
+):
+    _, engine = migration_database
+    assert_publication_guard_rejects_moving_child_out(engine, child_table)
+
+
+@pytest.mark.parametrize("child_table", ["language_senses", "language_forms"])
+def test_postgresql_publication_guard_rejects_moving_child_out_of_published_parent(
+    postgresql_migration_database, child_table
+):
+    _, engine, _ = postgresql_migration_database
+    assert_publication_guard_rejects_moving_child_out(engine, child_table)
+
+
+def assert_non_draft_parent_rejects_child_delete(engine, child_table, parent_status):
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO language_lexical_units
+                (id, kind, status, revision, created_at, updated_at)
+            VALUES ('parent', 'word', 'draft', 1,
+                    '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00')
+        """))
+        if child_table == "language_senses":
+            connection.execute(text("""
+                INSERT INTO language_senses
+                    (id, lexical_unit_id, glosses, examples, status, revision)
+                VALUES ('child', 'parent', '[]', '[]', 'draft', 1)
+            """))
+        else:
+            connection.execute(text("""
+                INSERT INTO language_forms
+                    (id, lexical_unit_id, form_kind, orthographies,
+                     morph_features, status, revision)
+                VALUES ('child', 'parent', 'citation', '[]', '{}', 'draft', 1)
+            """))
+        connection.execute(
+            text(f"UPDATE {child_table} SET status = :status WHERE id = 'child'"),
+            {"status": parent_status},
+        )
+        connection.execute(
+            text("UPDATE language_lexical_units SET status = :status WHERE id = 'parent'"),
+            {"status": parent_status},
+        )
+
+    with pytest.raises(SQLAlchemyError, match="cannot delete child of non-draft lexical unit"):
+        with engine.begin() as connection:
+            connection.execute(text(f"DELETE FROM {child_table} WHERE id = 'child'"))
+    with engine.connect() as connection:
+        assert connection.scalar(text(f"SELECT count(*) FROM {child_table} WHERE id = 'child'")) == 1
+
+
+@pytest.mark.parametrize("child_table", ["language_senses", "language_forms"])
+@pytest.mark.parametrize("parent_status", ["published", "retired"])
+def test_sqlite_publication_guard_rejects_child_delete_under_non_draft_parent(
+    migration_database, child_table, parent_status
+):
+    _, engine = migration_database
+    assert_non_draft_parent_rejects_child_delete(engine, child_table, parent_status)
+
+
+@pytest.mark.parametrize("child_table", ["language_senses", "language_forms"])
+@pytest.mark.parametrize("parent_status", ["published", "retired"])
+def test_postgresql_publication_guard_rejects_child_delete_under_non_draft_parent(
+    postgresql_migration_database, child_table, parent_status
+):
+    _, engine, _ = postgresql_migration_database
+    assert_non_draft_parent_rejects_child_delete(engine, child_table, parent_status)
+
+
+def assert_non_draft_parent_cannot_regress_status(engine, parent_status, new_status):
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO language_lexical_units
+                (id, kind, status, revision, created_at, updated_at)
+            VALUES ('parent', 'word', :status, 1,
+                    '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00')
+        """), {"status": parent_status})
+
+    with pytest.raises(SQLAlchemyError, match="cannot regress non-draft lexical unit status"):
+        with engine.begin() as connection:
+            connection.execute(
+                text("UPDATE language_lexical_units SET status = :status WHERE id = 'parent'"),
+                {"status": new_status},
+            )
+    with engine.connect() as connection:
+        assert connection.scalar(text("""
+            SELECT status FROM language_lexical_units WHERE id = 'parent'
+        """)) == parent_status
+
+
+@pytest.mark.parametrize("parent_status, new_status", [
+    ("published", "draft"),
+    ("retired", "draft"),
+    ("retired", "published"),
+])
+def test_sqlite_publication_guard_rejects_non_draft_parent_status_regression(
+    migration_database, parent_status, new_status
+):
+    _, engine = migration_database
+    assert_non_draft_parent_cannot_regress_status(engine, parent_status, new_status)
+
+
+@pytest.mark.parametrize("parent_status, new_status", [
+    ("published", "draft"),
+    ("retired", "draft"),
+    ("retired", "published"),
+])
+def test_postgresql_publication_guard_rejects_non_draft_parent_status_regression(
+    postgresql_migration_database, parent_status, new_status
+):
+    _, engine, _ = postgresql_migration_database
+    assert_non_draft_parent_cannot_regress_status(engine, parent_status, new_status)
+
+
+def assert_non_draft_parent_cannot_be_deleted(engine, parent_status):
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO language_lexical_units
+                (id, kind, status, revision, created_at, updated_at)
+            VALUES ('parent', 'word', :status, 1,
+                    '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00')
+        """), {"status": parent_status})
+
+    with pytest.raises(SQLAlchemyError, match="cannot delete non-draft lexical unit"):
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM language_lexical_units WHERE id = 'parent'"))
+    with engine.connect() as connection:
+        assert connection.scalar(text("""
+            SELECT status FROM language_lexical_units WHERE id = 'parent'
+        """)) == parent_status
+
+
+@pytest.mark.parametrize("parent_status", ["published", "retired"])
+def test_sqlite_publication_guard_rejects_non_draft_parent_delete(
+    migration_database, parent_status
+):
+    _, engine = migration_database
+    assert_non_draft_parent_cannot_be_deleted(engine, parent_status)
+
+
+@pytest.mark.parametrize("parent_status", ["published", "retired"])
+def test_postgresql_publication_guard_rejects_non_draft_parent_delete(
+    postgresql_migration_database, parent_status
+):
+    _, engine, _ = postgresql_migration_database
+    assert_non_draft_parent_cannot_be_deleted(engine, parent_status)
+
+
+def assert_published_parent_can_retire(engine):
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO language_lexical_units
+                (id, kind, status, revision, created_at, updated_at)
+            VALUES ('parent', 'word', 'published', 1,
+                    '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00')
+        """))
+        connection.execute(text("""
+            UPDATE language_lexical_units SET status = 'retired' WHERE id = 'parent'
+        """))
+    with engine.connect() as connection:
+        assert connection.scalar(text("""
+            SELECT status FROM language_lexical_units WHERE id = 'parent'
+        """)) == "retired"
+
+
+def test_sqlite_publication_guard_allows_parent_retirement(migration_database):
+    _, engine = migration_database
+    assert_published_parent_can_retire(engine)
+
+
+def test_postgresql_publication_guard_allows_parent_retirement(
+    postgresql_migration_database,
+):
+    _, engine, _ = postgresql_migration_database
+    assert_published_parent_can_retire(engine)
+
+
+def test_postgresql_publication_guard_rejects_child_after_parent_publish(
+    postgresql_migration_database,
+):
+    _, engine, _ = postgresql_migration_database
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO language_lexical_units
+                (id, kind, status, revision, created_at, updated_at)
+            VALUES ('published-parent', 'word', 'published', 2,
+                    '2026-09-25 00:00:00+00:00', '2026-09-25 00:00:00+00:00')
+        """))
+    with pytest.raises(SQLAlchemyError, match="cannot add child to non-draft lexical unit"):
+        with engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO language_senses
+                    (id, lexical_unit_id, glosses, examples, status, revision)
+                VALUES ('late-child', 'published-parent', '[]', '[]', 'draft', 1)
+            """))
 
 
 def test_postgresql_migration_target_rejects_invalid_admin_url(monkeypatch):
@@ -1276,6 +1580,40 @@ def test_upgrade_from_existing_ai_fill_revision_adds_reservations(
             "ai_vocabulary_generation_reservations"
             in inspect(engine).get_table_names()
         )
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("existing_head", ["20260925_0006", "20261001_0006"])
+def test_upgrade_from_either_publication_or_timezone_branch(tmp_path, monkeypatch, existing_head):
+    database_url = f"sqlite:///{tmp_path / 'branch-upgrade.db'}"
+    config = build_alembic_config(database_url, monkeypatch)
+    command.upgrade(config, existing_head)
+    engine = create_engine(database_url)
+    try:
+        seed_legacy_vocabulary(engine)
+        seed_legacy_progress(engine)
+        if existing_head == "20261001_0006":
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "UPDATE user_profiles SET timezone='Europe/Belgrade' WHERE user_id=:user_id"
+                ), {"user_id": LEGACY_USER_ID})
+        engine.dispose()
+        command.upgrade(config, "head")
+        assert "publication_request_fingerprint" in {
+            column["name"] for column in inspect(engine).get_columns("curriculum_versions")
+        }
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == [
+                "20261001_0007"
+            ]
+            assert connection.execute(text(
+                "SELECT timezone FROM user_profiles WHERE user_id=:user_id"
+            ), {"user_id": LEGACY_USER_ID}).scalar_one() == (
+                "Europe/Belgrade" if existing_head == "20261001_0006" else "UTC"
+            )
+        assert read_legacy_stress_marker(engine) == LEGACY_STRESS_MARKER
+        assert read_legacy_progress(engine, include_schedule=True)["correct_count"] == 3
     finally:
         engine.dispose()
 

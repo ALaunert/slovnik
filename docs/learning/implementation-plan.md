@@ -149,7 +149,7 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 - **Goal:** define four proposed communicative outcomes and what an unseen assessment would measure before creating content storage.
 - **Why:** a finite task/rubric contract prevents a word list or technical seed from becoming an unsupported CEFR syllabus.
 - **Dependencies:** P0-01.
-- **Affected repository parts:** proposed `content/curricula/a1-pilot/manifest.json` and a short editorial brief; consult `backend/app/domain/curriculum.py`, `backend/app/services/curriculum_service.py`, `backend/app/seed.py` and `docs/learning/learning-model.md`.
+- **Affected repository parts:** proposed `content/curricula/a1-pilot/written-manifest.json` and a short editorial brief; consult `backend/app/domain/curriculum.py`, `backend/app/services/curriculum_service.py`, `backend/app/seed.py` and `docs/learning/learning-model.md`.
 - **Expected schema/API changes:** none; draft file format records outcome ID, CEFR edition/scale/page, written task and rubric, primary target/capability, script conditions, proposed hard/soft edges and held-out prompt family. Use soft-only edges if no hard prerequisite is defensible.
 - **Migration:** none; do not replace the technical seed or publish a curriculum.
 - **Acceptance criteria:** personal details, request, price information and location information each map to input, practice and a separate assessment family; no outcome implies oral or complete A1 competence. All mappings and sequencing are marked provisional pending a recorded internal source-based decision before P1 publication.
@@ -162,7 +162,7 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 - **Goal:** make source identity, permitted uses and attribution reviewable before any new pilot material is published.
 - **Why:** corpus/container permissions do not establish rights for every source text, translation or recording.
 - **Dependencies:** none; can follow P0-07 to use its source cases.
-- **Affected repository parts:** proposed `content/sources/`, one focused validator under `backend/app/`, and `backend/tests/test_content_provenance.py`; use the [resource register](serbian-resources.md).
+- **Affected repository parts:** proposed `content/sources/`, one focused validator under `backend/app/`, and `backend/tests/test_written_content_provenance.py`; use the [resource register](serbian-resources.md).
 - **Expected schema/API changes:** versioned file schema only, with source/release/checksum when applicable, item/document IDs, separate text/translation/audio rights, intended uses, attribution, evidence URL or agreement, reviewer and date. No HTTP endpoint or source database.
 - **Migration:** none; do not relabel legacy or AI-generated text as approved source content.
 - **Acceptance criteria:** unknown permission blocks only the relevant publication use; analysis-only material remains usable for approved analysis; authored material points to an author agreement. Attribution output is deterministic for an approved fixture pack.

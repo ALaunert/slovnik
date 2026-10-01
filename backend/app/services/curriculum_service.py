@@ -203,6 +203,13 @@ class CurriculumService:
             published = self.publish_in_transaction(version_id, published_at=published_at)
             self._session.commit()
             return published
+        except IntegrityError as exc:
+            self._session.rollback()
+            if _is_one_active_conflict(exc):
+                raise CurriculumActivationConflict(
+                    "another curriculum version became active"
+                ) from exc
+            raise
         except Exception:
             self._session.rollback()
             raise
@@ -213,30 +220,21 @@ class CurriculumService:
         *,
         published_at: datetime,
     ) -> CurriculumVersion:
-        """Activate in the caller's transaction; the caller commits or rolls back."""
-        try:
-            draft, published = self._validated_publication(version_id, published_at)
-            active = self._repository.get_active_by_code(draft.curriculum_code)
-            if active is not None and active.id != draft.id:
-                retired_at = _replacement_retired_at(active, published)
-                if not self._repository.retire_if_active(active.id, retired_at):
-                    raise CurriculumActivationConflict(
-                        "curriculum active version changed during publication"
-                    )
-                self._session.flush()
-            if not self._repository.activate_if_draft(
-                published.id, published.published_at
-            ):
+        """Stage activation in the caller's transaction without committing or rolling back."""
+        draft, published = self._validated_publication(version_id, published_at)
+        active = self._repository.get_active_by_code(draft.curriculum_code)
+        if active is not None and active.id != draft.id:
+            retired_at = _replacement_retired_at(active, published)
+            if not self._repository.retire_if_active(active.id, retired_at):
                 raise CurriculumActivationConflict(
-                    "curriculum draft was already published"
+                    "curriculum active version changed during publication"
                 )
-            return published
-        except IntegrityError as exc:
-            if _is_one_active_conflict(exc):
-                raise CurriculumActivationConflict(
-                    "another curriculum version became active"
-                ) from exc
-            raise
+            self._session.flush()
+        if not self._repository.activate_if_draft(published.id, published.published_at):
+            raise CurriculumActivationConflict(
+                "curriculum draft was already published"
+            )
+        return published
 
     def _validated_publication(
         self, version_id: str, published_at: datetime

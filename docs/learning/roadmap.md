@@ -184,7 +184,7 @@ uncertain. Tasks are independent review units, with explicit dependencies.
 ### P0-07 — Specify the small communicative pilot and assessment holdout
 
 - **Objective/rationale:** content needs a finite outcome contract before large vocabulary work.
-- **Components:** proposed `content/curricula/a1-pilot/manifest.json` and review document;
+- **Components:** proposed `content/curricula/a1-pilot/written-manifest.json` and review document;
   existing `domain/curriculum.py`, `services/curriculum_service.py`, `backend/app/seed.py` as reference only.
 - **Dependencies:** P0-01. This brief informs P0-05 rather than depending on its schema.
 - **Acceptance:** a draft pilot brief proposes four outcomes from stages 0–2

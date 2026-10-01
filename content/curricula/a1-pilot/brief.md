@@ -1,6 +1,6 @@
 # Four-task written pilot — editorial draft
 
-The [manifest](manifest.json) proposes four selected everyday outcomes: personal details, a simple request, a price lookup and a location message. Each has a bounded input, written task, separate practice and held-out assessment family, primary capability, script conditions and rubric. Family separation is an editorial promise to write genuinely different prompts; different IDs alone do not prove independence. The proposed soft order is a design hypothesis. No hard prerequisite is justified by the present evidence.
+The [manifest](written-manifest.json) proposes four selected everyday outcomes: personal details, a simple request, a price lookup and a location message. Each has a bounded input, written task, separate practice and held-out assessment family, primary capability, script conditions and rubric. Family separation is an editorial promise to write genuinely different prompts; different IDs alone do not prove independence. The proposed soft order is a design hypothesis. No hard prerequisite is justified by the present evidence.
 
 The CEFR crosswalk is a **hypothesis** from `docs/learning/learning-model.md`, with edition, scale and printed page recorded in the manifest. The written request is a rehearsal of an interaction descriptor. The four tasks cannot establish oral skill, listening skill, complete A1 coverage or CEFR attainment. The existing three-word seed and its hard edge are technical examples, not evidence for this pilot's order.
 

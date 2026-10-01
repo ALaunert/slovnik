@@ -1,495 +1,464 @@
-"""Atomic pilot publication uses synthetic approved material only."""
+"""Transaction and preflight checks for catalog/curriculum publication composition."""
 
-from __future__ import annotations
-
-from copy import deepcopy
-from dataclasses import replace
 import os
+import hashlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, select, text, update
 from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
-from app.domain.catalog import Construction, ContentStatus, UsageExample
-from app.domain.curriculum import (
-    CurriculumNode,
-    CurriculumStatus,
-    CurriculumVersion,
-    PrerequisiteEdge,
-    PrerequisiteKind,
+from app.db import Base
+from app.domain.catalog import (
+    Construction, ContentStatus, EntryKind, Form, FormKind, Gloss, LexicalUnit,
+    OrthographicForm, RetirementPolicyDecision, Script, Sense, UsageExample,
 )
+from app.domain.curriculum import CurriculumNode, CurriculumStatus, CurriculumVersion
+from app.domain.curriculum import PrerequisiteEdge, PrerequisiteKind
 from app.domain.shared import Capability, Modality, TargetKind
 from app.domain.target import TargetSpec
-from app.domain_models.catalog import LanguageConstruction
-from app.db import Base
 from app.models import VocabularyItem
 from app.repositories.catalog import CatalogRepository
 from app.repositories.curriculum import CurriculumRepository
+from app.domain_models.curriculum import CurriculumVersionRecord
+from app.domain_models.catalog import LanguageForm, LanguageSense
 from app.services.content_publication_service import (
     ContentPublicationService,
-    PublicationBundle,
     PublicationPreflightError,
+    PublicationRequest,
 )
-from app.services.domain_bootstrap_service import _aggregate, bootstrap_catalog
+from app.services.catalog_mapping_service import vocabulary_source_fingerprint
+from app.services.curriculum_service import CurriculumService
 
 
-NOW = datetime(2026, 9, 25, 12, tzinfo=timezone.utc)
-CONSTRUCTION_ID = "40000000-0000-4000-8000-000000000001"
-VERSION_ID = "50000000-0000-4000-8000-000000000001"
-NODE_ID = "60000000-0000-4000-8000-000000000001"
+NOW = datetime(2026, 9, 24, 12, tzinfo=timezone.utc)
 
 
-def _bundle(
-    *, version_number: int = 1, version_id: str = VERSION_ID,
-    construction_id: str = CONSTRUCTION_ID,
-) -> PublicationBundle:
-    construction = Construction(
-        id=construction_id,
-        code=f"synthetic-request-{construction_id[-1]}",
-        title="Synthetic request",
-        description="Test-only constructed content",
-        examples=(UsageExample(serbian_text="Molim vodu.", translation="Воду, пожалуйста."),),
-        status=ContentStatus.PUBLISHED,
-        revision=2,
-    )
-    target = TargetSpec(
-        target_kind=TargetKind.CONSTRUCTION,
-        target_id=construction.id,
-        capability=Capability.APPLY_CONSTRUCTION,
-        modality=Modality.WRITTEN,
-    )
-    curriculum = CurriculumVersion(
-        id=version_id,
-        curriculum_code="synthetic-written",
-        version_number=version_number,
-        created_at=NOW,
-        nodes=(CurriculumNode(
-            id=NODE_ID if version_number == 1 else "60000000-0000-4000-8000-000000000002",
-            curriculum_version_id=version_id,
-            target=target,
-            priority=50,
-            outcome_code="A1.synthetic",
-        ),),
-    )
-    right = {
-        "status": "approved", "uses": ["analysis", "pilot_display"],
-        "license": "author permission", "evidence": "agreement:synthetic-test",
-        "reviewer": "fixture", "reviewed_at": "2026-09-25",
+@pytest.fixture()
+def engine():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    yield engine
+    engine.dispose()
+
+
+def source_manifest(decision="allowed"):
+    material = {
+        "rights": {"analysis": "allowed", "redistribution": decision, "adaptation": decision},
+        "license": "fictional test agreement", "evidence_url": "https://example.test/fictional",
+        "reviewer": "test-only", "reviewed_on": "2026-09-24",
+        "attribution_required": False, "share_alike_required": False,
     }
-    sources = {"schema_version": 1, "sources": [{
-        "id": "synthetic-source", "source_type": "authored", "item_id": "synthetic-1",
-        "release": None, "checksum": None, "attribution": "Synthetic test fixture",
-        "rights": {"text": deepcopy(right), "translation": deepcopy(right)},
+    return {"schema_version": 1, "sources": [{
+        "source_id": "test-author", "kind": "authored", "release_id": "test-only",
+        "review": {"reviewer": "test-only", "reviewed_on": "2026-09-24",
+                   "evidence_url": "https://example.test/fictional"},
+        "items": [{"item_id": "example-1", "materials": {
+            "text": material, "translation": dict(material),
+        }}],
     }]}
-    pilot = {"outcomes": [{
-        "id": "A1.synthetic", "practice_families": ["practice"],
-        "assessment_family": "holdout", "primary_target": {"id": construction.id},
-    }]}
-    examples = {"schema_version": 1, "examples": [{
-        "id": "synthetic-practice", "outcome_id": "A1.synthetic", "role": "practice",
-        "context_family": "practice", "source_id": "synthetic-source",
-        "text": "Molim vodu.", "translation": "Воду, пожалуйста.",
-        "script": "latin", "target_ref": construction.id, "target_span": [0, 5],
-        "accepted_answers": ["Molim vodu."],
-        "translation_status": "internally_checked",
-        "answer_policy_status": "internally_checked",
-        "review": {"status": "internally_checked", "reviewer": "fixture",
-                   "date": "2026-09-25", "source_locators": ["synthetic:1"]},
-    }]}
-    return PublicationBundle(
-        curriculum=curriculum,
-        constructions=(construction,),
-        sources=sources,
-        pilot=pilot,
-        examples=examples,
+
+
+def draft_pair(version_number=1, code="test-pack"):
+    construction_id = str(uuid4())
+    version_id = str(uuid4())
+    construction = Construction(
+        id=construction_id, code=f"test-{construction_id}", title="Test construction",
+        description="A synthetic construction", examples=(UsageExample("Здраво.", "Привет."),),
+    )
+    target = TargetSpec(TargetKind.CONSTRUCTION, construction_id,
+                        Capability.APPLY_CONSTRUCTION, Modality.WRITTEN)
+    curriculum = CurriculumVersion(
+        id=version_id, curriculum_code=code, version_number=version_number,
+        created_at=NOW - timedelta(days=1),
+        nodes=(CurriculumNode(id=str(uuid4()), curriculum_version_id=version_id,
+                              target=target, priority=50, outcome_code="A1.test"),),
+    )
+    return construction, curriculum
+
+
+def request(construction, curriculum, sources=None):
+    return PublicationRequest(
+        curriculum_version_id=curriculum.id,
+        construction_ids=(construction.id,),
+        source_item_ids_by_catalog_id={construction.id: ("example-1",)},
+        source_manifest=sources or source_manifest(),
     )
 
 
-def test_atomic_publication_persists_catalog_and_curriculum_together(db_session) -> None:
-    bundle = _bundle()
-    service = ContentPublicationService(db_session)
-    report = service.preflight(bundle, published_at=NOW)
-    assert report.rejected == ()
-    assert CONSTRUCTION_ID in report.changed_ids
-    assert VERSION_ID in report.changed_ids
-
-    result = service.publish(bundle, published_at=NOW)
-    assert result.status is CurriculumStatus.ACTIVE
-    assert CatalogRepository(db_session).get_construction(CONSTRUCTION_ID) == bundle.constructions[0]
-    assert service.publish(bundle, published_at=NOW).id == VERSION_ID
-    assert db_session.scalars(select(LanguageConstruction.id)).all() == [CONSTRUCTION_ID]
+def stage(session, construction, curriculum):
+    catalog = CatalogRepository(session)
+    catalog.add_construction(construction)
+    CurriculumRepository(session, catalog).add(curriculum)
+    session.commit()
 
 
-def test_preflight_rejects_unknown_rights_before_writing(db_session) -> None:
-    bundle = _bundle()
-    bundle.sources["sources"][0]["rights"]["text"]["status"] = "unknown"
-    service = ContentPublicationService(db_session)
-    report = service.preflight(bundle, published_at=NOW)
-    assert any("permission" in reason for reason in report.rejected)
-
-    with pytest.raises(PublicationPreflightError):
-        service.publish(bundle, published_at=NOW)
-    assert db_session.scalars(select(LanguageConstruction.id)).all() == []
-
-
-def test_publication_maps_reviewed_editorial_target_to_catalog_uuid(db_session) -> None:
-    bundle = _bundle()
-    bundle.pilot["outcomes"][0]["primary_target"]["id"] = "request-written"
-    bundle.examples["examples"][0]["target_ref"] = "request-written"
-    assert any("primary target absent" in reason for reason in
-               ContentPublicationService(db_session).preflight(bundle, published_at=NOW).rejected)
-
-    bundle.target_mapping = {"request-written": CONSTRUCTION_ID}
-    assert ContentPublicationService(db_session).preflight(bundle, published_at=NOW).rejected == ()
-    assert ContentPublicationService(db_session).publish(bundle, published_at=NOW).status is CurriculumStatus.ACTIVE
+def test_catalog_and_curriculum_publish_together(engine):
+    construction, curriculum = draft_pair()
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        result = ContentPublicationService(session).publish(
+            request(construction, curriculum), published_at=NOW)
+        assert result.changed_ids == (construction.id, curriculum.id)
+    with Session(engine) as session:
+        assert CatalogRepository(session).get_construction(construction.id).status is ContentStatus.PUBLISHED
+        assert CurriculumRepository(session, CatalogRepository(session)).get(curriculum.id).status is CurriculumStatus.ACTIVE
 
 
-def test_publication_rejects_stale_editorial_target_mapping(db_session) -> None:
-    bundle = _bundle()
-    bundle.target_mapping = {"unused-editorial-key": CONSTRUCTION_ID}
-    assert any("target mapping" in reason for reason in
-               ContentPublicationService(db_session).preflight(bundle, published_at=NOW).rejected)
+def test_repeat_publication_is_idempotent(engine):
+    construction, curriculum = draft_pair()
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        publisher = ContentPublicationService(session)
+        publisher.publish(request(construction, curriculum), published_at=NOW)
+        repeat = publisher.publish(request(construction, curriculum), published_at=NOW + timedelta(hours=1))
+        assert repeat.changed_ids == ()
+        assert CatalogRepository(session).get_construction(construction.id).revision == 2
+        assert CurriculumRepository(session, CatalogRepository(session)).get(curriculum.id).published_at == NOW
 
 
-def test_preflight_rejects_existing_construction_code_under_new_id(db_session) -> None:
-    first = _bundle()
-    ContentPublicationService(db_session).publish(first, published_at=NOW)
-    second = _bundle(
-        version_number=2,
-        version_id="50000000-0000-4000-8000-000000000002",
-        construction_id="40000000-0000-4000-8000-000000000002",
+def test_active_repeat_rejects_changed_source_mapping_or_manifest(engine):
+    construction, curriculum = draft_pair()
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        publisher = ContentPublicationService(session)
+        publisher.publish(request(construction, curriculum), published_at=NOW)
+        changed_manifest = source_manifest()
+        changed_manifest["sources"][0]["release_id"] = "different-release"
+        with pytest.raises(PublicationPreflightError, match="publication request differs"):
+            publisher.publish(request(construction, curriculum, changed_manifest), published_at=NOW)
+        different_mapping = PublicationRequest(
+            curriculum_version_id=curriculum.id,
+            construction_ids=(construction.id,),
+            source_item_ids_by_catalog_id={construction.id: ("example-1", "example-2")},
+            source_manifest=source_manifest(),
+        )
+        with pytest.raises(PublicationPreflightError, match="publication request differs"):
+            publisher.publish(different_mapping, published_at=NOW)
+
+
+def test_missing_or_changed_pinned_artifact_blocks_publication(engine, tmp_path, monkeypatch):
+    construction, curriculum = draft_pair()
+    import app.services.content_publication_service as publication_module
+    monkeypatch.setattr(publication_module, "SOURCE_MANIFEST_ROOT", tmp_path)
+    sources = source_manifest()
+    sources["sources"][0]["artifact"] = {
+        "path": "pinned.txt", "sha256": hashlib.sha256(b"approved").hexdigest(),
+    }
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        with pytest.raises(PublicationPreflightError, match="artifact file is missing"):
+            ContentPublicationService(session).publish(
+                request(construction, curriculum, sources), published_at=NOW)
+        (tmp_path / "pinned.txt").write_bytes(b"changed")
+        with pytest.raises(PublicationPreflightError, match="artifact checksum mismatch"):
+            ContentPublicationService(session).publish(
+                request(construction, curriculum, sources), published_at=NOW)
+        (tmp_path / "pinned.txt").write_bytes(b"approved")
+        ContentPublicationService(session).publish(
+            request(construction, curriculum, sources), published_at=NOW)
+
+
+def test_pinned_artifact_change_after_preflight_blocks_commit(engine, tmp_path, monkeypatch):
+    construction, curriculum = draft_pair()
+    import app.services.content_publication_service as publication_module
+    monkeypatch.setattr(publication_module, "SOURCE_MANIFEST_ROOT", tmp_path)
+    artifact = tmp_path / "pinned.txt"
+    artifact.write_bytes(b"approved")
+    sources = source_manifest()
+    sources["sources"][0]["artifact"] = {
+        "path": "pinned.txt", "sha256": hashlib.sha256(b"approved").hexdigest(),
+    }
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        original_preflight = ContentPublicationService.preflight
+
+        def replace_after_preflight(publisher, request, *, published_at):
+            report = original_preflight(publisher, request, published_at=published_at)
+            artifact.write_bytes(b"replaced")
+            return report
+
+        monkeypatch.setattr(ContentPublicationService, "preflight", replace_after_preflight)
+        with pytest.raises(PublicationPreflightError, match="artifact checksum mismatch"):
+            ContentPublicationService(session).publish(
+                request(construction, curriculum, sources), published_at=NOW)
+        assert CatalogRepository(session).get_construction(construction.id).status is ContentStatus.DRAFT
+
+
+def test_active_repeat_rejects_different_published_catalog_ids(engine):
+    construction, curriculum = draft_pair()
+    unrelated, unrelated_curriculum = draft_pair(code="other-pack")
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        stage(session, unrelated, unrelated_curriculum)
+        publisher = ContentPublicationService(session)
+        publisher.publish(request(construction, curriculum), published_at=NOW)
+        publisher.publish(request(unrelated, unrelated_curriculum), published_at=NOW)
+        wrong = PublicationRequest(
+            curriculum_version_id=curriculum.id, construction_ids=(unrelated.id,),
+            source_item_ids_by_catalog_id={unrelated.id: ("example-1",)},
+            source_manifest=source_manifest(),
+        )
+        with pytest.raises(PublicationPreflightError, match="unrelated catalog id"):
+            publisher.publish(wrong, published_at=NOW + timedelta(hours=1))
+        assert CurriculumRepository(session, CatalogRepository(session)).get(curriculum.id).published_at == NOW
+
+
+def test_unresolved_rights_preflight_changes_nothing(engine):
+    construction, curriculum = draft_pair()
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        with pytest.raises(PublicationPreflightError, match="redistribution"):
+            ContentPublicationService(session).publish(
+                request(construction, curriculum, source_manifest("unknown")), published_at=NOW)
+    with Session(engine) as session:
+        assert CatalogRepository(session).get_construction(construction.id).status is ContentStatus.DRAFT
+        assert CurriculumRepository(session, CatalogRepository(session)).get(curriculum.id).status is CurriculumStatus.DRAFT
+
+
+def test_replacement_using_published_target_still_requires_source_rights(engine):
+    construction, first = draft_pair()
+    replacement_id = str(uuid4())
+    replacement = CurriculumVersion(
+        id=replacement_id, curriculum_code=first.curriculum_code, version_number=2,
+        created_at=first.created_at,
+        nodes=(CurriculumNode(id=str(uuid4()), curriculum_version_id=replacement_id,
+                              target=first.nodes[0].target, priority=50, outcome_code="A1.test"),),
     )
-    second.constructions = (replace(
-        second.constructions[0], code=first.constructions[0].code,
-    ),)
-    report = ContentPublicationService(db_session).preflight(second, published_at=NOW)
-    assert any("construction code" in reason for reason in report.rejected)
+    with Session(engine) as session:
+        stage(session, construction, first)
+        ContentPublicationService(session).publish(request(construction, first), published_at=NOW)
+        CurriculumRepository(session, CatalogRepository(session)).add(replacement)
+        session.commit()
+        packet = PublicationRequest(
+            curriculum_version_id=replacement.id, source_manifest={"schema_version": 1, "sources": []},
+            source_item_ids_by_catalog_id={},
+        )
+        with pytest.raises(PublicationPreflightError, match="source item missing"):
+            ContentPublicationService(session).publish(packet, published_at=NOW + timedelta(hours=1))
+        assert CurriculumRepository(session, CatalogRepository(session)).get(first.id).status is CurriculumStatus.ACTIVE
+        denied = PublicationRequest(
+            curriculum_version_id=replacement.id, source_manifest=source_manifest("denied"),
+            source_item_ids_by_catalog_id={construction.id: ("example-1",)},
+        )
+        with pytest.raises(PublicationPreflightError, match="redistribution is denied"):
+            ContentPublicationService(session).publish(denied, published_at=NOW + timedelta(hours=1))
+        approved = PublicationRequest(
+            curriculum_version_id=replacement.id, source_manifest=source_manifest(),
+            source_item_ids_by_catalog_id={construction.id: ("example-1",)},
+        )
+        ContentPublicationService(session).publish(approved, published_at=NOW + timedelta(hours=1))
+        assert CurriculumRepository(session, CatalogRepository(session)).get(replacement.id).status is CurriculumStatus.ACTIVE
 
 
-def test_preflight_rejects_unreviewed_catalog_example(db_session) -> None:
-    bundle = _bundle()
-    bundle.constructions = (replace(
-        bundle.constructions[0],
-        examples=(UsageExample(
-            serbian_text="Unreviewed replacement.",
-            translation="Непроверенная замена.",
-        ),),
-    ),)
-    report = ContentPublicationService(db_session).preflight(bundle, published_at=NOW)
-    assert any("catalog example" in reason for reason in report.rejected)
+def test_unrelated_catalog_id_cannot_be_published_with_a_draft(engine):
+    referenced, curriculum = draft_pair()
+    unrelated, _ = draft_pair()
+    with Session(engine) as session:
+        stage(session, referenced, curriculum)
+        CatalogRepository(session).add_construction(unrelated)
+        session.commit()
+        packet = PublicationRequest(
+            curriculum_version_id=curriculum.id, construction_ids=(referenced.id, unrelated.id),
+            source_item_ids_by_catalog_id={referenced.id: ("example-1",), unrelated.id: ("example-1",)},
+            source_manifest=source_manifest(),
+        )
+        with pytest.raises(PublicationPreflightError, match="unrelated catalog id"):
+            ContentPublicationService(session).publish(packet, published_at=NOW)
+        assert CatalogRepository(session).get_construction(unrelated.id).status is ContentStatus.DRAFT
 
 
-def test_preflight_keeps_reviewed_assessment_examples_out_of_catalog(db_session) -> None:
-    bundle = _bundle()
-    heldout = deepcopy(bundle.examples["examples"][0])
-    heldout.update({"id": "synthetic-holdout", "role": "assessment", "context_family": "holdout",
-                    "text": "Molim čaj.", "translation": "Чай, пожалуйста.",
-                    "accepted_answers": ["Molim čaj."]})
-    bundle.examples["examples"].append(heldout)
-    bundle.constructions = (replace(bundle.constructions[0], examples=(
-        UsageExample(serbian_text="Molim čaj.", translation="Чай, пожалуйста."),
-    )),)
-    report = ContentPublicationService(db_session).preflight(bundle, published_at=NOW)
-    assert any("catalog example" in reason for reason in report.rejected)
+def test_unused_audio_rights_do_not_block_written_publication(engine):
+    construction, curriculum = draft_pair()
+    sources = source_manifest()
+    audio = dict(sources["sources"][0]["items"][0]["materials"]["text"])
+    audio["asset_id"] = "unused-audio"
+    audio["rights"] = {"analysis": "allowed", "redistribution": "denied", "adaptation": "denied"}
+    sources["sources"][0]["items"][0]["materials"]["audio"] = [audio]
+    with Session(engine) as session:
+        stage(session, construction, curriculum)
+        ContentPublicationService(session).publish(
+            request(construction, curriculum, sources), published_at=NOW)
+        assert CatalogRepository(session).get_construction(construction.id).status is ContentStatus.PUBLISHED
 
 
-def test_preflight_rejects_unreviewed_existing_target_example(db_session) -> None:
-    bundle = _bundle()
-    unreviewed = replace(
-        bundle.constructions[0],
-        examples=(UsageExample(
-            serbian_text="Other catalog text.",
-            translation="Другой текст.",
-        ),),
-    )
-    CatalogRepository(db_session).add_construction(unreviewed)
-    db_session.commit()
-    bundle.constructions = ()
-    report = ContentPublicationService(db_session).preflight(bundle, published_at=NOW)
-    assert any("catalog example" in reason for reason in report.rejected)
+def test_failure_after_catalog_write_rolls_everything_back(engine, monkeypatch):
+    first_construction, first_curriculum = draft_pair()
+    second_construction, second_curriculum = draft_pair(2)
+    with Session(engine) as session:
+        stage(session, first_construction, first_curriculum)
+        ContentPublicationService(session).publish(request(first_construction, first_curriculum), published_at=NOW)
+        stage(session, second_construction, second_curriculum)
+
+        def fail_activation(*args, **kwargs):
+            assert CatalogRepository(session).get_construction(second_construction.id).status is ContentStatus.PUBLISHED
+            raise RuntimeError("injected activation failure")
+
+        monkeypatch.setattr(CurriculumService, "publish_in_transaction", fail_activation)
+        with pytest.raises(RuntimeError, match="injected activation failure"):
+            ContentPublicationService(session).publish(
+                request(second_construction, second_curriculum), published_at=NOW + timedelta(hours=1))
+    with Session(engine) as session:
+        catalog = CatalogRepository(session)
+        repository = CurriculumRepository(session, catalog)
+        assert catalog.get_construction(second_construction.id).status is ContentStatus.DRAFT
+        assert repository.get(first_curriculum.id).status is CurriculumStatus.ACTIVE
+        assert repository.get(second_curriculum.id).status is CurriculumStatus.DRAFT
 
 
-@pytest.mark.parametrize("field", ["translation_status", "answer_policy_status"])
-def test_preflight_rejects_draft_translation_or_answer_key(db_session, field: str) -> None:
-    bundle = _bundle()
-    bundle.examples["examples"][0][field] = "draft"
-    report = ContentPublicationService(db_session).preflight(bundle, published_at=NOW)
-    assert any(field in reason for reason in report.rejected)
+def test_activation_failure_after_retirement_rolls_back_catalog_and_active(engine, monkeypatch):
+    first_construction, first_curriculum = draft_pair()
+    second_construction, second_curriculum = draft_pair(2)
+    with Session(engine) as session:
+        stage(session, first_construction, first_curriculum)
+        ContentPublicationService(session).publish(request(first_construction, first_curriculum), published_at=NOW)
+        stage(session, second_construction, second_curriculum)
+
+        def fail_after_retirement(repository, version_id, published_at):
+            del repository, version_id, published_at
+            catalog = CatalogRepository(session)
+            versions = CurriculumRepository(session, catalog)
+            assert catalog.get_construction(second_construction.id).status is ContentStatus.PUBLISHED
+            assert versions.get(first_curriculum.id).status is CurriculumStatus.RETIRED
+            raise RuntimeError("activation failed after retirement")
+
+        monkeypatch.setattr(CurriculumRepository, "activate_if_draft", fail_after_retirement)
+        with pytest.raises(RuntimeError, match="activation failed after retirement"):
+            ContentPublicationService(session).publish(
+                request(second_construction, second_curriculum), published_at=NOW + timedelta(hours=1))
+    with Session(engine) as session:
+        catalog = CatalogRepository(session)
+        versions = CurriculumRepository(session, catalog)
+        assert catalog.get_construction(second_construction.id).status is ContentStatus.DRAFT
+        assert versions.get(first_curriculum.id).status is CurriculumStatus.ACTIVE
+        assert versions.get(second_curriculum.id).status is CurriculumStatus.DRAFT
 
 
-def test_active_repeat_rejects_new_catalog_ids(db_session) -> None:
-    bundle = _bundle()
-    service = ContentPublicationService(db_session)
-    service.publish(bundle, published_at=NOW)
-    extra = _bundle(construction_id="40000000-0000-4000-8000-000000000002")
-    bundle.constructions += extra.constructions
-    report = service.preflight(bundle, published_at=NOW)
-    assert extra.constructions[0].id in report.changed_ids
-    with pytest.raises(PublicationPreflightError):
-        service.publish(bundle, published_at=NOW)
-    assert CatalogRepository(db_session).get_construction(extra.constructions[0].id) is None
-
-
-def test_preflight_rejects_missing_target_and_hard_cycle(db_session) -> None:
-    service = ContentPublicationService(db_session)
-    missing = _bundle()
-    missing.constructions = ()
-    assert any("missing" in reason for reason in service.preflight(missing, published_at=NOW).rejected)
-
-    cyclic = _bundle()
-    other = _bundle(construction_id="40000000-0000-4000-8000-000000000002")
-    cyclic.constructions += other.constructions
-    second_node = CurriculumNode(
-        id="60000000-0000-4000-8000-000000000002",
-        curriculum_version_id=VERSION_ID,
-        target=TargetSpec(
-            target_kind=TargetKind.CONSTRUCTION,
-            target_id=other.constructions[0].id,
-            capability=Capability.APPLY_CONSTRUCTION,
-            modality=Modality.WRITTEN,
+def test_hard_edge_cycle_preflight_rejects_before_catalog_write(engine):
+    first, curriculum = draft_pair()
+    second, _ = draft_pair()
+    second_target = TargetSpec(TargetKind.CONSTRUCTION, second.id,
+                               Capability.APPLY_CONSTRUCTION, Modality.WRITTEN)
+    first_node = curriculum.nodes[0]
+    second_node = CurriculumNode(id=str(uuid4()), curriculum_version_id=curriculum.id,
+                                 target=second_target, priority=50, outcome_code="A1.test")
+    cycle = CurriculumVersion(
+        id=curriculum.id, curriculum_code=curriculum.curriculum_code,
+        version_number=curriculum.version_number, created_at=curriculum.created_at,
+        nodes=(first_node, second_node), prerequisites=(
+            PrerequisiteEdge(str(uuid4()), curriculum.id, first_node.id,
+                             second_node.id, PrerequisiteKind.HARD),
+            PrerequisiteEdge(str(uuid4()), curriculum.id, second_node.id,
+                             first_node.id, PrerequisiteKind.HARD),
         ),
-        priority=50,
-        outcome_code="A1.synthetic",
     )
-    cyclic.curriculum = CurriculumVersion(
-        id=VERSION_ID, curriculum_code="synthetic-written", version_number=1,
-        created_at=NOW, nodes=(*cyclic.curriculum.nodes, second_node),
-        prerequisites=(
-            PrerequisiteEdge(
-                id="70000000-0000-4000-8000-000000000001",
-                curriculum_version_id=VERSION_ID,
-                prerequisite_node_id=NODE_ID,
-                dependent_node_id=second_node.id,
-                kind=PrerequisiteKind.HARD,
-            ),
-            PrerequisiteEdge(
-                id="70000000-0000-4000-8000-000000000002",
-                curriculum_version_id=VERSION_ID,
-                prerequisite_node_id=second_node.id,
-                dependent_node_id=NODE_ID,
-                kind=PrerequisiteKind.HARD,
-            ),
-        ),
-    )
-    assert any("acyclic" in reason for reason in service.preflight(cyclic, published_at=NOW).rejected)
-    assert db_session.scalars(select(LanguageConstruction.id)).all() == []
+    with Session(engine) as session:
+        catalog = CatalogRepository(session)
+        catalog.add_construction(first)
+        catalog.add_construction(second)
+        CurriculumRepository(session, catalog).add(cycle)
+        session.commit()
+        packet = PublicationRequest(
+            curriculum_version_id=cycle.id, construction_ids=(first.id, second.id),
+            source_item_ids_by_catalog_id={first.id: ("example-1",), second.id: ("example-1",)},
+            source_manifest=source_manifest(),
+        )
+        with pytest.raises(PublicationPreflightError, match="acyclic"):
+            ContentPublicationService(session).publish(packet, published_at=NOW)
+        assert catalog.get_construction(first.id).status is ContentStatus.DRAFT
+        assert catalog.get_construction(second.id).status is ContentStatus.DRAFT
 
 
-def test_failure_before_catalog_write_leaves_no_partial_rows(db_session, monkeypatch) -> None:
-    def fail_add(*_args):
-        raise RuntimeError("injected catalog failure")
+def test_retired_catalog_content_cannot_be_revived(engine):
+    construction, curriculum = draft_pair()
+    retired = construction.publish().retire(policy_decision=RetirementPolicyDecision.ALLOWED)
+    with Session(engine) as session:
+        catalog = CatalogRepository(session)
+        catalog.add_construction(retired)
+        CurriculumRepository(session, catalog).add(curriculum)
+        session.commit()
+        with pytest.raises(PublicationPreflightError, match="only draft content"):
+            ContentPublicationService(session).publish(request(construction, curriculum), published_at=NOW)
+        assert catalog.get_construction(construction.id).status is ContentStatus.RETIRED
 
-    monkeypatch.setattr(CatalogRepository, "add_construction", fail_add)
-    with pytest.raises(RuntimeError, match="injected catalog failure"):
-        ContentPublicationService(db_session).publish(_bundle(), published_at=NOW)
-    assert db_session.scalars(select(LanguageConstruction.id)).all() == []
-    assert ContentPublicationService(db_session).active("synthetic-written") is None
 
-
-def test_activation_failure_rolls_back_catalog_and_keeps_old_active(db_session, monkeypatch) -> None:
+def test_stale_legacy_fingerprint_blocks_lexical_publication(engine):
+    unit_id, sense_id, form_id, version_id = (str(uuid4()) for _ in range(4))
     word = VocabularyItem(
-        serbian_cyrillic="кућа", serbian_latin="kuća", russian_translation="дом",
-        cefr_level="A1", theme="home",
+        serbian_cyrillic="вода", serbian_latin="voda", russian_translation="вода",
+        cefr_level="A1", theme="daily-life",
     )
-    db_session.add(word)
-    db_session.commit()
-    bootstrap_catalog(db_session)
-    mapping_before = CatalogRepository(db_session).get_by_legacy_vocabulary_item_id(word.id)
-    first = _bundle()
-    service = ContentPublicationService(db_session)
-    service.publish(first, published_at=NOW)
-    replacement = _bundle(
-        version_number=2,
-        version_id="50000000-0000-4000-8000-000000000002",
-        construction_id="40000000-0000-4000-8000-000000000002",
-    )
-
-    def fail_activation(*_args, **_kwargs):
-        assert set(db_session.scalars(select(LanguageConstruction.id)).all()) == {
-            CONSTRUCTION_ID, replacement.constructions[0].id,
-        }
-        raise RuntimeError("injected activation failure")
-
-    monkeypatch.setattr(CurriculumRepository, "activate_if_draft", fail_activation)
-    with pytest.raises(RuntimeError, match="injected activation failure"):
-        service.publish(replacement, published_at=NOW + timedelta(hours=1))
-
-    assert service.active("synthetic-written").id == VERSION_ID
-    assert CurriculumRepository(db_session, service.target_resolver).get(replacement.curriculum.id) is None
-    assert db_session.scalars(select(LanguageConstruction.id)).all() == [CONSTRUCTION_ID]
-    assert CatalogRepository(db_session).get_by_legacy_vocabulary_item_id(word.id) == mapping_before
-
-
-def test_preflight_rejects_retired_content_and_keeps_active(db_session) -> None:
-    first = _bundle()
-    service = ContentPublicationService(db_session)
-    service.publish(first, published_at=NOW)
-    record = db_session.get(LanguageConstruction, CONSTRUCTION_ID)
-    record.status = "retired"
-    db_session.commit()
-    replacement = _bundle(
-        version_number=2,
-        version_id="50000000-0000-4000-8000-000000000002",
-    )
-    replacement.constructions = ()
-    report = service.preflight(replacement, published_at=NOW + timedelta(hours=1))
-    assert any("retired" in reason for reason in report.rejected)
-    with pytest.raises(PublicationPreflightError):
-        service.publish(replacement, published_at=NOW + timedelta(hours=1))
-    assert service.active("synthetic-written").id == VERSION_ID
-
-
-def test_preflight_rejects_stale_legacy_mapping(db_session) -> None:
-    word = VocabularyItem(
-        serbian_cyrillic="кућа", serbian_latin="kuća", russian_translation="дом",
-        cefr_level="A1", theme="home",
-    )
-    db_session.add(word)
-    db_session.commit()
-    bootstrap_catalog(db_session)
-    lexical = CatalogRepository(db_session).get_by_legacy_vocabulary_item_id(word.id)
-    assert lexical is not None
-    word.russian_translation = "здание"
-    db_session.commit()
-
-    bundle = _bundle()
-    bundle.constructions = ()
-    bundle.curriculum = CurriculumVersion(
-        id=VERSION_ID, curriculum_code="synthetic-written", version_number=1,
-        created_at=NOW,
-        nodes=(CurriculumNode(
-            id=NODE_ID, curriculum_version_id=VERSION_ID,
-            target=TargetSpec(
-                target_kind=TargetKind.SENSE, target_id=lexical.senses[0].id,
-                capability=Capability.RECOGNIZE_MEANING, modality=Modality.WRITTEN,
-            ), priority=50, outcome_code="A1.synthetic",
-        ),),
-    )
-    bundle.pilot["outcomes"][0]["primary_target"]["id"] = lexical.senses[0].id
-    bundle.examples["examples"][0]["target_ref"] = lexical.senses[0].id
-
-    report = ContentPublicationService(db_session).preflight(bundle, published_at=NOW)
-    assert any("stale" in reason for reason in report.rejected)
-
-
-def test_preflight_rejects_ambiguous_proposed_legacy_mapping(db_session) -> None:
-    word = VocabularyItem(
-        serbian_cyrillic="кућа", serbian_latin="kuća", russian_translation="дом",
-        cefr_level="A1", theme="home",
-    )
-    db_session.add(word)
-    db_session.commit()
-    lexical = _aggregate(word)
-    extra_sense = replace(
-        lexical.senses[0], id="80000000-0000-4000-8000-000000000001"
-    )
-    ambiguous = replace(lexical, senses=(*lexical.senses, extra_sense))
-    sense_id = lexical.senses[0].id
-    bundle = _bundle()
-    bundle.constructions = ()
-    bundle.lexical_units = (ambiguous,)
-    bundle.curriculum = CurriculumVersion(
-        id=VERSION_ID, curriculum_code="synthetic-written", version_number=1,
-        created_at=NOW,
-        nodes=(CurriculumNode(
-            id=NODE_ID, curriculum_version_id=VERSION_ID,
-            target=TargetSpec(
-                target_kind=TargetKind.SENSE, target_id=sense_id,
-                capability=Capability.RECOGNIZE_MEANING, modality=Modality.WRITTEN,
-            ), priority=50, outcome_code="A1.synthetic",
-        ),),
-    )
-    bundle.pilot["outcomes"][0]["primary_target"]["id"] = sense_id
-    bundle.examples["examples"][0]["target_ref"] = sense_id
-    report = ContentPublicationService(db_session).preflight(bundle, published_at=NOW)
-    assert any("ambiguous" in reason for reason in report.rejected)
-
-
-def test_preflight_accepts_fresh_published_form_target(db_session) -> None:
-    word = VocabularyItem(
-        serbian_cyrillic="кућа", serbian_latin="kuća", russian_translation="дом",
-        cefr_level="A1", theme="home",
-    )
-    db_session.add(word)
-    db_session.commit()
-    bootstrap_catalog(db_session)
-    lexical = CatalogRepository(db_session).get_by_legacy_vocabulary_item_id(word.id)
-    assert lexical is not None
-    form_id = lexical.forms[0].id
-    bundle = _bundle()
-    bundle.constructions = ()
-    bundle.curriculum = CurriculumVersion(
-        id=VERSION_ID, curriculum_code="synthetic-written", version_number=1,
-        created_at=NOW,
-        nodes=(CurriculumNode(
-            id=NODE_ID, curriculum_version_id=VERSION_ID,
-            target=TargetSpec(
-                target_kind=TargetKind.FORM, target_id=form_id,
-                capability=Capability.RETRIEVE_FORM, modality=Modality.WRITTEN,
-                condition={"form_kind": "citation"},
-            ), priority=50, outcome_code="A1.synthetic",
-        ),),
-    )
-    bundle.pilot["outcomes"][0]["primary_target"]["id"] = form_id
-    bundle.examples["examples"][0]["target_ref"] = form_id
-    assert ContentPublicationService(db_session).preflight(bundle, published_at=NOW).rejected == ()
-
-    mismatched = TargetSpec(
-        target_kind=TargetKind.FORM, target_id=form_id,
-        capability=Capability.RETRIEVE_FORM, modality=Modality.WRITTEN,
-        condition={"form_kind": "inflected"},
-    )
-    bundle.curriculum = CurriculumVersion(
-        id=VERSION_ID, curriculum_code="synthetic-written", version_number=1,
-        created_at=NOW,
-        nodes=(CurriculumNode(
-            id=NODE_ID, curriculum_version_id=VERSION_ID,
-            target=mismatched, priority=50, outcome_code="A1.synthetic",
-        ),),
-    )
-    assert any(
-        "form kind" in reason
-        for reason in ContentPublicationService(db_session).preflight(bundle, published_at=NOW).rejected
-    )
-
-
-def test_preflight_rejects_unreviewed_examples_linked_to_existing_form(db_session) -> None:
-    word = VocabularyItem(
-        serbian_cyrillic="кућа", serbian_latin="kuća", russian_translation="дом",
-        cefr_level="A1", theme="home",
-        example_sentences="Legacy unreviewed.",
-        example_translations="Старый непроверенный пример.",
-    )
-    db_session.add(word)
-    db_session.commit()
-    bootstrap_catalog(db_session)
-    lexical = CatalogRepository(db_session).get_by_legacy_vocabulary_item_id(word.id)
-    assert lexical is not None
-    form_id = lexical.forms[0].id
-    bundle = _bundle()
-    bundle.constructions = ()
-    bundle.curriculum = CurriculumVersion(
-        id=VERSION_ID, curriculum_code="synthetic-written", version_number=1,
-        created_at=NOW,
-        nodes=(CurriculumNode(
-            id=NODE_ID, curriculum_version_id=VERSION_ID,
-            target=TargetSpec(
-                target_kind=TargetKind.FORM, target_id=form_id,
-                capability=Capability.RETRIEVE_FORM, modality=Modality.WRITTEN,
-                condition={"form_kind": "citation"},
-            ), priority=50, outcome_code="A1.synthetic",
-        ),),
-    )
-    bundle.pilot["outcomes"][0]["primary_target"]["id"] = form_id
-    bundle.examples["examples"][0]["target_ref"] = form_id
-
-    report = ContentPublicationService(db_session).preflight(bundle, published_at=NOW)
-    assert any("catalog example" in reason for reason in report.rejected)
+    with Session(engine) as session:
+        session.add(word)
+        session.flush()
+        unit = LexicalUnit(
+            id=unit_id, kind=EntryKind.WORD, legacy_vocabulary_item_id=word.id,
+            senses=(Sense(sense_id, unit_id, (Gloss("ru", "вода"),)),),
+            forms=(Form(form_id, unit_id, FormKind.CITATION,
+                        (OrthographicForm(Script.CYRILLIC, "вода"),
+                         OrthographicForm(Script.LATIN, "voda"))),),
+        )
+        target = TargetSpec(TargetKind.SENSE, sense_id, Capability.RECOGNIZE_MEANING,
+                            Modality.WRITTEN)
+        draft = CurriculumVersion(
+            id=version_id, curriculum_code="lexical-test", version_number=1,
+            created_at=NOW - timedelta(days=1),
+            nodes=(CurriculumNode(id=str(uuid4()), curriculum_version_id=version_id,
+                                  target=target, priority=50, outcome_code="A1.test"),),
+        )
+        catalog = CatalogRepository(session)
+        catalog.add(unit)
+        CurriculumRepository(session, catalog).add(draft)
+        session.commit()
+        packet = PublicationRequest(
+            curriculum_version_id=version_id, lexical_unit_ids=(unit_id,),
+            source_item_ids_by_catalog_id={unit_id: ("example-1",)},
+            source_manifest=source_manifest(), expected_legacy_fingerprints={word.id: "stale"},
+        )
+        with pytest.raises(PublicationPreflightError, match="stale legacy mapping"):
+            ContentPublicationService(session).publish(packet, published_at=NOW)
+        assert catalog.get(unit_id).status is ContentStatus.DRAFT
+        approved_packet = PublicationRequest(
+            curriculum_version_id=version_id, lexical_unit_ids=(unit_id,),
+            source_item_ids_by_catalog_id={unit_id: ("example-1",)},
+            source_manifest=source_manifest(),
+            expected_legacy_fingerprints={word.id: vocabulary_source_fingerprint(word)},
+        )
+        with pytest.raises(PublicationPreflightError, match="stale legacy mapping"):
+            ContentPublicationService(session).publish(approved_packet, published_at=NOW)
+        session.execute(update(LanguageForm).where(LanguageForm.id == form_id).values(
+            morph_features={"bootstrap": {"source_fingerprint": vocabulary_source_fingerprint(word)}}
+        ))
+        session.commit()
+        ContentPublicationService(session).publish(approved_packet, published_at=NOW)
+        published_unit = catalog.get(unit_id)
+        assert published_unit.status is ContentStatus.PUBLISHED
+        assert published_unit.senses[0].status is ContentStatus.PUBLISHED
+        assert published_unit.forms[0].status is ContentStatus.PUBLISHED
+        assert CurriculumRepository(session, catalog).get(version_id).status is CurriculumStatus.ACTIVE
+        replacement_id = str(uuid4())
+        replacement = CurriculumVersion(
+            id=replacement_id, curriculum_code="lexical-test", version_number=2,
+            created_at=NOW - timedelta(days=1),
+            nodes=(CurriculumNode(id=str(uuid4()), curriculum_version_id=replacement_id,
+                                  target=target, priority=50, outcome_code="A1.test"),),
+        )
+        CurriculumRepository(session, catalog).add(replacement)
+        word.russian_translation = "вода (изменено)"
+        session.commit()
+        existing_packet = PublicationRequest(
+            curriculum_version_id=replacement_id,
+            source_item_ids_by_catalog_id={unit_id: ("example-1",)},
+            source_manifest=source_manifest(),
+            expected_legacy_fingerprints={word.id: vocabulary_source_fingerprint(word)},
+        )
+        with pytest.raises(PublicationPreflightError, match="stale legacy mapping"):
+            ContentPublicationService(session).publish(existing_packet, published_at=NOW + timedelta(hours=1))
+        assert CurriculumRepository(session, catalog).get(version_id).status is CurriculumStatus.ACTIVE
 
 
 @pytest.fixture()
@@ -501,6 +470,7 @@ def postgresql_publication_engine():
     if admin_url.get_backend_name() != "postgresql":
         raise ValueError("SLOVNIK_TEST_POSTGRES_ADMIN_URL must use PostgreSQL")
     database_name = f"slovnik_publication_test_{uuid4().hex}"
+    test_url = admin_url.set(database=database_name)
     admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
     test_engine = None
     created = False
@@ -508,7 +478,7 @@ def postgresql_publication_engine():
         with admin_engine.connect() as connection:
             connection.execute(text(f'CREATE DATABASE "{database_name}"'))
         created = True
-        test_engine = create_engine(admin_url.set(database=database_name))
+        test_engine = create_engine(test_url)
         Base.metadata.create_all(test_engine)
         yield test_engine
     finally:
@@ -516,82 +486,163 @@ def postgresql_publication_engine():
             test_engine.dispose()
         if created:
             with admin_engine.connect() as connection:
-                connection.execute(text(f'DROP DATABASE "{database_name}" WITH (FORCE)'))
+                connection.execute(text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :name AND pid <> pg_backend_pid()"
+                ), {"name": database_name})
+                connection.execute(text(f'DROP DATABASE "{database_name}"'))
         admin_engine.dispose()
 
 
-def test_postgresql_concurrent_identical_publication_is_idempotent(
-    postgresql_publication_engine,
-) -> None:
-    SessionFactory = sessionmaker(bind=postgresql_publication_engine)
-    barrier = threading.Barrier(2)
-
-    def publish() -> str:
-        with SessionFactory() as session:
-            barrier.wait(timeout=10)
-            return ContentPublicationService(session).publish(_bundle(), published_at=NOW).id
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(publish) for _ in range(2)]
-        results = [future.result(timeout=30) for future in futures]
-    assert results == [VERSION_ID, VERSION_ID]
-
-    with SessionFactory() as session:
-        assert ContentPublicationService(session).active("synthetic-written").id == VERSION_ID
-        assert session.scalars(select(LanguageConstruction.id)).all() == [CONSTRUCTION_ID]
-
-
-def test_postgresql_identical_winner_commits_between_preflight_catalog_and_version_reads(
+def test_postgresql_concurrent_publish_has_one_commit_and_retry_is_idempotent(
     postgresql_publication_engine, monkeypatch,
-) -> None:
-    factory = sessionmaker(bind=postgresql_publication_engine)
-    original = CatalogRepository.get_construction
-    with factory() as delayed:
-        committed = False
-
-        def read_and_publish(repository, construction_id):
-            nonlocal committed
-            value = original(repository, construction_id)
-            if repository._session is delayed and value is None and not committed:
-                committed = True
-                with factory() as winner:
-                    ContentPublicationService(winner).publish(_bundle(), published_at=NOW)
-            return value
-
-        monkeypatch.setattr(CatalogRepository, "get_construction", read_and_publish)
-        assert ContentPublicationService(delayed).publish(_bundle(), published_at=NOW).id == VERSION_ID
-        assert committed
-
-
-def test_postgresql_concurrent_activation_of_same_draft_is_idempotent(
-    postgresql_publication_engine, monkeypatch,
-) -> None:
+):
+    construction, curriculum = draft_pair()
+    packet = request(construction, curriculum)
     SessionFactory = sessionmaker(bind=postgresql_publication_engine)
-    bundle = _bundle()
     with SessionFactory() as session:
-        catalog = CatalogRepository(session)
-        catalog.add_construction(bundle.constructions[0])
-        service = ContentPublicationService(session)
-        CurriculumRepository(session, service.target_resolver).add(bundle.curriculum)
-        session.commit()
+        stage(session, construction, curriculum)
 
-    original_activate = CurriculumRepository.activate_if_draft
     barrier = threading.Barrier(2)
+    original_preflight = ContentPublicationService.preflight
 
-    def synchronized_activate(repository, version_id, published_at):
+    def synchronized_preflight(publisher, request, *, published_at):
+        result = original_preflight(publisher, request, published_at=published_at)
         barrier.wait(timeout=10)
-        return original_activate(repository, version_id, published_at)
+        return result
 
-    monkeypatch.setattr(CurriculumRepository, "activate_if_draft", synchronized_activate)
+    monkeypatch.setattr(ContentPublicationService, "preflight", synchronized_preflight)
 
-    def publish() -> str:
+    def attempt():
         with SessionFactory() as session:
-            return ContentPublicationService(session).publish(_bundle(), published_at=NOW).id
+            try:
+                ContentPublicationService(session).publish(packet, published_at=NOW)
+            except ValueError:
+                return "conflict"
+            return "published"
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(publish) for _ in range(2)]
-        results = [future.result(timeout=30) for future in futures]
-    assert results == [VERSION_ID, VERSION_ID]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = [future.result(timeout=30) for future in (pool.submit(attempt), pool.submit(attempt))]
+    monkeypatch.setattr(ContentPublicationService, "preflight", original_preflight)
+    assert sorted(outcomes) == ["conflict", "published"]
 
     with SessionFactory() as session:
-        assert ContentPublicationService(session).active("synthetic-written").id == VERSION_ID
+        active_ids = session.scalars(select(CurriculumVersionRecord.id).where(
+            CurriculumVersionRecord.status == CurriculumStatus.ACTIVE.value
+        )).all()
+        assert active_ids == [curriculum.id]
+        assert CatalogRepository(session).get_construction(construction.id).revision == 2
+        assert ContentPublicationService(session).publish(packet, published_at=NOW).changed_ids == ()
+
+
+def test_child_revision_change_during_lexical_publish_fails_closed(engine, monkeypatch):
+    unit_id, sense_id, form_id = (str(uuid4()) for _ in range(3))
+    unit = LexicalUnit(
+        id=unit_id, kind=EntryKind.WORD,
+        senses=(Sense(sense_id, unit_id, (Gloss("ru", "вода"),)),),
+        forms=(Form(form_id, unit_id, FormKind.CITATION,
+                    (OrthographicForm(Script.CYRILLIC, "вода"),
+                     OrthographicForm(Script.LATIN, "voda"))),),
+    )
+    with Session(engine) as session:
+        catalog = CatalogRepository(session)
+        catalog.add(unit)
+        session.commit()
+        original_get = catalog.get
+
+        def concurrent_child_change(item_id):
+            stale = original_get(item_id)
+            session.execute(update(LanguageForm).where(LanguageForm.id == form_id).values(revision=2))
+            return stale
+
+        monkeypatch.setattr(catalog, "get", concurrent_child_change)
+        with pytest.raises(ValueError, match="form changed before publication"):
+            catalog.publish_lexical_unit_if_draft(unit_id)
+        session.rollback()
+    with Session(engine) as session:
+        assert CatalogRepository(session).get(unit_id).status is ContentStatus.DRAFT
+
+
+def test_new_child_during_lexical_publish_fails_closed(engine, monkeypatch):
+    unit_id, sense_id, form_id, extra_id = (str(uuid4()) for _ in range(4))
+    unit = LexicalUnit(
+        id=unit_id, kind=EntryKind.WORD,
+        senses=(Sense(sense_id, unit_id, (Gloss("ru", "вода"),)),),
+        forms=(Form(form_id, unit_id, FormKind.CITATION,
+                    (OrthographicForm(Script.CYRILLIC, "вода"),
+                     OrthographicForm(Script.LATIN, "voda"))),),
+    )
+    with Session(engine) as session:
+        catalog = CatalogRepository(session)
+        catalog.add(unit)
+        session.commit()
+        original_get = catalog.get
+
+        def insert_child_after_snapshot(item_id):
+            stale = original_get(item_id)
+            session.add(LanguageSense(
+                id=extra_id, lexical_unit_id=unit_id,
+                glosses=[{"language": "ru", "text": "новое"}],
+                notes=None, examples=[], status="draft", revision=1,
+            ))
+            session.flush()
+            return stale
+
+        monkeypatch.setattr(catalog, "get", insert_child_after_snapshot)
+        with pytest.raises(ValueError, match="child set changed before publication"):
+            catalog.publish_lexical_unit_if_draft(unit_id)
+        session.rollback()
+    with Session(engine) as session:
+        assert CatalogRepository(session).get(unit_id).status is ContentStatus.DRAFT
+        assert session.get(LanguageSense, extra_id) is None
+
+
+def test_legacy_word_change_after_preflight_blocks_commit(engine, monkeypatch):
+    unit_id, sense_id, form_id, version_id = (str(uuid4()) for _ in range(4))
+    word = VocabularyItem(
+        serbian_cyrillic="вода", serbian_latin="voda", russian_translation="вода",
+        cefr_level="A1", theme="daily-life",
+    )
+    with Session(engine) as session:
+        session.add(word)
+        session.flush()
+        fingerprint = vocabulary_source_fingerprint(word)
+        unit = LexicalUnit(
+            id=unit_id, kind=EntryKind.WORD, legacy_vocabulary_item_id=word.id,
+            senses=(Sense(sense_id, unit_id, (Gloss("ru", "вода"),)),),
+            forms=(Form(form_id, unit_id, FormKind.CITATION,
+                        (OrthographicForm(Script.CYRILLIC, "вода"),
+                         OrthographicForm(Script.LATIN, "voda")),
+                        morph_features={"bootstrap": {"source_fingerprint": fingerprint}}),),
+        )
+        target = TargetSpec(TargetKind.SENSE, sense_id, Capability.RECOGNIZE_MEANING,
+                            Modality.WRITTEN)
+        draft = CurriculumVersion(
+            id=version_id, curriculum_code="late-edit", version_number=1,
+            created_at=NOW - timedelta(days=1),
+            nodes=(CurriculumNode(id=str(uuid4()), curriculum_version_id=version_id,
+                                  target=target, priority=50, outcome_code="A1.test"),),
+        )
+        catalog = CatalogRepository(session)
+        catalog.add(unit)
+        CurriculumRepository(session, catalog).add(draft)
+        session.commit()
+        packet = PublicationRequest(
+            curriculum_version_id=version_id, lexical_unit_ids=(unit_id,),
+            source_item_ids_by_catalog_id={unit_id: ("example-1",)},
+            source_manifest=source_manifest(),
+            expected_legacy_fingerprints={word.id: fingerprint},
+        )
+        original_preflight = ContentPublicationService.preflight
+
+        def late_edit(publisher, request, *, published_at):
+            report = original_preflight(publisher, request, published_at=published_at)
+            session.execute(update(VocabularyItem).where(VocabularyItem.id == word.id).values(
+                russian_translation="изменено"))
+            return report
+
+        monkeypatch.setattr(ContentPublicationService, "preflight", late_edit)
+        with pytest.raises(PublicationPreflightError, match="stale legacy mapping"):
+            ContentPublicationService(session).publish(packet, published_at=NOW)
+        session.rollback()
+        assert catalog.get(unit_id).status is ContentStatus.DRAFT

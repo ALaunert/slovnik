@@ -3,7 +3,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 import test_local_practice_api as pilot_tests
-import test_content_publication as publication_tests
+import test_reviewed_pilot_publication as publication_tests
 
 from app.domain_models.practice import ActivityInstanceModel
 from app.services import local_practice_service
@@ -112,7 +112,7 @@ def test_postgresql_parallel_runs_share_one_issuance_budget(postgresql_publicati
     from threading import Barrier
     from sqlalchemy.orm import Session
     from app.models import UserProfile
-    from app.services.content_publication_service import ContentPublicationService
+    from app.services.reviewed_pilot_publication_service import ContentPublicationService
     from app.services.reviewed_pilot_pack import load_reviewed_pilot_bundle
     from app.services.local_practice_service import LocalPracticeService
     monkeypatch.setattr(local_practice_service, "WORKLOAD", replace(local_practice_service.WORKLOAD, new_limit=1))
@@ -164,7 +164,7 @@ def test_postgresql_submit_waits_for_profile_before_locking_run(postgresql_publi
     from sqlalchemy.orm import Session
     from app.models import UserProfile
     from app.repositories.practice import PracticeRepository
-    from app.services.content_publication_service import ContentPublicationService
+    from app.services.reviewed_pilot_publication_service import ContentPublicationService
     from app.services.reviewed_pilot_pack import load_reviewed_pilot_bundle
     from app.services.local_practice_service import LocalPracticeService
     run_id = str(uuid4())

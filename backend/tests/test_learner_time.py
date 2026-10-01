@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 import test_local_practice_api as pilot_tests
-import test_content_publication as publication_tests
+import test_reviewed_pilot_publication as publication_tests
 
 UTC = timezone.utc
 pilot_client = pilot_tests.pilot_client
@@ -229,7 +229,7 @@ def test_postgresql_timezone_change_serializes_with_issuance(postgresql_publicat
     from sqlalchemy.orm import Session
     from app.models import UserProfile
     from app.repositories.practice import PracticeRepository
-    from app.services.content_publication_service import ContentPublicationService
+    from app.services.reviewed_pilot_publication_service import ContentPublicationService
     from app.services.reviewed_pilot_pack import load_reviewed_pilot_bundle
     from app.services.local_practice_service import LocalPracticeService
     from app.domain_models.practice import ActivityInstanceModel
@@ -266,4 +266,3 @@ def test_postgresql_timezone_change_serializes_with_issuance(postgresql_publicat
         report = future.result(timeout=5)
         assert report["window"]["transition"] is True
         assert report["issued"]["total"] == 1
-

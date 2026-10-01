@@ -6,7 +6,7 @@
   "version_number": 1,
   "version_id": "3082e687-db28-5774-82a8-4f709a592cd7",
   "created_at": "2026-09-30T12:00:00+00:00",
-  "pilot_file": "curricula/a1-pilot/manifest.json",
+  "pilot_file": "curricula/a1-pilot/written-manifest.json",
   "bank_file": "examples/a1-written-v1.json",
   "sources_file": "sources/a1-written-v1.json",
   "pilot_digest": "e55fefb0c50185e8889ef6eabe0baa821e922c81dc7d3217ffe0b400afdd69ab",

@@ -364,6 +364,7 @@ def test_curriculum_orm_matches_sql_01_and_round_trips_a_draft_graph() -> None:
             "created_at",
             "published_at",
             "retired_at",
+            "publication_request_fingerprint",
         },
         "curriculum_nodes": {
             "id",

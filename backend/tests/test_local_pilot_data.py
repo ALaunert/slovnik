@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import select
 
 import test_local_practice_api as pilot_tests
-import test_content_publication as publication_tests
+import test_reviewed_pilot_publication as publication_tests
 from app.domain_models.practice import ActivityInstanceModel, LearningEventModel, PracticeRunModel
 from app.domain_models.progress import LearnerTargetStateModel
 from app.models import UserProfile
@@ -61,7 +61,7 @@ def test_postgresql_local_erasure_with_linked_repair_preserves_legacy_data(postg
     from app.config import settings
     from app.local_pilot_data import delete_local_practice
     from app.models import UserWordProgress, VocabularyItem
-    from app.services.content_publication_service import ContentPublicationService
+    from app.services.reviewed_pilot_publication_service import ContentPublicationService
     from app.services.local_practice_service import LocalPracticeService
     from app.services.reviewed_pilot_pack import load_reviewed_pilot_bundle
     monkeypatch.setattr(settings, "local_pilot_enabled", True)

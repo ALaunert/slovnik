@@ -1,20 +1,4 @@
 {
   "schema_version": 1,
-  "sources": [
-    {
-      "id": "slovnik-draft-pilot-2026-09",
-      "source_type": "authored",
-      "item_id": "p0-05-draft-examples",
-      "author": "Slovnik editorial draft",
-      "release": null,
-      "checksum": null,
-      "source_url": null,
-      "attribution": "Slovnik editorial draft, 2026-09-25",
-      "rights": {
-        "text": {"status": "unknown", "uses": ["analysis"]},
-        "translation": {"status": "unknown", "uses": ["analysis"]},
-        "audio": {"status": "unknown", "uses": []}
-      }
-    }
-  ]
+  "sources": []
 }

@@ -1,420 +1,284 @@
-"""Preflight and atomically publish a reviewed file-backed content bundle."""
+"""Caller-owned transaction for catalog publication and curriculum activation.
+
+This is an infrastructure seam for a future reviewed pack. It does not publish the
+file-backed synthetic pilot fixtures or infer editorial approval from database state.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field as dataclass_field
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
+import hashlib
+import json
+from pathlib import Path
 from typing import Any
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.domain.catalog import (
-    Construction,
-    ContentStatus,
-    FormKind,
-    LexicalUnit,
-    UsageExample,
-)
-from app.domain.curriculum import CurriculumStatus, CurriculumVersion
+from app.domain.catalog import ContentStatus, FormKind
+from app.domain.curriculum import CurriculumStatus
 from app.domain.shared import TargetKind
-from app.domain.target import TargetSpec
-from app.domain_models.catalog import (
-    LanguageConstruction,
-    LanguageForm,
-    LanguageLexicalUnit,
-    LanguageSense,
-)
+from app.domain_models.catalog import LanguageForm, LanguageSense
+from app.domain_models.curriculum import CurriculumVersionRecord
 from app.models import VocabularyItem
-from app.pilot_examples import validate_pilot_examples
 from app.repositories.catalog import CatalogRepository
 from app.repositories.curriculum import CurriculumRepository
-from app.services.catalog_mapping_service import (
-    CatalogMappingError,
-    resolve_catalog_mapping,
-    vocabulary_source_fingerprint,
-)
+from app.services.catalog_mapping_service import vocabulary_source_fingerprint
 from app.services.curriculum_service import (
     CurriculumActivationConflict,
     CurriculumService,
-    _replacement_retired_at,
+    _is_one_active_conflict,
 )
+from app.source_manifest import validate_manifest, verify_source_artifact
 
 
-@dataclass
-class PublicationBundle:
-    curriculum: CurriculumVersion
-    sources: dict[str, Any]
-    pilot: dict[str, Any]
-    examples: dict[str, Any]
-    lexical_units: tuple[LexicalUnit, ...] = ()
-    constructions: tuple[Construction, ...] = ()
-    target_mapping: dict[str, str] = dataclass_field(default_factory=dict)
+SOURCE_MANIFEST_ROOT = Path(__file__).resolve().parents[3] / "content" / "sources"
+
+
+def _request_fingerprint(request: PublicationRequest) -> str:
+    payload = {
+        "schema_version": 1,
+        "curriculum_version_id": request.curriculum_version_id,
+        "source_manifest": request.source_manifest,
+        "source_item_ids_by_catalog_id": {
+            key: sorted(value) for key, value in sorted(request.source_item_ids_by_catalog_id.items())
+        },
+        "lexical_unit_ids": sorted(request.lexical_unit_ids),
+        "construction_ids": sorted(request.construction_ids),
+        "expected_legacy_fingerprints": {
+            str(key): value for key, value in sorted(request.expected_legacy_fingerprints.items())
+        },
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _artifact_errors(request: PublicationRequest) -> list[str]:
+    source_ids = {
+        source_id
+        for linked in request.source_item_ids_by_catalog_id.values()
+        for source_id in linked
+    }
+    errors: list[str] = []
+    for source in request.source_manifest.get("sources", []):
+        if not isinstance(source, dict):
+            continue
+        if not any(isinstance(item, dict) and item.get("item_id") in source_ids
+                   for item in source.get("items", [])):
+            continue
+        artifact = source.get("artifact")
+        if not isinstance(artifact, dict) or not artifact.get("path") or not artifact.get("sha256"):
+            continue
+        error = verify_source_artifact(source, SOURCE_MANIFEST_ROOT)
+        if error is not None:
+            errors.append(f"source {source.get('source_id')}: {error}")
+    return errors
 
 
 @dataclass(frozen=True)
-class PublicationPreflightReport:
+class PublicationRequest:
+    curriculum_version_id: str
+    source_manifest: dict[str, Any]
+    source_item_ids_by_catalog_id: dict[str, tuple[str, ...]]
+    lexical_unit_ids: tuple[str, ...] = ()
+    construction_ids: tuple[str, ...] = ()
+    expected_legacy_fingerprints: dict[int, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PublicationPreflight:
     changed_ids: tuple[str, ...]
     rejected: tuple[str, ...]
 
 
 class PublicationPreflightError(ValueError):
-    def __init__(self, report: PublicationPreflightReport) -> None:
+    def __init__(self, report: PublicationPreflight) -> None:
         self.report = report
-        super().__init__("; ".join(report.rejected))
-
-
-def _same_definition(existing: CurriculumVersion, proposed: CurriculumVersion) -> bool:
-    return (
-        existing.id == proposed.id
-        and existing.curriculum_code == proposed.curriculum_code
-        and existing.version_number == proposed.version_number
-        and existing.created_at == proposed.created_at
-        and existing.nodes == proposed.nodes
-        and existing.prerequisites == proposed.prerequisites
-    )
-
-
-def _catalog_example_errors(
-    target_id: str,
-    examples: tuple[object, ...],
-    reviewed: set[tuple[str, str, str]],
-) -> list[str]:
-    return [
-        f"{target_id}: catalog example has no matching reviewed text, translation and rights"
-        for example in examples
-        if not isinstance(example, UsageExample)
-        or (target_id, example.serbian_text, example.translation) not in reviewed
-    ]
-
-
-class _PublicationTargetResolver:
-    def __init__(
-        self,
-        session: Session,
-        lexical_units: tuple[LexicalUnit, ...] = (),
-        constructions: tuple[Construction, ...] = (),
-    ) -> None:
-        self._session = session
-        self._senses = {
-            sense.id: (unit, sense.status)
-            for unit in lexical_units
-            for sense in unit.senses
-        }
-        self._forms = {
-            form.id: (unit, form)
-            for unit in lexical_units
-            for form in unit.forms
-        }
-        self._constructions = {item.id: item for item in constructions}
-
-    def is_published(self, target: TargetSpec) -> bool:
-        return self.reason(target) is None
-
-    def reason(self, target: TargetSpec) -> str | None:
-        if target.target_kind is TargetKind.CONSTRUCTION:
-            candidate = self._constructions.get(target.target_id)
-            if candidate is not None:
-                status = candidate.status
-            else:
-                record = self._session.get(LanguageConstruction, target.target_id)
-                status = ContentStatus(record.status) if record else None
-            return None if status is ContentStatus.PUBLISHED else f"{target.target_id}: missing or retired construction"
-
-        if target.target_kind not in {TargetKind.SENSE, TargetKind.FORM}:
-            return f"{target.target_id}: unsupported target kind"
-        candidate = (
-            self._senses.get(target.target_id)
-            if target.target_kind is TargetKind.SENSE
-            else self._forms.get(target.target_id)
-        )
-        if candidate is not None:
-            unit, content = candidate
-            content_status = (
-                content if target.target_kind is TargetKind.SENSE else content.status
-            )
-            if unit.status is not ContentStatus.PUBLISHED or content_status is not ContentStatus.PUBLISHED:
-                return f"{target.target_id}: unpublished or retired target"
-            if (
-                target.target_kind is TargetKind.FORM
-                and target.condition.get("form_kind") != content.form_kind.value
-            ):
-                return f"{target.target_id}: form kind mismatch"
-            legacy_id = unit.legacy_vocabulary_item_id
-            if legacy_id is None:
-                return None
-            word = self._session.get(VocabularyItem, legacy_id)
-            if word is None:
-                return f"{target.target_id}: missing legacy source"
-            published_senses = [
-                sense for sense in unit.senses
-                if sense.status is ContentStatus.PUBLISHED
-            ]
-            citation_forms = [
-                form for form in unit.forms
-                if form.status is ContentStatus.PUBLISHED
-                and form.form_kind in {FormKind.CITATION, FormKind.FIXED}
-            ]
-            if len(published_senses) != 1 or len(citation_forms) != 1:
-                return f"{target.target_id}: ambiguous legacy mapping"
-            if (
-                target.target_kind is TargetKind.SENSE
-                and published_senses[0].id != target.target_id
-            ):
-                return f"{target.target_id}: ambiguous legacy mapping"
-            fingerprint = citation_forms[0].morph_features.get("bootstrap", {}).get("source_fingerprint")
-            if fingerprint != vocabulary_source_fingerprint(word):
-                return f"{target.target_id}: stale legacy mapping"
-            return None
-
-        record_type = (
-            LanguageSense if target.target_kind is TargetKind.SENSE else LanguageForm
-        )
-        record = self._session.get(record_type, target.target_id)
-        if record is None or record.status != ContentStatus.PUBLISHED.value:
-            return f"{target.target_id}: missing or retired target"
-        if (
-            target.target_kind is TargetKind.FORM
-            and target.condition.get("form_kind") != record.form_kind
-        ):
-            return f"{target.target_id}: form kind mismatch"
-        unit = self._session.get(LanguageLexicalUnit, record.lexical_unit_id)
-        if unit is None or unit.status != ContentStatus.PUBLISHED.value:
-            return f"{target.target_id}: missing or retired lexical unit"
-        if unit.legacy_vocabulary_item_id is None:
-            return None
-        try:
-            mapping = resolve_catalog_mapping(
-                self._session,
-                unit.legacy_vocabulary_item_id,
-                capability=target.capability,
-            )
-        except CatalogMappingError as exc:
-            return f"{target.target_id}: {exc.reason} legacy mapping"
-        if (
-            target.target_kind is TargetKind.SENSE
-            and mapping.target.target_id != target.target_id
-        ):
-            return f"{target.target_id}: ambiguous legacy mapping"
-        return None
+        super().__init__("publication preflight rejected: " + "; ".join(report.rejected))
 
 
 class ContentPublicationService:
     def __init__(self, session: Session) -> None:
         self._session = session
         self._catalog = CatalogRepository(session)
-        self.target_resolver = _PublicationTargetResolver(session)
+        self._curriculum = CurriculumRepository(session, self._catalog)
 
-    def active(self, curriculum_code: str) -> CurriculumVersion | None:
-        return CurriculumRepository(self._session, self.target_resolver).get_active_by_code(
-            curriculum_code
-        )
+    def preflight(self, request: PublicationRequest, *, published_at: datetime) -> PublicationPreflight:
+        rejected: list[str] = []
+        draft = self._curriculum.get(request.curriculum_version_id)
+        catalog_ids = (*request.lexical_unit_ids, *request.construction_ids)
+        if len(catalog_ids) != len(set(catalog_ids)):
+            rejected.append("duplicate catalog id in request")
+        if draft is None:
+            rejected.append(f"curriculum missing: {request.curriculum_version_id}")
+        elif draft.status is CurriculumStatus.RETIRED:
+            rejected.append("retired curriculum cannot be reactivated")
 
-    def preflight(
-        self, bundle: PublicationBundle, *, published_at: datetime
-    ) -> PublicationPreflightReport:
-        errors = validate_pilot_examples(
-            bundle.examples, bundle.pilot, bundle.sources, publication=True
-        )
-        if not bundle.examples.get("examples"):
-            errors.append("reviewed examples missing")
-        curriculum = bundle.curriculum
-        if curriculum.status is not CurriculumStatus.DRAFT:
-            errors.append("proposed curriculum must be a draft")
-        targets = {node.target.target_id for node in curriculum.nodes}
-        editorial_targets = {
-            outcome.get("primary_target", {}).get("id")
-            for outcome in bundle.pilot.get("outcomes", [])
-        }
-        if set(bundle.target_mapping) - editorial_targets:
-            errors.append("target mapping contains an unused editorial key")
-        if len(set(bundle.target_mapping.values())) != len(bundle.target_mapping):
-            errors.append("target mapping merges distinct editorial targets")
-        for outcome in bundle.pilot.get("outcomes", []):
-            target_id = outcome.get("primary_target", {}).get("id")
-            if bundle.target_mapping.get(target_id, target_id) not in targets:
-                errors.append(f"{outcome.get('id')}: primary target absent from curriculum")
-        for example in bundle.examples.get("examples", []):
-            target_ref = example.get("target_ref")
-            if bundle.target_mapping.get(target_ref, target_ref) not in targets:
-                errors.append(f"{example.get('id')}: example target absent from curriculum")
-            for field in ("translation_status", "answer_policy_status"):
-                if example.get(field) != "internally_checked":
-                    errors.append(f"{example.get('id')}: {field} is not internally checked")
-        reviewed = {
-            (bundle.target_mapping.get(item["target_ref"], item["target_ref"]),
-             item["text"], item["translation"])
-            for item in bundle.examples.get("examples", [])
-            if item.get("role") == "practice"
-            and item.get("review", {}).get("status") == "internally_checked"
-            and item.get("translation_status") == "internally_checked"
-            and item.get("answer_policy_status") == "internally_checked"
-            and all(key in item for key in ("target_ref", "text", "translation"))
-        }
+        referenced_lexical: set[str] = set()
+        referenced_construction: set[str] = set()
+        if draft is not None:
+            for node in draft.nodes:
+                target = node.target
+                if target.target_kind is TargetKind.CONSTRUCTION:
+                    referenced_construction.add(target.target_id)
+                else:
+                    record_type = (LanguageSense if target.target_kind is TargetKind.SENSE
+                                   else LanguageForm)
+                    record = self._session.get(record_type, target.target_id)
+                    if record is None:
+                        rejected.append(f"unresolved target owner: {target.target_id}")
+                    else:
+                        referenced_lexical.add(record.lexical_unit_id)
+        if set(request.lexical_unit_ids) - referenced_lexical:
+            rejected.append("unrelated catalog id in lexical publication request")
+        if set(request.construction_ids) - referenced_construction:
+            rejected.append("unrelated catalog id in construction publication request")
+        referenced_ids = referenced_lexical | referenced_construction
+        if set(request.source_item_ids_by_catalog_id) - referenced_ids:
+            rejected.append("unrelated catalog id in source mapping")
+        if draft is not None and draft.status is CurriculumStatus.ACTIVE:
+            version_record = self._session.get(CurriculumVersionRecord, draft.id)
+            if (version_record is None
+                    or version_record.publication_request_fingerprint != _request_fingerprint(request)):
+                rejected.append("publication request differs from active version")
+            if (set(request.lexical_unit_ids) != referenced_lexical
+                    or set(request.construction_ids) != referenced_construction):
+                rejected.append("active curriculum repeat must name its referenced catalog owners")
+            for node in draft.nodes:
+                if not self._catalog.is_published(node.target):
+                    rejected.append(f"active curriculum target is not published: {node.target.target_id}")
 
-        changed: list[str] = []
-        for unit in bundle.lexical_units:
-            if unit.status is not ContentStatus.PUBLISHED:
-                errors.append(f"{unit.id}: catalog unit is not published")
-            existing = self._catalog.get(unit.id)
-            if existing is None:
-                changed.append(unit.id)
-            elif existing != unit:
-                errors.append(f"{unit.id}: existing catalog ID has different content")
-            for sense in unit.senses:
-                errors.extend(_catalog_example_errors(sense.id, sense.examples, reviewed))
-        proposed_codes: set[str] = set()
-        for construction in bundle.constructions:
-            if construction.status is not ContentStatus.PUBLISHED:
-                errors.append(f"{construction.id}: construction is not published")
-            if construction.code in proposed_codes:
-                errors.append(f"{construction.id}: duplicate proposed construction code")
-            proposed_codes.add(construction.code)
-            code_owner = self._session.scalar(select(LanguageConstruction.id).where(
-                LanguageConstruction.code == construction.code
-            ))
-            if code_owner is not None and code_owner != construction.id:
-                errors.append(f"{construction.id}: construction code already belongs to {code_owner}")
-            existing = self._catalog.get_construction(construction.id)
-            if existing is None:
-                changed.append(construction.id)
-            elif existing != construction:
-                errors.append(f"{construction.id}: existing construction ID has different content")
-            errors.extend(_catalog_example_errors(construction.id, construction.examples, reviewed))
-
-        resolver = _PublicationTargetResolver(
-            self._session, bundle.lexical_units, bundle.constructions
-        )
-        for node in curriculum.nodes:
-            reason = resolver.reason(node.target)
-            if reason is not None:
-                errors.append(reason)
-            if node.target.target_kind is TargetKind.CONSTRUCTION and not any(
-                item.id == node.target.target_id for item in bundle.constructions
-            ):
-                existing_construction = self._catalog.get_construction(node.target.target_id)
-                if existing_construction is not None:
-                    errors.extend(_catalog_example_errors(
-                        existing_construction.id, existing_construction.examples, reviewed
-                    ))
-            if node.target.target_kind in {TargetKind.SENSE, TargetKind.FORM} and not any(
-                node.target.target_id == target.id
-                for unit in bundle.lexical_units
-                for target in (
-                    unit.senses if node.target.target_kind is TargetKind.SENSE else unit.forms
+        candidate_targets: set[tuple[TargetKind, str]] = set()
+        for item_id in sorted(referenced_lexical):
+            unit = self._catalog.get(item_id)
+            if unit is None:
+                rejected.append(f"lexical unit missing: {item_id}")
+                continue
+            should_publish = item_id in request.lexical_unit_ids and draft is not None and draft.status is CurriculumStatus.DRAFT
+            if should_publish:
+                try:
+                    unit.publish()
+                except ValueError as error:
+                    rejected.append(f"lexical unit {item_id}: {error}")
+                else:
+                    candidate_targets.update((TargetKind.SENSE, sense.id) for sense in unit.senses)
+                    candidate_targets.update((TargetKind.FORM, form.id) for form in unit.forms)
+            elif unit.status is not ContentStatus.PUBLISHED:
+                rejected.append(f"referenced lexical unit is not published: {item_id}")
+            legacy_id = unit.legacy_vocabulary_item_id
+            if legacy_id is not None:
+                expected = request.expected_legacy_fingerprints.get(legacy_id)
+                word = self._session.scalar(
+                    select(VocabularyItem).where(VocabularyItem.id == legacy_id)
+                    .execution_options(populate_existing=True)
                 )
-            ):
-                record_type = (
-                    LanguageSense if node.target.target_kind is TargetKind.SENSE
-                    else LanguageForm
-                )
-                target_record = self._session.get(record_type, node.target.target_id)
-                if target_record is not None:
-                    existing_unit = self._catalog.get(target_record.lexical_unit_id)
-                    if existing_unit is not None:
-                        linked_senses = (
-                            tuple(sense for sense in existing_unit.senses if sense.id == node.target.target_id)
-                            if node.target.target_kind is TargetKind.SENSE
-                            else existing_unit.senses
-                        )
-                        for sense in linked_senses:
-                            errors.extend(_catalog_example_errors(
-                                node.target.target_id, sense.examples, reviewed
-                            ))
-        if curriculum.status is CurriculumStatus.DRAFT:
+                citation_forms = tuple(form for form in unit.forms if form.form_kind in
+                                       (FormKind.CITATION, FormKind.FIXED))
+                bootstrap = (citation_forms[0].morph_features.get("bootstrap")
+                             if len(citation_forms) == 1 else None)
+                stored = bootstrap.get("source_fingerprint") if isinstance(bootstrap, Mapping) else None
+                if (expected is None or word is None or len(unit.senses) != 1
+                        or stored != expected or vocabulary_source_fingerprint(word) != expected):
+                    rejected.append(f"stale legacy mapping: {item_id}")
+        for item_id in sorted(referenced_construction):
+            construction = self._catalog.get_construction(item_id)
+            if construction is None:
+                rejected.append(f"construction missing: {item_id}")
+                continue
+            should_publish = item_id in request.construction_ids and draft is not None and draft.status is CurriculumStatus.DRAFT
+            if should_publish:
+                try:
+                    construction.publish()
+                except ValueError as error:
+                    rejected.append(f"construction {item_id}: {error}")
+                else:
+                    candidate_targets.add((TargetKind.CONSTRUCTION, item_id))
+            elif construction.status is not ContentStatus.PUBLISHED:
+                rejected.append(f"referenced construction is not published: {item_id}")
+
+        source_ids = set()
+        for item_id in sorted(referenced_ids):
+            linked = request.source_item_ids_by_catalog_id.get(item_id, ())
+            if not linked:
+                rejected.append(f"source item missing for catalog content: {item_id}")
+            source_ids.update(linked)
+        rejected.extend(validate_manifest(
+            request.source_manifest,
+            requested_uses={"redistribution", "adaptation"},
+            requested_item_ids=source_ids,
+            requested_materials={"text", "translation"},
+        ))
+        for source in request.source_manifest.get("sources", []):
+            for source_item in source.get("items", []):
+                if source_item.get("item_id") in source_ids:
+                    for material in ("text", "translation"):
+                        if material not in source_item.get("materials", {}):
+                            rejected.append(f"source {material} rights missing: {source_item['item_id']}")
+        rejected.extend(_artifact_errors(request))
+
+        if draft is not None and draft.status is CurriculumStatus.DRAFT:
             try:
-                published = curriculum.publish(
+                draft.publish(
                     published_at=published_at,
-                    target_is_published=resolver.is_published,
+                    target_is_published=lambda target: self._catalog.is_published(target)
+                    or (target.target_kind, target.target_id) in candidate_targets,
                 )
-            except ValueError as exc:
-                errors.append(str(exc))
-            else:
-                active = self.active(curriculum.curriculum_code)
-                if active is not None and active.id != curriculum.id:
-                    try:
-                        _replacement_retired_at(active, published)
-                    except ValueError as exc:
-                        errors.append(str(exc))
+                active = self._curriculum.get_active_by_code(draft.curriculum_code)
+                if active is not None:
+                    if draft.version_number <= active.version_number:
+                        rejected.append("replacement version_number must increase")
+                    if active.published_at is not None and published_at < active.published_at:
+                        rejected.append("replacement cannot predate active publication")
+            except ValueError as error:
+                rejected.append(f"curriculum {draft.id}: {error}")
+        changed = (() if draft is not None and draft.status is CurriculumStatus.ACTIVE else
+                   (*sorted(request.lexical_unit_ids), *sorted(request.construction_ids),
+                    request.curriculum_version_id))
+        return PublicationPreflight(changed_ids=changed, rejected=tuple(rejected))
 
-        repository = CurriculumRepository(self._session, resolver)
-        existing_version = repository.get(curriculum.id)
-        if existing_version is None:
-            changed.append(curriculum.id)
-        elif not _same_definition(existing_version, curriculum):
-            errors.append(f"{curriculum.id}: existing curriculum ID has different content")
-        elif existing_version.status is CurriculumStatus.RETIRED:
-            errors.append(f"{curriculum.id}: retired version cannot be republished")
-        elif existing_version.status is CurriculumStatus.DRAFT:
-            changed.append(curriculum.id)
-        elif changed:
-            # Under READ COMMITTED another publisher can commit its complete
-            # atomic bundle between the catalog reads and this version read.
-            # Recheck actual rows before treating an earlier absence as a new ID.
-            current_missing = []
-            for unit in bundle.lexical_units:
-                current = self._catalog.get(unit.id)
-                if current is None:
-                    current_missing.append(unit.id)
-                elif current != unit:
-                    errors.append(f"{unit.id}: existing catalog ID has different content")
-            for construction in bundle.constructions:
-                current = self._catalog.get_construction(construction.id)
-                if current is None:
-                    current_missing.append(construction.id)
-                elif current != construction:
-                    errors.append(f"{construction.id}: existing construction ID has different content")
-            changed = current_missing
-            if changed:
-                errors.append(f"{curriculum.id}: active version cannot accept new catalog IDs")
-
-        return PublicationPreflightReport(tuple(sorted(set(changed))), tuple(sorted(set(errors))))
-
-    def publish(self, bundle: PublicationBundle, *, published_at: datetime) -> CurriculumVersion:
-        report = self.preflight(bundle, published_at=published_at)
+    def publish(self, request: PublicationRequest, *, published_at: datetime) -> PublicationPreflight:
+        report = self.preflight(request, published_at=published_at)
         if report.rejected:
             raise PublicationPreflightError(report)
-        curriculum = bundle.curriculum
-        repository = CurriculumRepository(self._session, self.target_resolver)
-        existing = repository.get(curriculum.id)
-        if existing is not None and existing.status is CurriculumStatus.ACTIVE:
-            return existing
+        if not report.changed_ids:
+            return report
         try:
-            for unit in bundle.lexical_units:
-                if self._catalog.get(unit.id) is None:
-                    self._catalog.add(unit)
-            for construction in bundle.constructions:
-                if self._catalog.get_construction(construction.id) is None:
-                    self._catalog.add_construction(construction)
+            artifact_errors = _artifact_errors(request)
+            if artifact_errors:
+                raise PublicationPreflightError(PublicationPreflight(
+                    changed_ids=(), rejected=tuple(artifact_errors),
+                ))
+            # Recheck after preflight. The PostgreSQL row locks acquired here remain
+            # held through activation; populate_existing avoids a stale identity map.
+            for legacy_id, expected in sorted(request.expected_legacy_fingerprints.items()):
+                word = self._session.scalar(
+                    select(VocabularyItem).where(VocabularyItem.id == legacy_id)
+                    .with_for_update().execution_options(populate_existing=True)
+                )
+                if word is None or vocabulary_source_fingerprint(word) != expected:
+                    raise PublicationPreflightError(PublicationPreflight(
+                        changed_ids=(), rejected=(f"stale legacy mapping: {legacy_id}",)
+                    ))
+            for item_id in request.lexical_unit_ids:
+                self._catalog.publish_lexical_unit_if_draft(item_id)
+            for item_id in request.construction_ids:
+                self._catalog.publish_construction_if_draft(item_id)
             self._session.flush()
-            if existing is None:
-                repository.add(curriculum)
-                self._session.flush()
-            published = CurriculumService(
-                self._session, self.target_resolver
-            ).publish_in_transaction(curriculum.id, published_at=published_at)
+            CurriculumService(self._session, self._catalog).publish_in_transaction(
+                request.curriculum_version_id, published_at=published_at,
+            )
+            version_record = self._session.get(CurriculumVersionRecord, request.curriculum_version_id)
+            assert version_record is not None
+            version_record.publication_request_fingerprint = _request_fingerprint(request)
             self._session.commit()
-            return published
-        except (IntegrityError, CurriculumActivationConflict):
+            return report
+        except IntegrityError as error:
             self._session.rollback()
-            retry_report = self.preflight(bundle, published_at=published_at)
-            winner = self.active(curriculum.curriculum_code)
-            if (
-                not retry_report.rejected
-                and winner is not None
-                and winner.id == curriculum.id
-                and _same_definition(winner, curriculum)
-                and all(
-                    self._catalog.get(unit.id) == unit
-                    for unit in bundle.lexical_units
-                )
-                and all(
-                    self._catalog.get_construction(item.id) == item
-                    for item in bundle.constructions
-                )
-            ):
-                return winner
+            if _is_one_active_conflict(error):
+                raise CurriculumActivationConflict("another curriculum version became active") from error
             raise
         except Exception:
             self._session.rollback()

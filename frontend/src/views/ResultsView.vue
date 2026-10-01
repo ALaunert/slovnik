@@ -2,11 +2,12 @@
 import { computed } from "vue";
 import { RouterLink } from "vue-router";
 
+import type { QuizCompletion } from "../api/client";
 import { messages } from "../i18n/messages";
 import { sessionStore } from "../stores/session";
 
 const emptyResults = { score: 0, total_questions: 0, weak_word_ids: [], mistakes: [] };
-const results = computed(() => {
+const results = computed<QuizCompletion & { quizType?: string }>(() => {
   const raw = sessionStorage.getItem("slovnik.quizResults");
   if (!raw) return emptyResults;
   try {
@@ -16,8 +17,21 @@ const results = computed(() => {
   }
 });
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
+const breakdownStatus = computed(() => results.value.first_attempt_status ?? (
+  results.value.breakdown_status === "available"
+    ? results.value.first_attempt_eligible === 0 ? "not_measured" : "available"
+    : "unavailable"
+));
+const hasBreakdown = computed(() =>
+  results.value.result_version === 2 &&
+  (breakdownStatus.value === "available" || breakdownStatus.value === "not_measured") &&
+  typeof results.value.first_attempt_correct === "number" &&
+  typeof results.value.first_attempt_eligible === "number" &&
+  typeof results.value.recovered_objective_items === "number" &&
+  typeof results.value.self_report_remembered === "number" &&
+  typeof results.value.self_report_total === "number",
+);
 const title = computed(() => (results.value.quizType === "weekly" ? copy.value.weeklyResults : copy.value.results));
-const hasBreakdown = computed(() => results.value.result_version === 2 && results.value.breakdown_status === "available");
 
 function questionTypeLabel(questionType: string) {
   if (questionType === "sr_to_ru_choice") return copy.value.srToRuChoice;
@@ -37,14 +51,18 @@ function questionTypeLabel(questionType: string) {
       <div><strong>{{ results.total_questions }}</strong><span>{{ copy.questionCount }}</span></div>
       <div><strong>{{ results.weak_word_ids.length }}</strong><span>{{ copy.weakWordCount }}</span></div>
     </section>
-    <section class="panel stack">
-      <p>{{ copy.practiceScoreNote }}</p>
+    <p class="muted">{{ copy.practiceScoreNote }}</p>
+    <section class="panel stack" aria-label="evidence-breakdown">
+      <h2>{{ copy.resultBreakdown }}</h2>
       <p v-if="results.answer_key_status === 'legacy'">{{ copy.legacyKeyNote }}</p>
-      <h2>{{ copy.breakdownTitle }}</h2>
       <p v-if="!hasBreakdown">{{ copy.breakdownUnavailable }}</p>
       <template v-else>
-        <p>{{ copy.firstAnswer }}: {{ results.first_attempt_eligible > 0 ? `${results.first_attempt_correct} / ${results.first_attempt_eligible}` : copy.notMeasured }}</p>
-        <p>{{ copy.recoveredOnRetry }}: {{ results.recovered_objective_items }}</p>
+        <p>
+          {{ copy.firstUnaided }}:
+          <span v-if="breakdownStatus === 'not_measured'">{{ copy.notMeasured }}</span>
+          <span v-else>{{ results.first_attempt_correct }} / {{ results.first_attempt_eligible }}</span>
+        </p>
+        <p>{{ copy.recoveredAfterError }}: {{ results.recovered_objective_items }}</p>
         <p>{{ copy.selfRatedRemembered }}: {{ results.self_report_remembered }} / {{ results.self_report_total }}</p>
       </template>
     </section>
@@ -55,7 +73,7 @@ function questionTypeLabel(questionType: string) {
           <strong>{{ mistake.prompt }}</strong>
           <span>{{ copy.mistakeAnswer }}: {{ mistake.answer }}</span>
           <span>{{ copy.correctAnswer }}: {{ mistake.correct_answer }}</span>
-          <span>{{ copy.mistakeType }}: {{ questionTypeLabel(mistake.question_type) }}</span>
+          <span>{{ copy.mistakeType }}: {{ questionTypeLabel(String(mistake.question_type ?? "")) }}</span>
         </li>
       </ul>
     </section>

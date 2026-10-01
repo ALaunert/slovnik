@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def _bank():
     pack = json.loads((ROOT / "content/curricula/a1-pilot/examples.json").read_text())
-    pilot = json.loads((ROOT / "content/curricula/a1-pilot/manifest.json").read_text())
-    sources = json.loads((ROOT / "content/sources/manifest.json").read_text())
+    pilot = json.loads((ROOT / "content/curricula/a1-pilot/written-manifest.json").read_text())
+    sources = json.loads((ROOT / "content/sources/written-pilot-manifest.json").read_text())
     pack["schema_version"] = 2
     pack["publication_decision"] = {"status": "pending_owner"}
     for item in pack["examples"]:
@@ -131,7 +131,7 @@ def test_review_export_is_sorted_and_includes_context_keys_and_open_gate() -> No
 
 def _checked_files():
     return tuple(json.loads((ROOT / path).read_text()) for path in (
-        "content/examples/a1-written-v1.json", "content/curricula/a1-pilot/manifest.json",
+        "content/examples/a1-written-v1.json", "content/curricula/a1-pilot/written-manifest.json",
         "content/sources/a1-written-v1.json",
     ))
 
@@ -241,7 +241,7 @@ def test_cli_exports_review_and_refuses_unapproved_bank(tmp_path) -> None:
     export = tmp_path / "review.md"
     command = [sys.executable, "-m", "app.reviewed_example_bank",
                str(ROOT / "content/examples/a1-written-v1.json"),
-               "--pilot", str(ROOT / "content/curricula/a1-pilot/manifest.json"),
+               "--pilot", str(ROOT / "content/curricula/a1-pilot/written-manifest.json"),
                "--sources", str(ROOT / "content/sources/a1-written-v1.json")]
     result = subprocess.run([*command, "--review-export", str(export)], capture_output=True, text=True)
     assert result.returncode == 0

@@ -240,11 +240,12 @@ class QuizCompleteRead(BaseModel):
     total_questions: int
     weak_word_ids: list[int]
     mistakes: list[dict]
-    answer_key_status: Literal["frozen", "legacy"]
     result_version: Literal[2]
+    first_attempt_correct: int = Field(ge=0)
+    first_attempt_eligible: int = Field(ge=0)
+    first_attempt_status: Literal["available", "not_measured", "unavailable"]
+    recovered_objective_items: int = Field(ge=0)
+    self_report_remembered: int = Field(ge=0)
+    self_report_total: int = Field(ge=0)
+    answer_key_status: Literal["frozen", "legacy"]
     breakdown_status: Literal["available", "unavailable"]
-    first_attempt_correct: int | None
-    first_attempt_eligible: int | None
-    recovered_objective_items: int | None
-    self_report_remembered: int | None
-    self_report_total: int | None
