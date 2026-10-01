@@ -31,6 +31,7 @@ def _is_deterministic_response(event: LearningEventView) -> bool:
         _wire_value(getattr(event, "event_type", None)) == "response_evaluated"
         and _wire_value(getattr(event, "evaluation_source", None))
         == "deterministic"
+        and _wire_value(getattr(event, "evaluation_outcome", None)) != "unresolved"
     )
 
 

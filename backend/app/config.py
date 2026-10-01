@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.6-luna"
     openai_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
     language_assistant_shadow_enabled: bool = False
+    local_pilot_enabled: bool = False
     language_assistant_shadow_data_lifecycle_ready: bool = False
     language_assistant_shadow_trusted_identity_ready: bool = False
 

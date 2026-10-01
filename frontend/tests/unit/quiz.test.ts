@@ -169,4 +169,15 @@ describe("QuizView", () => {
     expect(completeQuiz).toHaveBeenCalledWith("learner-1", 22);
     expect(routerPush).toHaveBeenCalledWith("/results");
   });
+  it("renders a sparse quiz without a choice question", async () => {
+    vi.mocked(startQuiz).mockResolvedValueOnce({
+      attempt_id: 15,
+      quiz_type: "daily",
+      questions: [{ word_id: 1, question_type: "ru_to_sr_typing", prompt: "вода", choices: [] }],
+    });
+    const wrapper = mount(QuizView);
+    await flushPromises();
+    expect(wrapper.find('input[aria-label="Ответ"]').exists()).toBe(true);
+    expect(wrapper.findAll(".choice-grid button")).toHaveLength(0);
+  });
 });

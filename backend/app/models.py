@@ -88,6 +88,10 @@ class UserProfile(Base):
     preferred_level: Mapped[str] = mapped_column(String(2), nullable=False, default="A1")
     daily_new_word_count: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     ui_language: Mapped[str] = mapped_column(String(8), nullable=False, default="ru")
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False, default="UTC", server_default="UTC")
+    previous_timezone: Mapped[str] = mapped_column(String(80), nullable=False, default="UTC", server_default="UTC")
+    timezone_change_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    timezone_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

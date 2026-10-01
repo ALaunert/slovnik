@@ -52,7 +52,7 @@ def main() -> None:
     known_cases = set(matrix["cases"])
     for row in matrix["routes"]:
         assert set(row["cases"]) <= known_cases, row
-        if row["scope"] in {"profile", "progress", "quiz"}:
+        if row["scope"] in {"profile", "progress", "quiz", "practice"}:
             assert {"owner", "anonymous", "foreign", "expired", "revoked"} <= set(row["cases"]), row
         if row["scope"] == "editor":
             assert {"learner-editor", "forged-role", "expired", "revoked"} <= set(row["cases"]), row

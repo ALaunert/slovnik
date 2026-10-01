@@ -1,6 +1,10 @@
 # Learning-system implementation plan: P0–P3
 
-Status: approved implementation in progress. Checklist marks verified work; unmarked tasks are pending or externally gated. The plan itself is not evidence that any unmarked task has shipped. Based on the [roadmap](roadmap.md), [review](review.md), [research](research.md), [Serbian resource register](serbian-resources.md), [learning model](learning-model.md), [content pipeline](content-pipeline.md), [audit](audit.md), and current repository. The roadmap's parent IDs and priorities are preserved. Letter suffixes split a parent milestone into independently verifiable work. A conditional task is complete as **not triggered** only when its named trigger was checked and the decision recorded.
+Status: P0 implementation checked on 2026-09-25; the execution checklist below records implemented P1 engineering and P2-03 learner-local days as of 2026-10-01. Human research/data gates and other P2–P3 decisions remain open or outside scope; docs/product-state.md is the canonical current audit. This plan is not itself an authorization or evidence that later roadmap tasks shipped. Based on the [roadmap](roadmap.md), [review](review.md), [research](research.md), [Serbian resource register](serbian-resources.md), [learning model](learning-model.md), [content pipeline](content-pipeline.md), [audit](audit.md), and current repository. The roadmap's parent IDs and priorities are preserved. Letter suffixes split a parent milestone into independently verifiable work. A conditional task is complete as **not triggered** only when its named trigger was checked and the decision recorded.
+
+P0 checkpoint: the eight P0 cards below were checked against files and tests. Backend Ruff/full pytest and frontend unit/type/build passed; PostgreSQL-gated backend cases were skipped without `SLOVNIK_TEST_POSTGRES_ADMIN_URL`. Matching Chromium was installed later and all six Playwright tests passed. The written pilot, source permissions and examples remain drafts; no pilot curriculum activation, public practice route, new content table or scheduler was added. The P1 publication gate remains the recorded internal source, language, answer and rights decisions in `solo-development-readiness.md`.
+
+Decision update (2026-09-25): external teacher approval is no longer planned. Use the [internal source-based content gate](solo-development-readiness.md) for P1 publication; engineering P0 work can start without a content sign-off. Any older teacher-approval wording in this plan is superseded by this decision and does not establish an independent review claim.
 
 ## Implementation principles
 
@@ -21,26 +25,26 @@ Status: approved implementation in progress. Checklist marks verified work; unma
 - [x] P0-08 — unbiased valid choices
 - [x] P0-03 — first-attempt result breakdown
 - [x] P0-06 — read-only evidence diagnostics
-- [ ] P1-03a — reviewed example bank
-- [ ] P1-03b — independent example persistence, if triggered
+- [x] P1-03a — reviewed example bank (editorial-hour metric unavailable by owner decision)
+- [x] P1-03b — independent example persistence not triggered
 - [x] P1-04a — atomic publication boundary
-- [ ] P1-04b — reviewed pack activation
-- [ ] P1-05a — bounded answer policy
-- [ ] P1-05b — gated backend lifecycle
-- [ ] P1-05c — Vue practice flow
-- [ ] P1-06a — linked repair evidence
-- [ ] P1-06b — reviewed feedback UI
-- [ ] P1-08a — selector and budget policy
-- [ ] P1-08b — workload and stop UI
-- [ ] P1-09a — supervised local flow
+- [x] P1-04b — reviewed pack activation in local PostgreSQL
+- [x] P1-05a — bounded answer policy (internal reference set; no independent human gold)
+- [x] P1-05b — gated backend lifecycle; live operation scope bounded to reviewed Construction tasks
+- [x] P1-05c — Vue practice flow; exposure selection and failed-resume recovery checked
+- [x] P1-06a — immutable linked repair; first result retained, projector v1 unchanged
+- [x] P1-06b — reviewed support/repair UI with durable disclosure and recovery
+- [x] P1-08a — versioned UTC issuance ceilings, new opportunity and valid fallback
+- [x] P1-08b — honest workload counts, stop/resume and new-session recovery
+- [x] P1-09a — real loopback browser flow and bounded local-data deletion
 - [ ] P1-09b — consented probe protocol/export
 - [ ] P1-09c — pilot evaluation/report
-- [ ] P2-01a — identity decision/threat model (`blocked_external`: provider/deployment, credential/session, editor authority and independent legacy-claim proof decisions)
+- [ ] P2-01a — identity decision/threat model
 - [ ] P2-01b — ownership integration
 - [ ] P2-02a — lifecycle policy decision
 - [ ] P2-02b — authenticated owner export
 - [ ] P2-02c — deletion and retention
-- [ ] P2-03 — local days and workload
+- [x] P2-03 — local days and workload (human workload comparison remains a pilot measurement)
 - [ ] P2-04a — reviewed audio assets
 - [ ] P2-04b — listening activity/evidence
 - [ ] P2-05a — routines/past pack, if measured gap
@@ -56,52 +60,6 @@ Status: approved implementation in progress. Checklist marks verified work; unma
 - [ ] P3-02b — LLM response-review trial
 - [ ] P3-03a — sequencing simulation
 - [ ] P3-03b — controlled sequencing trial, if justified
-
-## Execution record (2026-09-24; review fixes 2026-09-25)
-
-- P0-01: frozen v1 evidence definitions and six hand-reconciled invented histories; 5 eligible first attempts, 4 first successes, 1 repair, 1 assisted success, 1 self-rating, 1 unresolved answer and 1 delayed new-context success. The fixture consistency, quiz and projection tests passed (42 passed, 1 skipped).
-- P0-04: file-backed source manifest and use-specific rights validator; no actual source is marked approved. Authored, corpus, translation, audio, attribution, checksum and path-safety tests passed (13 passed). Human rights review remains necessary for real sources.
-- P0-06: read-only v1 classifier and adapter distinguish first unaided, confirmed recovery, unverified retry, assisted, self-report, exposure, unresolved and unknown evidence. Mixed first/final verdicts and hints without proven timing stay unknown; recovery requires an incorrect linked parent; delayed probes require a prior known context and explicit held-out marker. Frozen fixture and projection/shadow regressions passed (42 passed, 2 skipped). No projector, public API or scheduler behavior changed.
-
-- P0-07: four-outcome written pilot/holdout manifest and editorial brief remain provisional. Manifest validation, reference, rubric, cycle and family-separation tests passed (7 passed). Serbian L2 approval is a P1 publication gate.
-- P0-02: newly issued quiz plans carry private v1 answer keys; grading, self-check reveal and mistake corrections use issued content, while old plans retain legacy behavior. Quiz/shadow regressions passed (42 passed, 1 skipped).
-- P0-05: eight synthetic, explicitly unpublishable example/answer fixtures and a contract decision cover scripts, target spans, variants, context/source references, normalization and holdout leakage. Publish validation checks the pilot manifest, approved source-backed outcome/role coverage and exact assessment-answer exposure inside visible input/practice text, translations or answer variants at token boundaries; semantic paraphrase separation still needs editorial review. The unchanged draft passes draft checks and fails publish checks. The P1-03b example-table trigger was checked and is not demonstrated by these fixtures.
-- P0-08: multiple-choice construction normalizes/deduplicates labels, searches beyond duplicate candidates in bounded batches, omits an invalid choice item with fewer than two distinct options, and uses fresh issuance randomness rather than a fixed word-ID seed. Quiz/shadow and frontend quiz regressions passed; semantic distractor review remains editorial.
-- P0-03: completion response v2 keeps the legacy mixed practice score and adds separate first objective attempts, successful repair count and subjective remembered ratings. Legacy/mixed answer-key plans report unavailable; zero objective denominator reports not measured. Backend quiz/shadow tests passed (56 passed, 1 skipped); all 87 frontend unit tests and Vue typecheck passed. Old cached results display their practice score with unavailable breakdown.
-- P1-04a: caller-owned catalog/curriculum publication stages draft content and retirement/activation in one transaction. Preflight resolves referenced owners, written rights, graph/target validity and unrelated IDs; commit rechecks legacy fingerprints and pinned artifact bytes. A stored request fingerprint restricts active retries to matching provenance. Parent locking, final child-set checks and migration guards reject child insertion, moves into/out of non-draft parents, child/parent deletion, reverse parent-status transitions and child status drift. Published-to-retired remains permitted; direct SQL payload edits and unsynchronized direct SQL retirement are outside this guard contract. Fault injection and migration tests protect rollback. The 2026-09-25 follow-up backend run passed 805 tests with disposable PostgreSQL integration enabled; Ruff passed. The synthetic pilot is still inactive.
-
-- P2-01a preparation: identity ADR, 20-route ownership inventory and seven synthetic linking scenarios are recorded in `docs/adr/ADR-production-identity-and-legacy-linking-2026-09-24.md`; the executable inventory check passed. Provider, deployment, credential/session, editor role and independent legacy-claim proof choices remain an external decision. P2-01b is not eligible until that gate closes.
-
-## Ready-to-resume gates (2026-09-24)
-
-The P0 fixtures and pilot brief are review inputs, not approved learning content. P1-03a preparation stopped when automatic approval review rejected a new review-packet test as outside its interpreted authorization; the existing synthetic contract and editorial brief remain available for a qualified reviewer. No rights or educator approval has been inferred.
-
-A [separate AI-provisional private revision contract](a1-private-prototype-brief.md) now narrows authoring to four written tasks, one target each, Latin only and one immediate candidate assessment family per outcome. Its 16 family IDs are reserved slots, not authored items. It does not clear P1-03a, P1-04b, rights, human review or delayed-probe gates; the P0 manifest and eight synthetic fixtures remain test-only. Next: author a separate candidate pack with public prompts/private keys, verify source and language decisions, then run draft preflight without activation.
-
-| Task | Status | Exact resume condition |
-| --- | --- | --- |
-| P1-03a | `blocked_external` | Qualified Serbian L2 reviewer approves the four-outcome/holdout brief; source text and translation rights are documented item by item, then examples receive recorded bilingual review. |
-| P1-03b | `pending_conditional` | After P1-03a, demonstrate a concrete cross-target reuse or independently governed withdrawal that file-backed revisions cannot handle; otherwise record not triggered. |
-| P1-04b | `blocked_external` | P1-03a and P1-04a complete, any P1-03b trigger resolved, educator/rights approvals recorded, then preflight and activate a reviewed pack. |
-| P1-05a, P1-05b, P1-05c | `blocked_dependency` | Reviewed P1-04b content/answer variants and the preceding task in this chain are available. |
-| P1-06a, P1-06b | `blocked_dependency` | P1-05b event lifecycle, then P1-05c UI and linked-repair evidence are available. |
-| P1-08a, P1-08b | `blocked_dependency` | P1-05b selector lifecycle, then P1-05c UI and P1-08a policy are available. |
-| P1-09a | `blocked_dependency` | P1-04b, P1-05c, P1-06b and P1-08b pass the supervised loopback gate. |
-| P1-09b | `blocked_dependency` | P1-09a local flow and explicit consent/retention review before human answers; freeze probes/export before observations. |
-| P1-09c | `awaiting_real_world_evaluation` | P1-09b protocol, recruited consenting participants, elapsed 7/28-day windows and blinded Serbian L2 raters. |
-| P2-01a | `blocked_external` | Product owner selects provider/deployment, credential and session validation/logout, editor authority, and independent proof for claiming legacy records; review the prepared identity ADR/matrix. |
-| P2-01b | `blocked_dependency` | Approved P2-01a identity and legacy-linking decision. |
-| P2-02a | `blocked_external` | P1-09b local consent/export design plus product/legal/operations decisions on jurisdiction, retention, deletion and backup periods. |
-| P2-02b, P2-02c | `blocked_dependency` | Approved P2-02a policy and P2-01b ownership; deletion additionally needs owner export and backup operations. |
-| P2-03 | `blocked_dependency` | P1-08a stable workload policy; coordinate additive timezone profile migration with P2-01b. |
-| P2-04a, P2-04b | `awaiting_real_world_evaluation` | P1-09c feasibility and rights-cleared speaker recordings with human audio review; then add modality evidence after P1-05b. |
-| P2-05a, P2-05b, P2-05c | `pending_conditional` | P1-09c measures the respective outcome gap; if present, obtain educator/rights approval and publish serially after P1-04b. Otherwise record not triggered. |
-| P2-06, P2-07 | `pending_conditional` | P1-09c documents a form or context/frequency gap, with source/output rights and bounded resource budget; otherwise record not triggered. |
-| P2-08a, P2-08b | `awaiting_real_world_evaluation` | P1-06a stable repair evidence and P1-09c pilot data permit shadow comparison; activate only after a reviewed threshold/rollout decision. |
-| P3-01a, P3-01b | `awaiting_real_world_evaluation` | P1-09c longitudinal consented data and P2-02a lifecycle policy permit offline calibration; a prospective trial additionally needs favorable offline results and an approved protocol. |
-| P3-02a | `blocked_external` | P1-03a reviewed examples, rights-cleared experimental inputs and independent human gold decisions. |
-| P3-02b | `blocked_external` | P1-05a deterministic scorer, P2-02a consent for response text and independent human gold answers. |
-| P3-03a, P3-03b | `awaiting_real_world_evaluation` | P1-08a selector logs, P1-09c pilot data and reviewed contrast contexts permit offline simulation; a trial additionally needs a feasible result and approved protocol. |
 
 ## Complete inventory and dependency graph
 
@@ -161,7 +119,7 @@ P3-03a <- P1-08a,P1-09c      P3-03b? <- P3-03a,P2-01b,P2-02c
 ## Ordered execution sequence
 
 1. **P0 foundation:** P0-01 first; start P0-04 independently; then P0-07→P0-05 and P0-02→P0-08→P0-03; run P0-06 after P0-01. Checkpoint P0 before publishing anything.
-2. **P1 content:** obtain Serbian L2 educator approval of the proposed pilot crosswalk; deliver P1-03a, decide P1-03b from P0-05's recorded trigger, deliver P1-04a, then P1-04b. Do not make P2 lexicon/corpus trials blockers.
+2. **P1 content:** record the internal source-based decision on the proposed pilot crosswalk; deliver P1-03a, decide P1-03b from P0-05's recorded trigger, deliver P1-04a, then P1-04b. Do not make P2 lexicon/corpus trials blockers.
 3. **P1 practice:** P1-05a→P1-05b; then P1-05c and P1-06a; then P1-06b and P1-08a; then P1-08b. Close usability and scoring defects before local enrollment.
 4. **P1 evaluation:** P1-09a→P1-09b→P1-09c, allowing the specified 7-/28-day observation windows. Feasibility and results checkpoint precedes decisions about expansion, readiness and models.
 5. **P2 production and breadth:** P2-01a→P2-01b and P2-02a→P2-02b→P2-02c are the public-history gate. P2-03 may run alongside them. P2-04a→P2-04b is a separate listening lane. Select and publish P2-05a/b/c in the order the pilot gaps support. Run P2-06/07 only for a documented candidate gap. P2-08a precedes any justified P2-08b; public release also waits for identity/lifecycle and content gates.
@@ -191,20 +149,20 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 - **Goal:** define four proposed communicative outcomes and what an unseen assessment would measure before creating content storage.
 - **Why:** a finite task/rubric contract prevents a word list or technical seed from becoming an unsupported CEFR syllabus.
 - **Dependencies:** P0-01.
-- **Affected repository parts:** proposed `content/curricula/a1-pilot/manifest.json` and a short editorial brief; consult `backend/app/domain/curriculum.py`, `backend/app/services/curriculum_service.py`, `backend/app/seed.py` and `docs/learning/learning-model.md`.
+- **Affected repository parts:** proposed `content/curricula/a1-pilot/written-manifest.json` and a short editorial brief; consult `backend/app/domain/curriculum.py`, `backend/app/services/curriculum_service.py`, `backend/app/seed.py` and `docs/learning/learning-model.md`.
 - **Expected schema/API changes:** none; draft file format records outcome ID, CEFR edition/scale/page, written task and rubric, primary target/capability, script conditions, proposed hard/soft edges and held-out prompt family. Use soft-only edges if no hard prerequisite is defensible.
 - **Migration:** none; do not replace the technical seed or publish a curriculum.
-- **Acceptance criteria:** personal details, request, price information and location information each map to input, practice and a separate assessment family; no outcome implies oral or complete A1 competence. All mappings and sequencing are marked provisional pending a Serbian L2 educator's approval before P1 publication.
+- **Acceptance criteria:** personal details, request, price information and location information each map to input, practice and a separate assessment family; no outcome implies oral or complete A1 competence. All mappings and sequencing are marked provisional pending a recorded internal source-based decision before P1 publication.
 - **Tests:** validate unique IDs, resolvable draft references, acyclic proposed hard edges and absence of practice/holdout family overlap; editorial checklist checks each outcome's rubric and scope.
 - **Complexity:** medium.
-- **Risk / research uncertainty:** the four outcomes, stage order and CEFR crosswalk are product hypotheses. Draft completion needs no teacher approval; P1 publication does. Avoid treating seed edges as pedagogical evidence.
+- **Risk / research uncertainty:** the four outcomes, stage order and CEFR crosswalk are product hypotheses. P1 publication needs the internal content gate, which cannot establish independent pedagogical validity. Avoid treating seed edges as pedagogical evidence.
 
 #### P0-04 — Add a minimal source and rights manifest
 
 - **Goal:** make source identity, permitted uses and attribution reviewable before any new pilot material is published.
 - **Why:** corpus/container permissions do not establish rights for every source text, translation or recording.
 - **Dependencies:** none; can follow P0-07 to use its source cases.
-- **Affected repository parts:** proposed `content/sources/`, one focused validator under `backend/app/`, and `backend/tests/test_content_provenance.py`; use the [resource register](serbian-resources.md).
+- **Affected repository parts:** proposed `content/sources/`, one focused validator under `backend/app/`, and `backend/tests/test_written_content_provenance.py`; use the [resource register](serbian-resources.md).
 - **Expected schema/API changes:** versioned file schema only, with source/release/checksum when applicable, item/document IDs, separate text/translation/audio rights, intended uses, attribution, evidence URL or agreement, reviewer and date. No HTTP endpoint or source database.
 - **Migration:** none; do not relabel legacy or AI-generated text as approved source content.
 - **Acceptance criteria:** unknown permission blocks only the relevant publication use; analysis-only material remains usable for approved analysis; authored material points to an author agreement. Attribution output is deterministic for an approved fixture pack.
@@ -282,16 +240,18 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 #### P1-03a — Curate a reviewed pilot example bank
 
 - **Objective / why:** supply publishable, contextual Serbian/Russian material for the four P0-07 outcomes. Commissioned original sentences suffice; a Tatoeba extraction is optional only after direct-pair and item-rights checks.
-- **Dependencies:** P0-04, P0-05, P0-07; qualified Serbian L2 approval of the outcome/holdout brief before approving examples.
+- **Dependencies:** P0-04, P0-05, P0-07; recorded internal source-based decision on the outcome/holdout brief before approving examples.
+- **Completion decision (2026-09-30):** the [brief decision](../../content/curricula/a1-pilot/brief-decision.md) and [eight-item bank/journal](../../content/examples/a1-written-v1-decision.md) have internal source-based language, translation, answer, rights and owner checks; publication validation passes. The owner did not time the review and explicitly accepted closing this card with accepted/excluded/unresolved counts but no per-hour rates. This is a measured-information gap, not a zero rate. No pack is activated. The eight P0 fixtures remain drafts.
 - **Components:** `content/examples/`, `content/sources/`, P0 fixture validator and review export; consult `backend/app/domain/catalog.py`. No learner-facing service.
 - **Schema/API/domain:** file-backed reviewed example revisions with original/display text, script, translation provenance, context-family/duplicate cluster, target and answer-policy references, register, reviewer decisions and source permissions. No HTTP or DB change by default.
 - **Migration:** none. Keep `VocabularyItem` bilingual blobs and embedded `UsageExample` readable; do not auto-pair lines. If independent reuse/withdrawal is proven, invoke P1-03b.
 - **Acceptance:** every published candidate has a traceable rights decision and Serbian/Russian review of naturalness, target alignment, answerability and variants; assessment families are isolated. Document reviewer disagreement, exclusions and editing time; source imports never become approved automatically.
-- **Tests / measurement:** validator rejects missing permission/review, ambiguous target, private data, fragment, duplicate/transliteration leakage and unstable re-import IDs. Report accepted examples per review hour and reviewer agreement, with denominators.
+- **Tests / measurement:** validator rejects missing permission/review, ambiguous target, private data, fragment, duplicate/transliteration leakage and unstable re-import IDs. Report accepted, excluded and unresolved examples per review hour, with denominators; no independent reviewer agreement is available.
 - **Complexity:** medium. **Risk / uncertainty:** direct-pair yield and editorial cost are unknown; authored examples can cover the pilot without corpus machinery.
 
 #### P1-03b — Persist examples independently, only if required
 
+- **Final trigger decision (2026-09-30):** the [new bank decision](../../content/examples/a1-written-v1-decision.md) demonstrates no cross-target reuse or independent withdrawal requirement. P1-03b is complete as **not triggered**; no table is added. Reopen only for evidence of separately governed reuse or withdrawal.
 - **Objective / why:** allow the *same* reviewed example revision to be reused and withdrawn across multiple published targets when P0-05/P1-03a demonstrate that embedded examples plus pack files cannot do so safely.
 - **Dependencies:** P1-03a; recorded evidence of cross-target reuse or independently governed withdrawal. If absent, record “not triggered” and use file-backed revisions.
 - **Components:** `backend/app/domain/catalog.py`, `backend/app/domain_models/catalog.py`, catalog repository/service, Alembic migration, catalog tests and publication preflight.
@@ -315,6 +275,7 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 #### P1-04b — Publish the reviewed written pilot pack
 
 - **Objective / why:** connect reviewed outcomes, catalog targets, contextual input and assessment into one reproducible optional pack.
+- **Completion (2026-09-30):** [revision v1 and coverage decision](../../content/curricula/a1-pilot/publication-decision.md) pin four catalog task patterns, eight reviewed examples and rights. Explicit editorial-key → revisioned UUID mapping preserves the approved bank. Disposable SQLite and PostgreSQL tests passed. Preflight against the previously empty local PostgreSQL database reported five additions and no rejection; atomic activation created `slovnik-written-a1` revision 1. Repeated publication was idempotent, and assessment text was absent from the catalog. No public practice route or remote learner access was enabled.
 - **Dependencies:** P1-03a, P1-04a, P1-03b if triggered; educator/rights approval. P2-06/07 are not prerequisites.
 - **Components:** `content/curricula/a1-pilot/`, catalog and curriculum services, publication CLI/service, `backend/tests/test_curriculum.py` and content validator.
 - **Schema/API/domain:** versioned pack manifest pins outcome codes, CEFR edition/scale/page, source/example revisions, target/capability, answer policies, hard/soft edges, practice and holdout families. Use existing catalog/curriculum records and active-revision mechanism; add no manifest table without a replay need.
@@ -326,6 +287,13 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 #### P1-05a — Implement a bounded deterministic answer policy
 
 - **Objective / why:** score reviewed controlled answers without making an unbounded grammar-checking claim.
+- **2026-09-30 scope decision:** the owner directed the project to check the answer cases internally
+  and stop requesting post-by-post owner labels. The checked-in 20-case fixture is source/context
+  reviewed, pinned to the approved bank and explicitly marked `human_gold: false`. This closes
+  the bounded engineering scorer under that direction, with an explicit deviation from the
+  originally specified human-labeled test set. Its constructed-case error counts cannot be
+  reported as human-gold or learner-population rates. A later pilot evaluation needs separate
+  consented human labels before any empirical false-accept/reject claim.
 - **Dependencies:** P0-02, P0-05, P0-06, P0-08, P1-04b.
 - **Components:** proposed `backend/app/services/answer_policy.py`, `backend/app/domain/practice.py`, scoring fixtures/tests; no HTTP route.
 - **Schema/API/domain:** versioned reviewed answer-policy record pins accepted variants, script conditions, target span and primary capability; pure evaluator returns correct/incorrect/unresolved with bounded error category and evaluation source. Keep private key server-side and existing operation enum.
@@ -336,6 +304,13 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 
 #### P1-05b — Add a gated practice API and immutable snapshots
 
+- **2026-10-01 bounded operation decision:** internal Astra review under the owner's
+  autonomous-review direction confirmed the approved pack only contains Construction /
+  apply_construction targets. Live issuance uses COMPLETE for the reviewed form and
+  TRANSFORM for the other unchanged contextual tasks, plus exposure. All four generic
+  operation contracts remain supported, but RECOGNIZE/RETRIEVE issuance requires
+  separately reviewed Sense targets/keys. This explicitly narrows the all-four live
+  operation acceptance criterion; it supplies no additional human language validation.
 - **Objective / why:** expose contextual activity lifecycle using existing `ActivitySpec`, `PracticeService` and selector contracts, with direct-write safety.
 - **Dependencies:** P1-05a.
 - **Components:** `backend/app/domain/practice.py`, `backend/app/domain/selection_policy.py`, `backend/app/services/practice_service.py`, proposed `routers/practice.py`, `backend/app/main.py`, practice/selector API tests.
@@ -413,6 +388,11 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 
 #### P1-09b — Freeze consented delayed-probe protocol and export
 
+- **Engineering preparation (2026-10-01):** synthetic-only source export v2, frozen balanced
+  assignment, observer reconciliation, per-probe reason report, random-ID/shuffled blind packet,
+  separate rating checks and private eight-file build/verify/remove CLI are implemented and checked.
+  Source fields/workload remain minimized; no product evidence is written. Real consent/retention/
+  custodian review and blinded human rubric agreement remain open, so the task is not checked off.
 - **Objective / why:** measure independent delayed recall and unseen written task transfer without contaminating live progression.
 - **Dependencies:** P0-01, P0-07, P1-09a; explicit local consent/retention review before collecting human answers.
 - **Components:** `docs/testing/learning-evaluation.md`, heldout pack fixtures, versioned research export utility under `backend/app/`, tests; separate restricted research dataset for human rubrics.
@@ -438,6 +418,7 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 #### P2-01a — Decide production identity and legacy-linking policy
 
 - **Objective / why:** `userId` is currently a caller-supplied identifier, not proof of ownership. A production identity mechanism and migration policy must be chosen before code integration.
+- **Scope decision (2026-09-30):** the owner wants authentication outside the current development scope. P2-01a remains deferred; this does not authorize remote learner histories. Revisit provider, deployment, legacy linking and the full ownership matrix before any public data release.
 - **Dependencies:** none for design; public/remote enrollment waits for P2-01b and P2-02c. Requires an explicit deployment/provider choice from the product owner.
 - **Components:** identity/access ADR, `backend/app/config.py`, `backend/app/models.py`, profile/learning/quiz/practice routers, `frontend/src/stores/session.ts` review.
 - **Schema/API/domain:** specify trusted subject source, session/token validation, editor role, route ownership matrix, logout and account-link proof. No runtime API yet.
@@ -459,6 +440,10 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 
 #### P2-02a — Approve a learning-history lifecycle policy
 
+- **Engineering preparation (2026-10-01):** [record/FK/replay/copy map](history-lifecycle-map.md)
+  matches all eighteen application tables and the local PostgreSQL schema. The populated drill
+  design and pending action/period matrix preserve the existing local deletion procedure. No
+  jurisdiction, retention or backup policy is approved; the card stays open.
 - **Objective / why:** immutable events, legacy tables, derived projections, backups and research exports need one explicit retention and deletion contract before public collection.
 - **Dependencies:** P1-09b local consent/export design; can proceed alongside P2-01a. Requires product/legal/operations decision for jurisdiction and periods.
 - **Components:** lifecycle ADR and record map over practice/progress repositories, legacy `backend/app/models.py`, research exports, backups and source/content storage.
@@ -492,6 +477,10 @@ P0 adds versioned quiz-plan data, additive result fields, file-backed editorial 
 
 #### P2-03 — Use learner-local days and honest workload reporting
 
+- **Implemented (2026-10-01):** IANA preference with deferred activation and preserved allocation;
+  explicit UTC fallback, shared review/quiz calendar, pinned issuance windows and period-count UI.
+  DST/midnight/travel/migration and PostgreSQL next/repair lock checks pass. Human workload and
+  active minutes remain unmeasured pending P1-09c; no forecast or daily legacy batch quota is added.
 - **Objective / why:** a UTC date is not a learner's daily budget or promised review day.
 - **Dependencies:** P1-08a; coordinate profile migration with P2-01b, but neither task's domain depends on the other.
 - **Components:** `backend/app/models.py` profile, profile schemas/router, time-boundary utility, learning/quiz/selection services, Vue dashboard/i18n, migration and time tests.
@@ -628,6 +617,12 @@ P3-01a, P3-02a/b and P3-03a are **implementation-ready as bounded experiments**,
 
 #### P3-02a — Trial LLM editorial enrichment offline
 
+- **Data/feasibility no-go (2026-10-01): experiment not run.** Astra checked P1-03a: human minutes
+  were unmeasured and all eight examples originated from models, so there is no comparable manual
+  baseline or independent blind human quality set. The owner-approved `pilot_display` permission
+  does not establish external-provider transmission/spend authorization. Do not calculate savings
+  from agent wall time or label model ratings human gold. A future trial needs new prospectively
+  allocated tasks, measured review and independent quality labels; the experiment card stays open.
 - **Objective / why / hypothesis:** determine whether model drafts/triage reduce human minutes per *approved* example/answer while maintaining human-rated quality and rights compliance.
 - **Dependencies:** P1-03a, P0-01 frozen evaluation conventions, consent/rights-cleared examples and human gold decisions. No runtime provider is required for the product.
 - **Components:** offline queue and replaceable model adapter, prompt/model/version/cost log, human review export, adversarial tests; do not overload the existing learner-facing word-generation endpoint.

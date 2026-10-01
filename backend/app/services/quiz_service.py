@@ -9,6 +9,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.learner_time import calendar_window, week_start
 from app.models import QuizAnswer, QuizAttempt, UserWordProgress, VocabularyItem
 from app.services.profile_service import get_or_create_profile
 from app.services.shadow_quiz_service import ShadowQuizFailure, ShadowQuizService
@@ -36,18 +37,18 @@ def _week_start(value: datetime) -> datetime:
 
 
 def _source_progress(db: Session, user_id: str, quiz_type: str) -> list[UserWordProgress]:
-    get_or_create_profile(db, user_id)
+    profile = get_or_create_profile(db, user_id)
     statement = select(UserWordProgress).where(UserWordProgress.user_id == user_id)
     now = datetime.now(timezone.utc)
     if quiz_type == "weekly":
-        current_week_start = _week_start(now)
+        current_week_start = week_start(profile, now)
         statement = statement.where(
             (UserWordProgress.first_seen_at >= current_week_start)
             | (UserWordProgress.last_seen_at >= current_week_start)
             | (UserWordProgress.is_weak.is_(True))
         )
     else:
-        today_start = _day_start(now)
+        today_start = calendar_window(profile, now).start
         touched_today = case(
             (
                 (UserWordProgress.first_seen_at >= today_start)
@@ -236,6 +237,28 @@ def reveal_question_answer(db: Session, user_id: str, attempt_id: int, word_id: 
 
 
 def _answer_key(question: dict[str, Any]) -> dict[str, str] | None:
+    # Both formats were issued before their branches were integrated. Never rewrite
+    # existing plans or fall back to mutable vocabulary for an unknown key version.
+    if "plan_version" in question:
+        version = question["plan_version"]
+        if type(version) is not int or version not in {1, 2}:
+            raise InvalidQuizSubmission("Unsupported quiz plan version")
+        if version == 2:
+            if "answer_key_version" in question:
+                raise InvalidQuizSubmission("Ambiguous quiz answer key version")
+            key = question.get("answer_key")
+            fields = {
+                "sr_to_ru_choice": ("correct",),
+                "ru_to_sr_typing": ("latin", "cyrillic"),
+                "remembered_forgot_self_check": ("reveal", "correct"),
+            }.get(question.get("question_type"), ())
+            if not isinstance(key, dict) or not fields or any(
+                not isinstance(key.get(field), str) or not key[field] for field in fields
+            ):
+                raise InvalidQuizSubmission("Quiz answer key is unavailable")
+            return {"russian_translation": key.get("reveal", key.get("correct", "")),
+                    "serbian_latin": key.get("latin", ""),
+                    "serbian_cyrillic": key.get("cyrillic", "")}
     if "answer_key_version" not in question:
         return None  # Existing stored attempts retain legacy mutable-content behavior.
     version = question["answer_key_version"]
@@ -385,6 +408,45 @@ def _correct_answer_for_question(question: dict[str, Any], word: VocabularyItem 
     return _correct_answer_for(word, question["question_type"])
 
 
+def _plan_key(question: dict[str, Any]) -> dict[str, str] | None:
+    key = _answer_key(question)
+    if key is None:
+        return None
+    return {"correct": "remembered" if question["question_type"] == "remembered_forgot_self_check"
+            else key["russian_translation"], "reveal": key["russian_translation"],
+            "latin": key["serbian_latin"], "cyrillic": key["serbian_cyrillic"]}
+
+
+def _result_breakdown(
+    planned_questions: list[dict[str, Any]], answers: list[QuizAnswer]
+) -> dict[str, int | str | None]:
+    if any(_plan_key(question) is None for question in planned_questions):
+        return {"breakdown_status": "unavailable", "first_attempt_correct": None,
+                "first_attempt_eligible": None, "recovered_objective_items": None,
+                "self_report_remembered": None, "self_report_total": None}
+    result: dict[str, int | str | None] = {
+        "breakdown_status": "available", "first_attempt_correct": 0,
+        "first_attempt_eligible": 0, "recovered_objective_items": 0,
+        "self_report_remembered": 0, "self_report_total": 0,
+    }
+    for question in planned_questions:
+        history = [answer for answer in answers
+                   if answer.word_id == question["word_id"]
+                   and answer.question_type == question["question_type"]]
+        if not history:
+            continue
+        first = history[0]
+        if question["question_type"] == "remembered_forgot_self_check":
+            result["self_report_total"] += 1
+            result["self_report_remembered"] += int(first.is_correct)
+        else:
+            result["first_attempt_eligible"] += 1
+            result["first_attempt_correct"] += int(first.is_correct)
+            if not first.is_correct and any(answer.is_correct for answer in history[1:]):
+                result["recovered_objective_items"] += 1
+    return result
+
+
 def _completion_breakdown(
     planned_questions: list[dict[str, Any]],
     answers_by_key: dict[tuple[int, str], list[QuizAnswer]],
@@ -398,7 +460,7 @@ def _completion_breakdown(
         "self_report_remembered": 0,
         "self_report_total": 0,
     }
-    if any("answer_key_version" not in question for question in planned_questions):
+    if any(_answer_key(question) is None for question in planned_questions):
         result["first_attempt_status"] = "unavailable"
         return result
     for question in planned_questions:
@@ -494,5 +556,7 @@ def complete_quiz(db: Session, user_id: str, attempt_id: int) -> dict:
         "total_questions": len(planned_questions),
         "weak_word_ids": weak_word_ids,
         "mistakes": mistakes,
+        "answer_key_status": "legacy" if breakdown["first_attempt_status"] == "unavailable" else "frozen",
+        "breakdown_status": "unavailable" if breakdown["first_attempt_status"] == "unavailable" else "available",
         **breakdown,
     }

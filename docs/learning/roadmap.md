@@ -1,9 +1,11 @@
 # Evidence-based learning redesign roadmap
 
-Status: **proposed, not implemented or approved for execution**. Prepared 2026-09-24 against
+Status: **proposed, not implemented or approved for blanket execution**. Prepared 2026-09-24 against
 repository revision `fd5c44d`; reviewed against the current checkout in
 [review](review.md). This task changes documentation only. The executable P0 ordering is in
 [implementation-plan](implementation-plan.md).
+
+Decision update (2026-09-25): an external Serbian teacher is unavailable and is no longer a publication prerequisite. Use the source-based internal content gate in [solo-development-readiness](solo-development-readiness.md). This changes the review path, not the evidence for any linguistic claim or the separate rights, identity and data-lifecycle gates.
 
 **Goal:** make teaching, sequencing, practice and progress claims traceable to communicative
 outcomes, reviewed Serbian material and interpretable learner evidence.
@@ -182,19 +184,19 @@ uncertain. Tasks are independent review units, with explicit dependencies.
 ### P0-07 — Specify the small communicative pilot and assessment holdout
 
 - **Objective/rationale:** content needs a finite outcome contract before large vocabulary work.
-- **Components:** proposed `content/curricula/a1-pilot/manifest.json` and review document;
+- **Components:** proposed `content/curricula/a1-pilot/written-manifest.json` and review document;
   existing `domain/curriculum.py`, `services/curriculum_service.py`, `backend/app/seed.py` as reference only.
 - **Dependencies:** P0-01. This brief informs P0-05 rather than depending on its schema.
 - **Acceptance:** a draft pilot brief proposes four outcomes from stages 0–2
   in [learning-model](learning-model.md): personal details, simple request, simple price information,
   location information. Each has CEFR scale/edition/locator, scope, target set, rubric, hard/soft
   prerequisites, script support and a separate unseen assessment family. Do not copy seed edges.
-  Mark the CEFR crosswalk and target choices as hypotheses until a Serbian L2 educator signs off;
-  educator approval is required before P1 publication, not to complete this draft.
+  Mark the CEFR crosswalk and target choices as hypotheses; record an internal source-based decision
+  before P1 publication, without claiming independent educator approval.
 - **Tests/measurements:** coverage matrix has no outcome without input, practice and assessment;
   reviewers can trace every target to a function. Agree the written-only scope and learner assumptions.
 - **Migration:** none. **Uncertainty:** four outcomes and their sequence are design hypotheses.
-  **Effort/risk:** S–M drafting; qualified review is a P1 publication gate.
+  **Effort/risk:** S–M drafting; the internal content gate is a P1 publication prerequisite.
 
 ### P0-08 — Remove answer-position and duplicate-choice cues
 
@@ -224,12 +226,12 @@ the gaps are intentional so earlier review references remain traceable.
 - **Components:** `content/examples/`, P0 manifest/fixture validator and review export. If the
   P0-05 fixtures demonstrate independent reuse/withdrawal, add a separate reviewed-example
   persistence task before publication; do not assume a new table now.
-- **Dependencies:** P0-04, P0-05, P0-07 and educator approval of the pilot crosswalk.
+- **Dependencies:** P0-04, P0-05, P0-07 and a recorded internal decision on the pilot crosswalk under [solo-development-readiness](solo-development-readiness.md).
 - **Acceptance:** each example has a documented source or author agreement, Serbian/Russian
   review, target alignment, answerability, register, naturalness, variants and holdout-family ID.
   Any imported pair also records direct link and separate rights for text and translation.
 - **Tests/measurements:** missing permission, ambiguity, personal data, fragment,
-  duplicate/transliteration cluster and failed re-import; report reviewer agreement and cost.
+  duplicate/transliteration cluster and failed re-import; report unresolved/excluded cases and review cost. No independent reviewer agreement is available.
 - **Migration:** none if file-backed; any justified new table needs its own additive migration and
   populated-database rehearsal. **Uncertainty:** direct-pair yield unknown. **Effort/risk:** M
   engineering plus editorial work.
@@ -592,8 +594,8 @@ Frontend e2e mocks cannot establish database, corpus, linguistic or learning cor
 ## Unresolved decisions carried forward
 
 The learning-method direction is supported more strongly than the exact stage order, target
-weights, thresholds or session allocation. Teacher review and a real learner sample remain
-necessary. The Tatoeba direct-pair inventory, corpus yield, source-text republication decisions,
+weights, thresholds or session allocation. Source-based internal content review is now the chosen
+path; a real learner sample would still be needed to test learning effects. The Tatoeba direct-pair inventory, corpus yield, source-text republication decisions,
 audio availability, authentication provider, lifecycle periods and experimental sample size are
 explicit future work, assigned above. None requires inventing evidence during this documentation
 phase. The next smallest implementation choice is P0-01; P0-02 addresses the clearest current

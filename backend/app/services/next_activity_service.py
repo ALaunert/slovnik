@@ -76,7 +76,7 @@ def _is_acquirable(state, now: datetime) -> bool:
     )
 
 
-def _intent_targets(frontier, states, now, *, acquire_budget_reached: bool):
+def _intent_targets(frontier, states, now, *, acquire_budget_reached: bool, seen_target_keys=frozenset()):
     review = tuple(
         target
         for target in frontier
@@ -95,13 +95,15 @@ def _intent_targets(frontier, states, now, *, acquire_budget_reached: bool):
         target
         for target in frontier
         if _is_acquirable(states.get(target.target_spec.target_key), now)
+        and target.target_spec.target_key not in seen_target_keys
     )
     if acquire and not acquire_budget_reached:
         return LearningIntent.ACQUIRE, acquire
     assess = tuple(
         target
         for target in frontier
-        if _has_native_deterministic_evidence(
+        if (target.target_spec.target_key in seen_target_keys and states.get(target.target_spec.target_key) is not None)
+        or _has_native_deterministic_evidence(
             states.get(target.target_spec.target_key)
         )
     )
@@ -254,14 +256,21 @@ class NextActivityService:
         *,
         learner_id: str,
         now: datetime,
+        fallback_invalid_intents: bool = False,
+        prefer_acquire: bool = False,
+        seen_target_keys: frozenset[str] = frozenset(),
+        acquire_exhausted: bool | None = None,
     ) -> NextActivityDecision:
         selection_time = _utc(now)
+        policy_version = "selector-local-v2" if fallback_invalid_intents or prefer_acquire or seen_target_keys or acquire_exhausted is not None else "selector-v1"
+        def no_activity(code):
+            return NextActivityDecision.no_activity(code, policy_version=policy_version)
         profile = self._profile_port.get_profile(learner_id)
         if profile is None:
             raise ValueError("Learner profile is required for selection")
         active_frontier = self._curriculum_port.active_frontier(profile)
         if active_frontier is None:
-            return NextActivityDecision.no_activity(
+            return no_activity(
                 DecisionCode.NO_ACTIVE_CURRICULUM
             )
         frontier = tuple(
@@ -272,7 +281,7 @@ class NextActivityService:
             and _within_requested_level(target, profile.requested_level)
         )
         if not frontier:
-            return NextActivityDecision.no_activity(DecisionCode.EMPTY_FRONTIER)
+            return no_activity(DecisionCode.EMPTY_FRONTIER)
         states = self._progress_port.states_for_targets(
             learner_id=learner_id,
             target_keys=(target.target_spec.target_key for target in frontier),
@@ -283,29 +292,41 @@ class NextActivityService:
             selection_time,
         )
         acquire_budget_reached = len(acquired_target_keys) >= profile.daily_budget
-        intent, eligible = _intent_targets(
-            frontier,
-            states,
-            selection_time,
-            acquire_budget_reached=acquire_budget_reached,
-        )
-        if intent is None:
-            if eligible and acquire_budget_reached:
-                return NextActivityDecision.no_activity(
-                    DecisionCode.DAILY_ACQUIRE_BUDGET_REACHED
-                )
-            return NextActivityDecision.no_activity(DecisionCode.EMPTY_FRONTIER)
-
+        if acquire_exhausted is not None:
+            acquire_budget_reached = acquire_exhausted
         valid_candidates: list[ActivityCandidate] = []
-        for target in eligible:
-            valid_candidates.extend(
-                candidate
-                for candidate in self._candidate_provider.candidates_for(target)
-                if candidate.curriculum_target == target
-                and self._validity_policy.is_valid(candidate)
-            )
+        remaining = frontier
+        invalid_intents = []
+        while remaining:
+            acquire = tuple(target for target in remaining
+                            if _is_acquirable(states.get(target.target_spec.target_key), selection_time)
+                            and target.target_spec.target_key not in seen_target_keys)
+            if prefer_acquire and acquire and not acquire_budget_reached:
+                intent, eligible = LearningIntent.ACQUIRE, acquire
+                prefer_acquire = False
+            else:
+                intent, eligible = _intent_targets(
+                    remaining, states, selection_time,
+                    acquire_budget_reached=acquire_budget_reached,
+                    seen_target_keys=seen_target_keys,
+                )
+            if intent is None:
+                code = (DecisionCode.DAILY_ACQUIRE_BUDGET_REACHED if eligible and acquire_budget_reached
+                        else DecisionCode.NO_VALID_CANDIDATE if invalid_intents else DecisionCode.EMPTY_FRONTIER)
+                return no_activity(code)
+            for target in eligible:
+                valid_candidates.extend(
+                    candidate for candidate in self._candidate_provider.candidates_for(target)
+                    if candidate.curriculum_target == target and self._validity_policy.is_valid(candidate)
+                )
+            if valid_candidates:
+                break
+            if not fallback_invalid_intents:
+                return no_activity(DecisionCode.NO_VALID_CANDIDATE)
+            invalid_intents.append(intent.value)
+            remaining = tuple(target for target in remaining if target not in eligible)
         if not valid_candidates:
-            return NextActivityDecision.no_activity(
+            return no_activity(
                 DecisionCode.NO_VALID_CANDIDATE
             )
         repetition_counts = _repetition_counts(
@@ -321,6 +342,7 @@ class NextActivityService:
         )
         repetition_count = repetition_counts.get(selected_fingerprint, 0)
         return NextActivityDecision(
+            policy_version=policy_version,
             activity_spec=selected.activity_spec,
             intent=intent,
             target_key=selected.activity_spec.target_key,
@@ -336,6 +358,7 @@ class NextActivityService:
             activity_fingerprint=selected_fingerprint,
             reason_metadata={
                 "difficulty_features": selected.difficulty_features,
+                **({"invalid_intents": invalid_intents} if invalid_intents else {}),
             },
         )
 

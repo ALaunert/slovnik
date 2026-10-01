@@ -1,0 +1,1893 @@
+{
+  "version": 1,
+  "title": "Учебник сербской грамматики",
+  "description": "Объяснения на русском, сербские примеры и самопроверка с разбором. Можно читать по порядку или выбрать нужную тему. Основная запись — латиница, экавский вариант. Это базовый справочник, а не полный курс и не проверка уровня.",
+  "groups": [
+    {
+      "id": "basics",
+      "title": "Основы",
+      "description": "Письменность и первые предложения."
+    },
+    {
+      "id": "nouns",
+      "title": "Имена и падежи",
+      "description": "Род, согласование, пять косвенных падежей и сравнение."
+    },
+    {
+      "id": "verbs",
+      "title": "Глагол",
+      "description": "Настоящее, прошлое, будущее, вид и наклонение."
+    },
+    {
+      "id": "sentence",
+      "title": "Предложение",
+      "description": "Вопросы, отрицание, короткие формы и связь мыслей."
+    }
+  ],
+  "sources": [
+    {
+      "id": "nj1",
+      "title": "Naš jezik — урок 1",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-1-Zdravo-1.pdf"
+    },
+    {
+      "id": "nj2",
+      "title": "Naš jezik — урок 2",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-2-Moja-dobra-prijateljica-2.pdf"
+    },
+    {
+      "id": "nj3",
+      "title": "Naš jezik — урок 3",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/09/Lekcija-3-Sta-Sto-imamo-2.pdf"
+    },
+    {
+      "id": "nj4",
+      "title": "Naš jezik — урок 4",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/09/Lekcija-4-Kada-se-vidimo-1.pdf"
+    },
+    {
+      "id": "nj6",
+      "title": "Naš jezik — урок 6",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/08/Lekcija-6-S%CC%8Cta-s%CC%8Cto-studirate-1.pdf"
+    },
+    {
+      "id": "nj9",
+      "title": "Naš jezik — урок 9",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/10/Lekcija-9-Moja-zemlja.pdf"
+    },
+    {
+      "id": "nj11",
+      "title": "Naš jezik — урок 11",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/12/Lekcija-11-Moja-porodicaobitelj.pdf"
+    },
+    {
+      "id": "nj12",
+      "title": "Naš jezik — урок 12",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/12/Lekcija-12-S%CC%8Ctas%CC%8Cto-volimo-jesti.pdf"
+    },
+    {
+      "id": "nj13",
+      "title": "Naš jezik — урок 13",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2021/12/Lekcija-13-Prazniciblagdani.pdf"
+    },
+    {
+      "id": "nj14",
+      "title": "Naš jezik — урок 14",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2022/02/Lekcija-14-U-gradu.pdf"
+    },
+    {
+      "id": "nj17",
+      "title": "Naš jezik — урок 17",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2022/04/Lekcija-17-Gdje-c%CC%81emo-z%CC%8CivjetiGde-c%CC%81emo-z%CC%8Civeti.pdf"
+    },
+    {
+      "id": "nj19",
+      "title": "Naš jezik — урок 19",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2022/04/Lekcija-19-Vrijeme-i-odjec%CC%81a-Vreme-i-odec%CC%81a.pdf"
+    },
+    {
+      "id": "nj20",
+      "title": "Naš jezik — урок 20",
+      "url": "https://bcs.lrc.columbia.edu/wp-content/uploads/2022/04/Lekcija-20-Planiramo-putovanje-1.pdf"
+    },
+    {
+      "id": "zl-gender",
+      "title": "Лариса Златич — род существительных",
+      "url": "https://www.studyserbian.com/proba/Grammar/Nouns_Gender.asp"
+    },
+    {
+      "id": "zl-present",
+      "title": "Лариса Златич — настоящее время",
+      "url": "https://www.studyserbian.com/proba/Grammar/Werb_Tense_p.asp"
+    },
+    {
+      "id": "zl-genitive",
+      "title": "Лариса Златич — генитив",
+      "url": "https://www.studyserbian.com/proba/Grammar/Nouns_Genitive_Case.asp"
+    },
+    {
+      "id": "zl-dative",
+      "title": "Лариса Златич — датив",
+      "url": "https://www.studyserbian.com/proba/Grammar/Nouns_Dative_Case.asp"
+    },
+    {
+      "id": "zl-locative",
+      "title": "Лариса Златич — локатив",
+      "url": "https://www.studyserbian.com/proba/grammar/nouns_locative_case.asp"
+    },
+    {
+      "id": "zl-past",
+      "title": "Лариса Златич — прошедшее время",
+      "url": "https://www.studyserbian.com/proba/Grammar/Werb_Past_Tense.asp"
+    },
+    {
+      "id": "zl-imperative",
+      "title": "Лариса Златич — императив",
+      "url": "https://www.studyserbian.com/proba/Grammar/Werb_Imperative.asp"
+    },
+    {
+      "id": "zl-clitics",
+      "title": "Лариса Златич — порядок клитик",
+      "url": "https://www.studyserbian.com/proba/Grammar/Word_Order_Clitic.asp"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "alphabet",
+      "group_id": "basics",
+      "title": "Две письменности",
+      "summary": "Короткая опора для чтения всех следующих глав.",
+      "objectives": [
+        "Сопоставлять сербскую латиницу и кириллицу",
+        "Сохранять различия č/ć и dž/đ"
+      ],
+      "sections": [
+        {
+          "title": "Одна система, две записи",
+          "paragraphs": [
+            "В учебнике примеры записаны латиницей. Сербская кириллица передаёт те же слова: это не перевод. Буквы č, ć, š, ž, đ нужно сохранять: знак над буквой отличает её от другой буквы.",
+            "Lj, nj и dž в алфавите считаются отдельными буквами. В таблице показаны соответствия, которые особенно полезно освоить русскоязычному читателю. Это памятка по письму; произношение и ударение по ней не оцениваются."
+          ],
+          "table": {
+            "headers": [
+              "Латиница",
+              "Кириллица"
+            ],
+            "rows": [
+              [
+                "j",
+                "ј"
+              ],
+              [
+                "c",
+                "ц"
+              ],
+              [
+                "č",
+                "ч"
+              ],
+              [
+                "ć",
+                "ћ"
+              ],
+              [
+                "đ",
+                "ђ"
+              ],
+              [
+                "dž",
+                "џ"
+              ],
+              [
+                "lj",
+                "љ"
+              ],
+              [
+                "nj",
+                "њ"
+              ],
+              [
+                "š",
+                "ш"
+              ],
+              [
+                "ž",
+                "ж"
+              ],
+              [
+                "h",
+                "х"
+              ]
+            ]
+          }
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Čitam časopis.",
+          "translation": "Я читаю журнал.",
+          "note": "Кириллицей: Читам часопис."
+        },
+        {
+          "serbian": "Njena torba je žuta.",
+          "translation": "Её сумка жёлтая.",
+          "note": "Кириллицей: Њена торба је жута."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Перепишите латиницей: „Жута торба“.",
+          "answer": "Žuta torba.",
+          "explanation": "Ж соответствует ž. Это смена письменности с сохранением слов."
+        }
+      ],
+      "pitfalls": [
+        "Не заменяйте ć на č или đ на dj в учебной записи.",
+        "Русская й не заменяет сербскую ј."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj1",
+          "locator": "с. 4, таблица Latinica / Ćirilica"
+        }
+      ],
+      "related": [
+        "biti",
+        "gender-plural"
+      ]
+    },
+    {
+      "id": "biti",
+      "group_id": "basics",
+      "title": "Личные местоимения и biti",
+      "summary": "Как сказать, кто вы и в каком вы состоянии.",
+      "objectives": [
+        "Выбирать sam, si, je, smo, ste, su",
+        "Сохранять связку там, где по-русски её нет"
+      ],
+      "sections": [
+        {
+          "title": "Связка в настоящем",
+          "paragraphs": [
+            "В русском «мы готовы» глагол обычно не произносится. В обычном сербском сообщении нужна форма biti: Mi smo spremni. Окончание прилагательного согласуется с тем, о ком говорят.",
+            "Ja и другие личные местоимения можно опустить, когда лицо понятно из формы глагола и контекста. Но саму связку в этой модели сохраняйте: Spremni smo. Короткая форма обычно идёт после первого слова или первой смысловой группы."
+          ],
+          "table": {
+            "headers": [
+              "Лицо",
+              "Местоимение + biti"
+            ],
+            "rows": [
+              [
+                "я",
+                "ja sam"
+              ],
+              [
+                "ты",
+                "ti si"
+              ],
+              [
+                "он / она / оно",
+                "on / ona / ono je"
+              ],
+              [
+                "мы",
+                "mi smo"
+              ],
+              [
+                "вы",
+                "vi ste"
+              ],
+              [
+                "они",
+                "oni / one / ona su"
+              ]
+            ]
+          }
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Mi smo umorni.",
+          "translation": "Мы устали.",
+          "note": "Мужская или смешанная группа; для группы женщин: Mi smo umorne."
+        },
+        {
+          "serbian": "Vesna je spremna.",
+          "translation": "Весна готова.",
+          "note": "Je — связка, spremna — форма женского рода."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Вставьте biti: „Vi ___ spremni.“",
+          "answer": "Vi ste spremni.",
+          "explanation": "Для vi используется ste; vi может обозначать нескольких людей или вежливое обращение."
+        }
+      ],
+      "pitfalls": [
+        "Не начинайте нейтральное сообщение с короткого sam или ste.",
+        "Ona может обозначать «она», а при среднем роде множественного числа — «они»; смотрите на согласование."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj1",
+          "locator": "с. 3, личные местоимения и biti"
+        },
+        {
+          "source_id": "zl-present",
+          "locator": "Table 3 и примечание об опущенном подлежащем"
+        }
+      ],
+      "related": [
+        "questions-negation",
+        "clitics"
+      ]
+    },
+    {
+      "id": "gender-plural",
+      "group_id": "nouns",
+      "title": "Род и множественное число",
+      "summary": "Словарная форма помогает, но не заменяет знание рода.",
+      "objectives": [
+        "Различать три рода",
+        "Учить частотные формы множественного числа вместе со словом"
+      ],
+      "sections": [
+        {
+          "title": "Род — свойство сербского слова",
+          "paragraphs": [
+            "У существительных есть мужской, женский или средний род. Согласование выбирают по сербскому слову, а не по его русскому переводу. Согласный на конце часто указывает на мужской род, -a — на женский, -o или -e — на средний. Это подсказки, а не безусловные правила.",
+            "Например, noć «ночь» женского рода, хотя заканчивается согласным. Muškarac «мужчина» мужского рода. С новым словом полезно запомнить сочетание с прилагательным: nova noć, novo selo."
+          ]
+        },
+        {
+          "title": "От одного к нескольким",
+          "paragraphs": [
+            "В именительном множественного числа встречаются модели student → studenti, knjiga → knjige, selo → sela. У ряда мужских слов появляется -ov- или -ev-, а основа может меняться. Поэтому не образуйте любое множественное число простым добавлением -i."
+          ],
+          "table": {
+            "headers": [
+              "Один предмет / человек",
+              "Несколько"
+            ],
+            "rows": [
+              [
+                "student",
+                "studenti"
+              ],
+              [
+                "knjiga",
+                "knjige"
+              ],
+              [
+                "selo",
+                "sela"
+              ],
+              [
+                "grad",
+                "gradovi"
+              ]
+            ]
+          }
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Sela su mala.",
+          "translation": "Сёла маленькие.",
+          "note": "Средний род множественного числа: sela, mala."
+        },
+        {
+          "serbian": "Knjige su nove.",
+          "translation": "Книги новые.",
+          "note": "Женский род множественного числа: knjige, nove."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Поставьте во множественное число: „Selo je malo.“",
+          "answer": "Sela su mala.",
+          "explanation": "Меняются существительное, связка и прилагательное."
+        }
+      ],
+      "pitfalls": [
+        "Не переносите русский род автоматически.",
+        "Таблица не покрывает нерегулярные формы и все изменения основы."
+      ],
+      "source_refs": [
+        {
+          "source_id": "zl-gender",
+          "locator": "раздел Gender of Serbian nouns, типы и исключения"
+        },
+        {
+          "source_id": "nj6",
+          "locator": "с. 2–5, множественное число существительных и согласование"
+        }
+      ],
+      "related": [
+        "adjectives-possession",
+        "accusative"
+      ]
+    },
+    {
+      "id": "adjectives-possession",
+      "group_id": "nouns",
+      "title": "Прилагательные и принадлежность",
+      "summary": "Мой, твой, свой — с согласованием по предмету.",
+      "objectives": [
+        "Согласовывать простое описание",
+        "Различать svoj и njegov в ясном контексте"
+      ],
+      "sections": [
+        {
+          "title": "Что именно описываем",
+          "paragraphs": [
+            "Прилагательное и притяжательное слово согласуются с существительным: moj novi ranac, moja nova torba, moje novo pismo. Род владельца не определяет окончание moj: мужчина и женщина одинаково скажут moja torba о своей сумке."
+          ],
+          "table": {
+            "headers": [
+              "Мужской род",
+              "Женский род",
+              "Средний род"
+            ],
+            "rows": [
+              [
+                "nov",
+                "nova",
+                "novo"
+              ],
+              [
+                "moj",
+                "moja",
+                "moje"
+              ],
+              [
+                "tvoj",
+                "tvoja",
+                "tvoje"
+              ],
+              [
+                "naš",
+                "naša",
+                "naše"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Когда полезно svoj",
+          "paragraphs": [
+            "Svoj связывает владельца с подлежащим: Igor čita svoju knjigu — Игорь читает свою книгу. В простой фразе njegovu knjigu обычно указывает на книгу другого мужчины, уже известного из контекста. Сложные предложения требуют отдельно установить, кто является владельцем.",
+            "При смене падежа меняется вся группа: moja nova torba → vidim moju novu torbu. Не оставляйте определение в словарной форме перед изменённым существительным."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Moja nova torba je plava.",
+          "translation": "Моя новая сумка синяя.",
+          "note": "Все три слова в группе имеют женский род."
+        },
+        {
+          "serbian": "Igor nosi svoj ranac.",
+          "translation": "Игорь несёт свой рюкзак.",
+          "note": "Рюкзак принадлежит Игорю; ranac неодушевлённый, поэтому форма аккузатива здесь совпадает с именительным."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Вставьте форму moj: „To je ___ novo pismo.“",
+          "answer": "To je moje novo pismo.",
+          "explanation": "Pismo среднего рода: moje, novo."
+        }
+      ],
+      "pitfalls": [
+        "Svoj не означает автоматически «его»: оно отсылает к подлежащему.",
+        "Это базовые образцы; полные парадигмы прилагательных здесь не приведены."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj2",
+          "locator": "с. 2–5, прилагательные и притяжательные местоимения"
+        },
+        {
+          "source_id": "nj13",
+          "locator": "с. 15, Svoj, svoja, svoje"
+        }
+      ],
+      "related": [
+        "gender-plural",
+        "accusative"
+      ]
+    },
+    {
+      "id": "present",
+      "group_id": "verbs",
+      "title": "Настоящее время",
+      "summary": "Как лицо и число отражаются в форме глагола.",
+      "objectives": [
+        "Спрягать три частотные модели",
+        "Проверять основу по форме первого лица"
+      ],
+      "sections": [
+        {
+          "title": "Сначала найдите основу",
+          "paragraphs": [
+            "Учите глагол парой: čitati — čitam, raditi — radim, pisati — pišem. Инфинитив сам по себе не всегда показывает форму настоящего. В pišem меняется согласный; нельзя получить верный результат, просто добавив окончание к pisati.",
+            "Таблица показывает три модели, а не все глаголы языка. Настоящее несовершенного глагола может описывать действие сейчас или привычку: контекст sada «сейчас» и često «часто» помогает различить смысл."
+          ],
+          "table": {
+            "headers": [
+              "Лицо",
+              "Читать",
+              "Работать",
+              "Писать"
+            ],
+            "rows": [
+              [
+                "ja",
+                "čitam",
+                "radim",
+                "pišem"
+              ],
+              [
+                "ti",
+                "čitaš",
+                "radiš",
+                "pišeš"
+              ],
+              [
+                "on / ona / ono",
+                "čita",
+                "radi",
+                "piše"
+              ],
+              [
+                "mi",
+                "čitamo",
+                "radimo",
+                "pišemo"
+              ],
+              [
+                "vi",
+                "čitate",
+                "radite",
+                "pišete"
+              ],
+              [
+                "oni / one / ona",
+                "čitaju",
+                "rade",
+                "pišu"
+              ]
+            ]
+          }
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Često pišemo pisma.",
+          "translation": "Мы часто пишем письма.",
+          "note": "Pišemo — первое лицо множественного числа, часто повторяющееся действие."
+        },
+        {
+          "serbian": "Sada čitaš časopis.",
+          "translation": "Сейчас ты читаешь журнал.",
+          "note": "Čitaš указывает на ti даже без местоимения."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Поставьте raditi в форму oni: „Oni ___ danas.“",
+          "answer": "Oni rade danas.",
+          "explanation": "У модели radim третье лицо множественного числа — rade."
+        }
+      ],
+      "pitfalls": [
+        "Не обобщайте окончание -aju на все глаголы.",
+        "Вид глагола важен: не каждую форму настоящего можно использовать для действия, происходящего сейчас."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj3",
+          "locator": "с. 2, три спряжения"
+        },
+        {
+          "source_id": "zl-present",
+          "locator": "Tables 1–2; в Table 3 проверены только čitati, raditi и ići"
+        }
+      ],
+      "related": [
+        "aspect",
+        "modals-da"
+      ]
+    },
+    {
+      "id": "questions-negation",
+      "group_id": "sentence",
+      "title": "Вопросы и отрицание",
+      "summary": "Da li, вопросительное слово и отрицательные формы.",
+      "objectives": [
+        "Строить простой вопрос",
+        "Различать ne radim и nisam"
+      ],
+      "sections": [
+        {
+          "title": "Спрашиваем о факте или подробности",
+          "paragraphs": [
+            "Da li превращает сообщение в общий вопрос: Da li čitaš? Для конкретной информации используются ko «кто», šta «что», gde «где», kada «когда», kako «как». У biti можно сказать Da li si…? или Jesi li…? — это разные готовые модели.",
+            "С большинством глаголов отрицание ne пишется отдельно: ne čitam, ne radimo. У связки готовые формы nisam, nisi, nije, nismo, niste, nisu. У imati в настоящем — nemam, nemaš, nema, nemamo, nemate, nemaju. Эти формы нужно учить целиком."
+          ],
+          "table": {
+            "headers": [
+              "Утверждение",
+              "Отрицание"
+            ],
+            "rows": [
+              [
+                "čitam",
+                "ne čitam"
+              ],
+              [
+                "sam",
+                "nisam"
+              ],
+              [
+                "je",
+                "nije"
+              ],
+              [
+                "smo",
+                "nismo"
+              ],
+              [
+                "imam",
+                "nemam"
+              ]
+            ]
+          }
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Da li crtaš?",
+          "translation": "Ты рисуешь?",
+          "note": "Вопрос о том, происходит ли действие."
+        },
+        {
+          "serbian": "Nismo umorni.",
+          "translation": "Мы не устали.",
+          "note": "Отрицательная связка nismo относится к mi."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Сделайте отрицательным „Ona je spremna.“",
+          "answer": "Ona nije spremna.",
+          "explanation": "Вместо je нужна форма nije; ne je не подходит."
+        }
+      ],
+      "pitfalls": [
+        "Не пишите ni sam вместо nisam.",
+        "Вопросительное слово не заменяет нужную форму глагола."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj1",
+          "locator": "с. 10, вопросы; отрицательные формы сверены по уроку 3, с. 5"
+        },
+        {
+          "source_id": "nj3",
+          "locator": "с. 5–6, отрицание imati"
+        },
+        {
+          "source_id": "zl-present",
+          "locator": "How to negate a verb"
+        }
+      ],
+      "related": [
+        "biti",
+        "clitics"
+      ]
+    },
+    {
+      "id": "accusative",
+      "group_id": "nouns",
+      "title": "Аккузатив: кого, что, куда",
+      "summary": "Прямой объект и направление с u / na.",
+      "objectives": [
+        "Выбирать форму объекта",
+        "Отличать направление от местонахождения"
+      ],
+      "sections": [
+        {
+          "title": "Предмет действия",
+          "paragraphs": [
+            "После vidim «вижу», čitam «читаю», imam «имею» часто нужен аккузатив. У слов на -a обычно получается -u: torba → torbu. Средний род в этой базовой модели сохраняет форму. В мужском единственном числе важно, обозначает ли слово живое существо."
+          ],
+          "table": {
+            "headers": [
+              "Словарная форма",
+              "Вижу…"
+            ],
+            "rows": [
+              [
+                "torba",
+                "vidim torbu"
+              ],
+              [
+                "selo",
+                "vidim selo"
+              ],
+              [
+                "prozor",
+                "vidim prozor"
+              ],
+              [
+                "student",
+                "vidim studenta"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Направление",
+          "paragraphs": [
+            "U и na с аккузативом могут обозначать цель движения: u sobu — в комнату, na koncert — на концерт. Для сообщения, где кто-то находится, нужен другой падеж. Не переносите это правило на каждый предлог направления: у предлогов своё управление."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Otvaram plavu torbu.",
+          "translation": "Я открываю синюю сумку.",
+          "note": "Torbu и plavu — аккузатив женского рода."
+        },
+        {
+          "serbian": "Vraćamo se u sobu.",
+          "translation": "Мы возвращаемся в комнату.",
+          "note": "U sobu обозначает цель движения."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Вставьте форму student: „Vidim ___.“",
+          "answer": "Vidim studenta.",
+          "explanation": "Мужской род, единственное число, одушевлённость: нужен аккузатив studenta."
+        }
+      ],
+      "pitfalls": [
+        "Не добавляйте -a к неодушевлённому мужскому объекту по аналогии со studenta.",
+        "Сам глагол движения не заставляет любой предлог требовать аккузатива."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj3",
+          "locator": "с. 3–4, аккузатив единственного числа и одушевлённость"
+        },
+        {
+          "source_id": "nj9",
+          "locator": "с. 5, направление u / na и местонахождение"
+        }
+      ],
+      "related": [
+        "locative",
+        "adjectives-possession"
+      ]
+    },
+    {
+      "id": "genitive",
+      "group_id": "nouns",
+      "title": "Генитив: откуда, без чего, сколько",
+      "summary": "Частые предлоги и количество.",
+      "objectives": [
+        "Узнавать iz, od, do, bez с генитивом",
+        "Использовать простое обозначение количества"
+      ],
+      "sections": [
+        {
+          "title": "Предлог выбирает падеж",
+          "paragraphs": [
+            "После iz «из», od «от», do «до», bez «без» используется генитив. В типовых формах единственного числа мужского и среднего рода — -a, женских слов на -a — -e. Меняется и определение, если оно есть: bez nove torbe."
+          ],
+          "table": {
+            "headers": [
+              "Словарная форма",
+              "Генитив ед. числа"
+            ],
+            "rows": [
+              [
+                "prozor",
+                "prozora"
+              ],
+              [
+                "selo",
+                "sela"
+              ],
+              [
+                "torba",
+                "torbe"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Количество и часть",
+          "paragraphs": [
+            "В сочетании šolja čaja слово čaja называет содержимое чашки. После mnogo с исчисляемыми предметами нужен генитив множественного числа: mnogo knjiga. У множественного числа возможны изменения основы и разные окончания; одного универсального правила «добавить -a» нет.",
+            "Русское «нет» не означает, что любое сербское отрицание требует генитива. Учите управление конструкции: отрицательное предложение с прямым объектом может сохранять аккузатив."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Dolazimo iz sela.",
+          "translation": "Мы приезжаем из села.",
+          "note": "Iz требует генитива sela."
+        },
+        {
+          "serbian": "Nosim termos bez čaja.",
+          "translation": "Я несу термос без чая.",
+          "note": "После bez — čaja; предложение описывает содержимое термоса."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Поставьте torba после bez.",
+          "answer": "bez torbe",
+          "explanation": "У слова torba в генитиве единственного числа окончание -e."
+        }
+      ],
+      "pitfalls": [
+        "Sela может быть генитивом единственного или именительным множественного числа: нужен контекст.",
+        "Генитив множественного числа лучше проверять по словарю."
+      ],
+      "source_refs": [
+        {
+          "source_id": "zl-genitive",
+          "locator": "Table 1; раздел о предлогах"
+        },
+        {
+          "source_id": "nj12",
+          "locator": "с. 3, частичный генитив; с. 7–9, количество"
+        }
+      ],
+      "related": [
+        "accusative",
+        "comparisons"
+      ]
+    },
+    {
+      "id": "dative",
+      "group_id": "nouns",
+      "title": "Датив: кому",
+      "summary": "Адресат действия и короткие местоимения.",
+      "objectives": [
+        "Называть получателя",
+        "Различать mu и joj"
+      ],
+      "sections": [
+        {
+          "title": "Кто получает",
+          "paragraphs": [
+            "Датив помогает назвать адресата: šaljem sestri poruku — отправляю сестре сообщение. Poruku отвечает на вопрос «что?», sestri — «кому?». Словарная форма sestra меняется на sestri; у brat получается bratu."
+          ],
+          "table": {
+            "headers": [
+              "Кому?",
+              "Форма"
+            ],
+            "rows": [
+              [
+                "брату",
+                "bratu"
+              ],
+              [
+                "сестре",
+                "sestri"
+              ],
+              [
+                "мне / тебе",
+                "mi / ti"
+              ],
+              [
+                "ему / ей",
+                "mu / joj"
+              ],
+              [
+                "нам / вам / им",
+                "nam / vam / im"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Короткая форма и контекст",
+          "paragraphs": [
+            "Если получатель уже известен, его можно заменить коротким местоимением: Šaljem joj poruku. Короткие формы не ставят произвольно; их место разобрано в главе о клитиках. Mi может быть «мы» или «мне» — роль определяет предложение.",
+            "Здесь показан датив адресата. Он не охватывает все случаи употребления, например описание состояния или направления с отдельными предлогами."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Šaljem sestri fotografiju.",
+          "translation": "Я отправляю сестре фотографию.",
+          "note": "Получатель — sestri, отправляемый предмет — fotografiju."
+        },
+        {
+          "serbian": "Dajem mu olovku.",
+          "translation": "Я даю ему карандаш.",
+          "note": "Mu отсылает к уже названному мужчине или мальчику."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Замените sestri коротким местоимением: „Šaljem sestri fotografiju.“",
+          "answer": "Šaljem joj fotografiju.",
+          "explanation": "Joj означает «ей» в дативе."
+        }
+      ],
+      "pitfalls": [
+        "Датив и инструментал единственного числа не совпадают: bratu и bratom — разные формы.",
+        "Короткое mi не всегда означает «мы»."
+      ],
+      "source_refs": [
+        {
+          "source_id": "zl-dative",
+          "locator": "Table 1 и Table 2, формы и адресат"
+        },
+        {
+          "source_id": "nj13",
+          "locator": "с. 2–4, датив и местоименные формы"
+        }
+      ],
+      "related": [
+        "clitics",
+        "instrumental"
+      ]
+    },
+    {
+      "id": "locative",
+      "group_id": "nouns",
+      "title": "Локатив: где и о чём",
+      "summary": "Место действия с u / na и тема с o.",
+      "objectives": [
+        "Отличать u sobi от u sobu",
+        "Сохранять предлог при локативе"
+      ],
+      "sections": [
+        {
+          "title": "Место, а не цель",
+          "paragraphs": [
+            "U sobi сообщает, где происходит действие; u sobu — куда оно направлено. В типовой модели мужского и среднего рода локатив имеет -u, у слов на -a — -i. Он употребляется с предлогом."
+          ],
+          "table": {
+            "headers": [
+              "Слово",
+              "Где?"
+            ],
+            "rows": [
+              [
+                "soba",
+                "u sobi"
+              ],
+              [
+                "park",
+                "u parku"
+              ],
+              [
+                "selo",
+                "u selu"
+              ],
+              [
+                "biblioteka",
+                "u biblioteci"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Предлог и смысл",
+          "paragraphs": [
+            "O с локативом обозначает тему: o filmu — о фильме. U и na выбирают вместе с местом или событием, а не механическим переводом русского предлога. Некоторые сочетания нужно запоминать целиком.",
+            "Наличие движения ещё не означает аккузатив: можно ходить внутри парка. Решайте, обозначает ли группа цель перемещения или место, где разворачивается действие."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Crtamo u sobi.",
+          "translation": "Мы рисуем в комнате.",
+          "note": "Место действия — u sobi."
+        },
+        {
+          "serbian": "Razgovaramo o filmu.",
+          "translation": "Мы разговариваем о фильме.",
+          "note": "O filmu — тема разговора, локатив."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Выберите форму: „Sedim u sobu / sobi.“",
+          "answer": "Sedim u sobi.",
+          "explanation": "Речь о месте, где я сижу, поэтому нужен локатив."
+        }
+      ],
+      "pitfalls": [
+        "У biblioteka получается biblioteci: основа тоже может меняться.",
+        "Нельзя использовать один предлог u для всех мест и событий."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj9",
+          "locator": "с. 4–5, локатив; с. 11, движение с po"
+        },
+        {
+          "source_id": "zl-locative",
+          "locator": "Table 1 и употребление o"
+        }
+      ],
+      "related": [
+        "accusative",
+        "dative"
+      ]
+    },
+    {
+      "id": "instrumental",
+      "group_id": "nouns",
+      "title": "Инструментал: с кем и чем",
+      "summary": "Компания, инструмент и транспорт.",
+      "objectives": [
+        "Отличать компанию от средства действия",
+        "Использовать формы -om и -em на изученных словах"
+      ],
+      "sections": [
+        {
+          "title": "Компания с sa",
+          "paragraphs": [
+            "Sa с инструменталом указывает на спутника или собеседника: sa sestrom, sa bratom. У слов на -a часто получается -om. У мужских и средних слов встречаются -om и -em; конкретную форму учите вместе со словом."
+          ],
+          "table": {
+            "headers": [
+              "Слово",
+              "Инструментал"
+            ],
+            "rows": [
+              [
+                "sestra",
+                "sestrom"
+              ],
+              [
+                "brat",
+                "bratom"
+              ],
+              [
+                "prijatelj",
+                "prijateljem"
+              ],
+              [
+                "olovka",
+                "olovkom"
+              ],
+              [
+                "autobus",
+                "autobusom"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Средство без sa",
+          "paragraphs": [
+            "Чтобы назвать инструмент или транспорт, в базовой модели предлог не нужен: olovkom — карандашом, autobusom — автобусом. Русский перевод «на автобусе» не требует копировать на в сербскую фразу.",
+            "Сравните два вопроса: Sa kim? — с кем? Čime? — чем? Это помогает сначала выбрать смысл и только затем форму."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Crtaš olovkom.",
+          "translation": "Ты рисуешь карандашом.",
+          "note": "Инструмент без предлога."
+        },
+        {
+          "serbian": "Putujemo sa sestrom.",
+          "translation": "Мы путешествуем с сестрой.",
+          "note": "Компания: sa + инструментал."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Дополните: „Putujemo ___.“ (autobus, средство передвижения)",
+          "answer": "Putujemo autobusom.",
+          "explanation": "Транспорт как средство действия выражен инструменталом без предлога."
+        }
+      ],
+      "pitfalls": [
+        "Не добавляйте sa автоматически к любому русскому творительному.",
+        "Таблица не охватывает особые формы типа ocem и psom."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj14",
+          "locator": "с. 10–13, формы, транспорт, компания"
+        }
+      ],
+      "related": [
+        "dative",
+        "locative"
+      ]
+    },
+    {
+      "id": "perfect",
+      "group_id": "verbs",
+      "title": "Перфект: о прошлом",
+      "summary": "Связка показывает лицо, форма глагола — род и число.",
+      "objectives": [
+        "Соединять sam / si / je с формой прошедшего",
+        "Согласовывать форму с говорящим"
+      ],
+      "sections": [
+        {
+          "title": "Две части",
+          "paragraphs": [
+            "Обычное прошедшее строится из формы biti и причастия на -l, которое в мужском единственном числе часто заканчивается на -o: čitao sam, čitala sam. Вспомогательный глагол указывает на лицо, причастие — на род и число."
+          ],
+          "table": {
+            "headers": [
+              "Кто?",
+              "Читал / читала / читали"
+            ],
+            "rows": [
+              [
+                "мужчина о себе",
+                "čitao sam"
+              ],
+              [
+                "женщина о себе",
+                "čitala sam"
+              ],
+              [
+                "он",
+                "čitao je"
+              ],
+              [
+                "она",
+                "čitala je"
+              ],
+              [
+                "мужская или смешанная группа",
+                "čitali smo"
+              ],
+              [
+                "группа женщин",
+                "čitale smo"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Отрицание и вопрос",
+          "paragraphs": [
+            "Отрицание заменяет связку: nisam čitao / nisam čitala. Вопрос можно начать с Da li si…? Причастие при этом сохраняет согласование. Для обычного сообщения не копируйте русское прошедшее без вспомогательного глагола.",
+            "Не все основы регулярны: ići имеет išao / išla. Сам перфект не сообщает, закончилось ли действие результатом; для этого важны вид и контекст."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Juče sam crtala zmaja.",
+          "translation": "Вчера я рисовала дракона.",
+          "note": "Говорит женщина; sam стоит после juče."
+        },
+        {
+          "serbian": "Nismo čitali taj časopis.",
+          "translation": "Мы не читали тот журнал.",
+          "note": "Отрицательная связка nismo; čitali — мужская или смешанная группа."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Женщина говорит о себе. Дополните „Juče ___ čitala.“",
+          "answer": "Juče sam čitala.",
+          "explanation": "Первое лицо — sam; женский род уже выражен в čitala."
+        }
+      ],
+      "pitfalls": [
+        "Название «перфект» не означает, что любой такой глагол совершенного вида.",
+        "У возвратных глаголов третьего лица есть особенность с je: см. клитики."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj11",
+          "locator": "с. 6–8, прошедшее и порядок"
+        },
+        {
+          "source_id": "zl-past",
+          "locator": "Tables 1–3"
+        }
+      ],
+      "related": [
+        "aspect",
+        "clitics",
+        "conditional"
+      ]
+    },
+    {
+      "id": "future",
+      "group_id": "verbs",
+      "title": "Будущее время: футур I",
+      "summary": "Ću + инфинитив и слитное написание radiću.",
+      "objectives": [
+        "Выбирать форму вспомогательного глагола",
+        "Различать radiću и ići ću"
+      ],
+      "sections": [
+        {
+          "title": "Основная модель",
+          "paragraphs": [
+            "Футур I можно построить из ću, ćeš, će, ćemo, ćete, će и инфинитива: Sutra ćemo čitati. Эти короткие формы занимают место клитик. В этом учебнике основная письменная модель — с инфинитивом."
+          ],
+          "table": {
+            "headers": [
+              "Лицо",
+              "Вспомогательная форма"
+            ],
+            "rows": [
+              [
+                "ja",
+                "ću"
+              ],
+              [
+                "ti",
+                "ćeš"
+              ],
+              [
+                "on / ona / ono",
+                "će"
+              ],
+              [
+                "mi",
+                "ćemo"
+              ],
+              [
+                "vi",
+                "ćete"
+              ],
+              [
+                "oni / one / ona",
+                "će"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Когда меняется написание",
+          "paragraphs": [
+            "Если глагол на -ti стоит перед короткой формой, в сербском написании получается одно слово: čitati + ću → čitaću. У глаголов на -ći инфинитив сохраняется и пишется отдельно: ići ću. Не переносите слитное написание на позицию после подлежащего: Ja ću čitati.",
+            "Отрицательные формы пишутся слитно: neću, nećeš, neće, nećemo, nećete, neće; инфинитив отдельно. В сербской речи также встречается ću da + настоящее; здесь отрабатывается одна прозрачная модель."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Večeras ćemo crtati.",
+          "translation": "Сегодня вечером мы будем рисовать.",
+          "note": "Ćemo соответствует mi."
+        },
+        {
+          "serbian": "Čitaću taj roman.",
+          "translation": "Я буду читать этот роман.",
+          "note": "Слитная форма от čitati."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Выберите написание: „Ićiću / Ići ću.“",
+          "answer": "Ići ću.",
+          "explanation": "У инфинитива на -ći сохраняется полная форма и раздельное написание."
+        }
+      ],
+      "pitfalls": [
+        "Не пишите Ja čitaću по аналогии с русским порядком.",
+        "Эта глава не объясняет футур II."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj17",
+          "locator": "с. 7, футур I, отрицание и письменные варианты"
+        }
+      ],
+      "related": [
+        "clitics",
+        "present"
+      ]
+    },
+    {
+      "id": "modals-da",
+      "group_id": "verbs",
+      "title": "Могу, должен, хочу: da + глагол",
+      "summary": "Как соединить намерение или возможность с действием.",
+      "objectives": [
+        "Использовать mogu и moram",
+        "Согласовывать глагол после da"
+      ],
+      "sections": [
+        {
+          "title": "Два глагола, одна задача",
+          "paragraphs": [
+            "Mogu обозначает возможность, moram — необходимость, želim — желание. В модели da + настоящее второй глагол тоже получает личную форму: mogu da čitam, možemo da čitamo. После da здесь не ставят инфинитив."
+          ],
+          "table": {
+            "headers": [
+              "Я",
+              "Мы",
+              "Смысл"
+            ],
+            "rows": [
+              [
+                "mogu da crtam",
+                "možemo da crtamo",
+                "могу / можем рисовать"
+              ],
+              [
+                "moram da radim",
+                "moramo da radimo",
+                "должен / должны работать"
+              ],
+              [
+                "želim da pišem",
+                "želimo da pišemo",
+                "хочу / хотим писать"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Альтернатива с инфинитивом",
+          "paragraphs": [
+            "При одном исполнителе возможен и инфинитив: mogu čitati. Он встречается и в сербском; не считайте его ошибкой только потому, что здесь выбрана модель с da. Когда исполнители разные, нужно внимательно назвать каждого и выбрать формы по смыслу.",
+            "Mogu и moram не взаимозаменяемы. Ne mogu сообщает о невозможности, а ne moram — об отсутствии обязанности; это не приказ «нельзя»."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Možemo da crtamo zajedno.",
+          "translation": "Мы можем рисовать вместе.",
+          "note": "Оба глагола относятся к mi."
+        },
+        {
+          "serbian": "Ne moram da radim večeras.",
+          "translation": "Мне не нужно работать сегодня вечером.",
+          "note": "Отрицается необходимость, а не возможность."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Продолжите для mi: „Možemo da ___.“ (čitati)",
+          "answer": "Možemo da čitamo.",
+          "explanation": "После da — личная форма первого лица множественного числа."
+        }
+      ],
+      "pitfalls": [
+        "Не смешивайте da и инфинитив: mogu da čitati не подходит.",
+        "Вопросы нормы с trebati требуют отдельного разбора; здесь используется morati."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj6",
+          "locator": "с. 6–8 и 11–12, moći, morati, личные формы после da"
+        },
+        {
+          "source_id": "nj20",
+          "locator": "с. 15, инфинитив и da + настоящее"
+        }
+      ],
+      "related": [
+        "present",
+        "aspect"
+      ]
+    },
+    {
+      "id": "imperative",
+      "group_id": "verbs",
+      "title": "Императив: просьба и инструкция",
+      "summary": "Обращение на ты или вы и мягкое приглашение.",
+      "objectives": [
+        "Выбирать форму обращения",
+        "Узнавать отрицательную просьбу"
+      ],
+      "sections": [
+        {
+          "title": "К кому обращаемся",
+          "paragraphs": [
+            "Повелительная форма зависит от адресата: čitaj — одному человеку на ты, čitajte — нескольким или при обращении на вы. Čitajmo предлагает действие от лица «давайте мы». Форму полезно учить вместе с глаголом, потому что образование не всегда предсказуемо."
+          ],
+          "table": {
+            "headers": [
+              "Инфинитив",
+              "Ты",
+              "Вы",
+              "Давайте мы"
+            ],
+            "rows": [
+              [
+                "čitati",
+                "čitaj",
+                "čitajte",
+                "čitajmo"
+              ],
+              [
+                "pisati",
+                "piši",
+                "pišite",
+                "pišimo"
+              ],
+              [
+                "raditi",
+                "radi",
+                "radite",
+                "radimo"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Как передать тон",
+          "paragraphs": [
+            "Императив может быть инструкцией, просьбой или приказом: смысл зависит от ситуации и интонации. Molim te / molim vas добавляет «пожалуйста», но само по себе не гарантирует уместность любой просьбы.",
+            "Для отрицательной просьбы есть модель nemoj / nemojte + инфинитив: nemoj pisati. Здесь разбираются эти готовые формы; выбор вида в запретах и весь набор нерегулярных императивов не обобщаются."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Pišite polako, molim vas.",
+          "translation": "Пишите медленно, пожалуйста.",
+          "note": "Обращение на вы."
+        },
+        {
+          "serbian": "Nemoj crtati po zidu.",
+          "translation": "Не рисуй на стене.",
+          "note": "Nemoj + инфинитив; обращение на ты."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Обратитесь на вы: „Čitaj polako.“",
+          "answer": "Čitajte polako.",
+          "explanation": "Во втором лице множественного числа добавляется -te к изученной форме čitaj."
+        }
+      ],
+      "pitfalls": [
+        "Не считайте каждый императив грубым или каждое molim vas достаточным для вежливости.",
+        "Формы в таблице не являются алгоритмом для всех глаголов."
+      ],
+      "source_refs": [
+        {
+          "source_id": "zl-imperative",
+          "locator": "Table 1; When to use imperatives"
+        }
+      ],
+      "related": [
+        "modals-da",
+        "conditional"
+      ]
+    },
+    {
+      "id": "aspect",
+      "group_id": "verbs",
+      "title": "Вид: процесс и результат",
+      "summary": "Čitati и pročitati выделяют разные стороны действия.",
+      "objectives": [
+        "Различать процесс и достигнутую границу",
+        "Не путать вид со временем"
+      ],
+      "sections": [
+        {
+          "title": "Что хотим сообщить",
+          "paragraphs": [
+            "Несовершенный вид позволяет показать процесс или повторение: čitati, pisati. Совершенный представляет действие как целое с границей: pročitati, napisati. Русские пары помогают понять идею, но не гарантируют совпадение употребления каждого глагола.",
+            "Čitao sam не утверждает, что текст дочитан, и не доказывает, что он остался недочитанным. Pročitao sam делает завершение чтения частью сообщения. Для выбора важен смысл всей фразы, а не наличие слова juče."
+          ]
+        },
+        {
+          "title": "Учите пару в конструкции",
+          "paragraphs": [
+            "Форму совершенного настоящего можно встретить после da: želim da pročitam. Это ещё не сообщение о действии, прямо сейчас происходящем перед глазами. В этой главе сравниваются только пары čitati / pročitati и pisati / napisati; механическое добавление приставки не создаёт универсальную видовую пару."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Juče sam čitao taj roman.",
+          "translation": "Вчера я читал этот роман.",
+          "note": "Говорит мужчина; о дочитывании до конца ничего не утверждается."
+        },
+        {
+          "serbian": "Juče sam pročitao taj roman.",
+          "translation": "Вчера я прочитал этот роман.",
+          "note": "Завершение входит в выбранное представление события."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Как подчеркнуть, что чтение завершено: „Čitala sam“ или „Pročitala sam“?",
+          "answer": "Pročitala sam.",
+          "explanation": "Совершенный вид в этой паре выделяет результат; говорит женщина."
+        }
+      ],
+      "pitfalls": [
+        "Не выводите вид только по длине слова или приставке.",
+        "Это смысловая самопроверка, а не полный ключ для всех контекстов."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj12",
+          "locator": "с. 4 и 14, вид в настоящем и прошлом"
+        }
+      ],
+      "related": [
+        "perfect",
+        "modals-da"
+      ]
+    },
+    {
+      "id": "clitics",
+      "group_id": "sentence",
+      "title": "Клитики: короткие слова в предложении",
+      "summary": "Sam, se, mu, ga имеют своё место.",
+      "objectives": [
+        "Распознавать короткие безударные формы",
+        "Собирать несколько клитик в изученных моделях"
+      ],
+      "sections": [
+        {
+          "title": "После первой опоры",
+          "paragraphs": [
+            "Клитики — короткие безударные слова, которым нужна опора: sam, si, se, mu, ga. В простом нейтральном предложении группа обычно идёт после первого слова или первой смысловой группы. Поэтому «вторая позиция» не всегда означает второе написанное слово.",
+            "Сравните: Danas sam crtao и Moj brat je crtao. Не вставляйте длинное дополнение между sam и связанными с ним короткими местоимениями. При сложной фразе место группы нужно проверять внутри её части."
+          ]
+        },
+        {
+          "title": "Порядок внутри группы",
+          "paragraphs": [
+            "В изучаемых сочетаниях sam / si / smo / ste / su идут перед короткими местоимениями, датив mu — перед аккузативом ga, а je вспомогательного глагола — после них. При se в третьем лице перфекта обычная модель обходится без je: Ona se odmarala."
+          ],
+          "table": {
+            "headers": [
+              "Модель",
+              "Разбор"
+            ],
+            "rows": [
+              [
+                "Dao sam mu ga.",
+                "sam → mu → ga"
+              ],
+              [
+                "On mu ga je dao.",
+                "mu → ga → je"
+              ],
+              [
+                "Ona se odmarala.",
+                "se, без вспомогательного je"
+              ]
+            ]
+          }
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Jutros sam mu pisao.",
+          "translation": "Сегодня утром я ему писал.",
+          "note": "Говорит мужчина; sam перед mu после jutros."
+        },
+        {
+          "serbian": "Vera mu je pisala.",
+          "translation": "Вера ему писала.",
+          "note": "Mu перед вспомогательным je."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Расположите слова после Jutros: sam / mu / pisao.",
+          "answer": "Jutros sam mu pisao.",
+          "explanation": "В этой модели sam предшествует короткому дативу mu."
+        }
+      ],
+      "pitfalls": [
+        "Правило не означает, что порядок остальных слов всегда свободен и смысл не меняется.",
+        "Не переносите место вспомогательного je на sam и si."
+      ],
+      "source_refs": [
+        {
+          "source_id": "zl-clitics",
+          "locator": "Clitics after the first whole phrase; Table 1"
+        },
+        {
+          "source_id": "nj11",
+          "locator": "с. 8, Order of clitics"
+        }
+      ],
+      "related": [
+        "biti",
+        "dative",
+        "perfect"
+      ]
+    },
+    {
+      "id": "comparisons",
+      "group_id": "nouns",
+      "title": "Степени сравнения",
+      "summary": "Больше, лучше и самый большой с согласованием.",
+      "objectives": [
+        "Узнавать частотные сравнительные формы",
+        "Использовать od с генитивом"
+      ],
+      "sections": [
+        {
+          "title": "Сравнительная форма тоже согласуется",
+          "paragraphs": [
+            "У прилагательных встречаются разные способы образования сравнительной степени. Учите частотные формы целиком: velik → veći, dobar → bolji, lep → lepši, star → stariji. Женский род: veća, bolja; средний: veće, bolje."
+          ],
+          "table": {
+            "headers": [
+              "Обычная форма",
+              "Сравнительная",
+              "Превосходная"
+            ],
+            "rows": [
+              [
+                "velik",
+                "veći",
+                "najveći"
+              ],
+              [
+                "dobar",
+                "bolji",
+                "najbolji"
+              ],
+              [
+                "lep",
+                "lepši",
+                "najlepši"
+              ],
+              [
+                "star",
+                "stariji",
+                "najstariji"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "С чем сравниваем",
+          "paragraphs": [
+            "В простой модели сравнения od требует генитива: veći od parka. С naj- получается превосходная степень: najveći. При этом окончание по-прежнему зависит от существительного: najveća soba.",
+            "Если сравниваются обстоятельства с предлогом или целые действия, встречается nego. Здесь отрабатывается только простая модель od + существительное, чтобы не превращать одно правило в замену всем видам сравнения."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Ovaj park je veći od trga.",
+          "translation": "Этот парк больше площади.",
+          "note": "После od — генитив trga."
+        },
+        {
+          "serbian": "Ova slika je najlepša.",
+          "translation": "Эта картина самая красивая.",
+          "note": "Najlepša согласуется со slika."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Дополните: „Ova soba je ___.“ (velik, сравнительная степень)",
+          "answer": "Ova soba je veća.",
+          "explanation": "Нужна сравнительная форма женского рода veća."
+        }
+      ],
+      "pitfalls": [
+        "Не добавляйте -iji к любому прилагательному.",
+        "Не забывайте согласование сравнительной формы."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj19",
+          "locator": "с. 3, 5–6: формы, naj-, od + генитив"
+        }
+      ],
+      "related": [
+        "genitive",
+        "adjectives-possession"
+      ]
+    },
+    {
+      "id": "conditional",
+      "group_id": "verbs",
+      "title": "Потенциал: «я бы»",
+      "summary": "Bih, bi, bismo, biste и форма на -l.",
+      "objectives": [
+        "Выбирать вспомогательную форму по лицу",
+        "Формулировать желание без обещания"
+      ],
+      "sections": [
+        {
+          "title": "Как устроена форма",
+          "paragraphs": [
+            "Потенциал, или условное наклонение, соединяет bih / bi / bismo / biste с причастием: čitao bih, čitala bih. Причастие согласуется по роду и числу, а вспомогательная форма — по лицу."
+          ],
+          "table": {
+            "headers": [
+              "Лицо",
+              "Форма"
+            ],
+            "rows": [
+              [
+                "ja",
+                "bih"
+              ],
+              [
+                "ti",
+                "bi"
+              ],
+              [
+                "on / ona / ono",
+                "bi"
+              ],
+              [
+                "mi",
+                "bismo"
+              ],
+              [
+                "vi",
+                "biste"
+              ],
+              [
+                "oni / one / ona",
+                "bi"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Желание и отрицание",
+          "paragraphs": [
+            "Форма может выражать желание или смягчать просьбу. Želela bih… — «я хотела бы…», говорит женщина. Это не обещание выполнить действие. После želim / želela bih возможна изученная конструкция da + настоящее.",
+            "Отрицательная частица пишется отдельно: ne bih, ne bismo. В этой главе показано употребление для желания; система реальных и нереальных условий с ako и da шире этих примеров."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Želela bih da crtam.",
+          "translation": "Я хотела бы рисовать.",
+          "note": "Говорит женщина: želela; первое лицо: bih."
+        },
+        {
+          "serbian": "Mi bismo čitali zajedno.",
+          "translation": "Мы бы читали вместе.",
+          "note": "Bismo указывает на mi; čitali — мужская или смешанная группа."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Дополните для mi: „Mi ___ pisali.“",
+          "answer": "Mi bismo pisali.",
+          "explanation": "Для первого лица множественного числа — bismo, не bi."
+        }
+      ],
+      "pitfalls": [
+        "Не заменяйте bih, bismo и biste неизменяемым bi в учебной письменной модели.",
+        "Вежливость зависит также от адресата и ситуации."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj20",
+          "locator": "с. 15–16, The conditional mood"
+        },
+        {
+          "source_id": "zl-clitics",
+          "locator": "Table 1, формы bih / bi / bismo / biste"
+        }
+      ],
+      "related": [
+        "perfect",
+        "modals-da"
+      ]
+    },
+    {
+      "id": "conjunctions",
+      "group_id": "sentence",
+      "title": "Связываем мысли",
+      "summary": "I, a, ali, ili и простое объяснение причины.",
+      "objectives": [
+        "Выбирать связь по смыслу",
+        "Сохранять грамматику обеих частей"
+      ],
+      "sections": [
+        {
+          "title": "Добавление, сопоставление, выбор",
+          "paragraphs": [
+            "I соединяет однородные элементы или добавляет сообщение. A удобно для сопоставления, ali — для явного противопоставления, ili — для выбора. Русский перевод помогает, но не определяет союз автоматически: сначала решите, как связаны мысли."
+          ],
+          "table": {
+            "headers": [
+              "Союз",
+              "Базовый смысл"
+            ],
+            "rows": [
+              [
+                "i",
+                "и, добавление"
+              ],
+              [
+                "a",
+                "а, сопоставление"
+              ],
+              [
+                "ali",
+                "но"
+              ],
+              [
+                "ili",
+                "или"
+              ],
+              [
+                "zato što",
+                "потому что"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "Причина и собственная часть предложения",
+          "paragraphs": [
+            "Zato što вводит причину. После него нужно построить целую часть со своей формой глагола: zato što sam umorna. Клитика sam здесь не остаётся на прежнем месте из отдельной фразы Umorna sam.",
+            "Начните с двух коротких мыслей. Назовите людей так, чтобы было ясно, кто действует в каждой части. Потом соедините их и проверьте согласование, отрицание и место коротких слов."
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "serbian": "Ja crtam, a sestra piše.",
+          "translation": "Я рисую, а сестра пишет.",
+          "note": "Сопоставляются действия двух людей."
+        },
+        {
+          "serbian": "Odmaram se zato što sam umorna.",
+          "translation": "Я отдыхаю, потому что устала.",
+          "note": "Говорит женщина; причина выражена отдельной частью."
+        }
+      ],
+      "practice": [
+        {
+          "prompt": "Соедините с a: „Ja čitam.“ + „Brat crta.“",
+          "answer": "Ja čitam, a brat crta.",
+          "explanation": "Сопоставление двух действий; каждый глагол сохраняет своё лицо."
+        }
+      ],
+      "pitfalls": [
+        "Не переносите автоматически русский порядок коротких слов в часть с союзом.",
+        "Глава не заменяет полный разбор сложных и относительных предложений."
+      ],
+      "source_refs": [
+        {
+          "source_id": "nj4",
+          "locator": "с. 13, Words for and"
+        },
+        {
+          "source_id": "nj19",
+          "locator": "с. 4, контекстные употребления ali и zato što"
+        }
+      ],
+      "related": [
+        "clitics",
+        "questions-negation"
+      ]
+    }
+  ]
+}

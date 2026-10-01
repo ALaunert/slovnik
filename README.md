@@ -1,6 +1,16 @@
 # Slovnik
 
-Serbian vocabulary trainer MVP with a FastAPI backend, Postgres persistence, and a Vue 3 frontend.
+Serbian learning app with a grammar textbook, vocabulary practice, a FastAPI backend,
+Postgres persistence, and a Vue 3 frontend.
+
+## Grammar textbook
+
+Open `http://localhost:5173/textbook` or **Учебник** in the navigation. The bundled book
+has 20 grammar topics in four groups, Russian explanations, form tables, 40 Serbian
+examples with translations and 20 self-checks with expandable sample answers. Reading
+works without a profile or backend; it does not write progress or automatically grade answers.
+This is a basic written edition, not an exhaustive A1–B1 course. Source locators, original
+authorship and internal review limits are in [the textbook review](docs/learning/textbook-review.md).
 
 ## Local Development
 
@@ -28,6 +38,15 @@ If local port `5432` is busy, set `POSTGRES_PORT` in `.env`; the backend contain
 9. Check backend: `curl http://localhost:8000/api/health`.
 
 When using a nondefault `POSTGRES_PORT` with the host-run backend, also update the host-oriented `DATABASE_URL` in `.env`, for example `POSTGRES_PORT=55432` and `DATABASE_URL=postgresql+psycopg://slovnik:slovnik@localhost:55432/slovnik`. After pulling changes, run the host Alembic upgrade before starting the host-run app.
+
+The optional reviewed written practice uses a dedicated loopback launcher and an already
+published local pack. See [local written practice](docs/learning/local-written-practice.md)
+for startup, resume, operation coverage and the current test-data retention boundary.
+The normal backend startup keeps practice unavailable.
+
+Profile settings include a manual IANA timezone (UTC for existing profiles). A change takes effect
+at a future day boundary and preserves the current written allocation; the dashboard shows its
+activation time. Run `alembic upgrade head` after pulling the additive timezone migration.
 
 For production deployments, set `ENVIRONMENT=production` and replace `EDITOR_PASSWORD` with a non-placeholder secret before starting the backend. Placeholder editor passwords are accepted only for explicit local/test environments.
 

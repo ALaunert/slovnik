@@ -1,10 +1,98 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
+export type PracticeResult = {
+  event_id: string;
+  outcome: "correct" | "incorrect" | "unresolved" | null;
+  first_response: string | null;
+  evidence_kind?: "first_answer" | "repair" | "supported_retry" | "exposure";
+};
+
+export type PracticeSupport = "cue" | "reveal" | "correction";
+export type PracticeExample = { serbian: string; translation: string; answer: string };
+export type PracticeFeedback = {
+  first_result: PracticeResult; instruction_ru: string; error_tags: string[];
+  example: PracticeExample; can_repair: boolean;
+};
+
+export type PracticeActivity = {
+  id: string; kind: "exercise" | "exposure";
+  operation: "recognize" | "retrieve" | "complete" | "transform" | null;
+  cue_level: string; status: "pending" | "completed" | "cancelled";
+  sequence_number: number; capability: string; context_family: string;
+  task: { input: string; instruction_ru: string; format: string };
+  response_contract: { kind: "text" | "choice"; max_codepoints?: number; max_options?: number; options?: string[] } | null;
+  presentation: { serbian: string; translation: string } | null;
+  selection_reasons: string[]; result: PracticeResult | null;
+  retry_of?: string | null;
+  support?: { kind: PracticeSupport; instruction_ru: string; example: PracticeExample | null } | null;
+};
+
+export type PracticeRun = {
+  schema_version: 1; id: string; status: "active" | "completed" | "abandoned";
+  policy_version: string; activities: PracticeActivity[];
+  workload?: PracticeWorkload;
+};
+
+export type PracticeWorkload = {
+  policy_version: string; timezone: string;
+  window?: { start: string; end: string; timezone: string; transition: boolean; calendar_policy_version: string };
+  issued: Record<"total" | "root" | "new" | "due" | "weak" | "assessment" | "repair" | "probe", number>;
+  limits: Record<"total" | "root" | "new" | "repair" | "probe", number>;
+  remaining: Record<"total" | "root" | "new" | "repair" | "probe", number>;
+};
+
+async function practiceRequest<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}/api/practice${path}`, {
+    method, ...(body === undefined ? {} : {
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  });
+  if (!response.ok) throw Object.assign(new Error(`Practice request failed: ${response.status}`), { status: response.status });
+  return response.json();
+}
+
+export async function getPracticeAvailability(): Promise<boolean> {
+  const response = await fetch(`${API_BASE_URL}/api/practice/availability`);
+  if (response.status === 404) return false;
+  if (!response.ok) throw new Error("Practice availability could not be checked");
+  return (await response.json()).enabled === true;
+}
+
+export function createOrResumePractice(userId: string, runId: string): Promise<PracticeRun> {
+  return practiceRequest(`/${encodeURIComponent(userId)}/runs/${encodeURIComponent(runId)}`, "PUT");
+}
+
+export function getPracticeRun(userId: string, runId: string): Promise<PracticeRun> {
+  return practiceRequest(`/${encodeURIComponent(userId)}/runs/${encodeURIComponent(runId)}`);
+}
+
+export function nextPracticeActivity(userId: string, runId: string, kind: "exercise" | "exposure" = "exercise"):
+Promise<{ activity: PracticeActivity | null; reason: string | null; workload?: PracticeWorkload }> {
+  return practiceRequest(`/${encodeURIComponent(userId)}/runs/${encodeURIComponent(runId)}/next`, "POST", { kind });
+}
+
+export function submitPracticeResponse(userId: string, activityId: string,
+  body: { idempotency_key: string; response?: string }): Promise<PracticeResult> {
+  return practiceRequest(`/${encodeURIComponent(userId)}/activities/${encodeURIComponent(activityId)}/responses`, "POST", body);
+}
+
+export function getPracticeFeedback(userId: string, activityId: string): Promise<PracticeFeedback> {
+  return practiceRequest(`/${encodeURIComponent(userId)}/activities/${encodeURIComponent(activityId)}/feedback`);
+}
+
+export function createPracticeRepair(userId: string, activityId: string,
+  body: { retry_id: string; support: PracticeSupport }): Promise<PracticeActivity> {
+  return practiceRequest(`/${encodeURIComponent(userId)}/activities/${encodeURIComponent(activityId)}/repair`, "POST", body);
+}
+
 export type Profile = {
   user_id: string;
   preferred_level: string;
   daily_new_word_count: number;
   ui_language: string;
+  timezone?: string;
+  effective_timezone?: string;
+  allocation_window?: { start: string; end: string; timezone: string; transition: boolean };
 };
 
 export async function createOrLoadProfile(userId: string): Promise<Profile> {
@@ -19,7 +107,7 @@ export async function createOrLoadProfile(userId: string): Promise<Profile> {
 
 export async function updateProfile(
   userId: string,
-  payload: { preferred_level?: string; daily_new_word_count?: number; ui_language?: string },
+  payload: { preferred_level?: string; daily_new_word_count?: number; ui_language?: string; timezone?: string },
 ): Promise<Profile> {
   const response = await fetch(`${API_BASE_URL}/api/profiles/${encodeURIComponent(userId)}`, {
     method: "PATCH",
@@ -263,17 +351,13 @@ export type QuizQuestion = {
 
 export type QuizStart = { attempt_id: number; quiz_type: string; questions: QuizQuestion[] };
 export type QuizCompletion = {
-  score: number;
-  total_questions: number;
-  weak_word_ids: number[];
-  mistakes: Record<string, unknown>[];
-  result_version?: 2;
-  first_attempt_correct?: number;
-  first_attempt_eligible?: number;
+  score: number; total_questions: number; weak_word_ids: number[]; mistakes: Record<string, unknown>[];
+  result_version?: 2; answer_key_status?: "frozen" | "legacy";
+  breakdown_status?: "available" | "unavailable";
   first_attempt_status?: "available" | "not_measured" | "unavailable";
-  recovered_objective_items?: number;
-  self_report_remembered?: number;
-  self_report_total?: number;
+  first_attempt_correct?: number | null; first_attempt_eligible?: number | null;
+  recovered_objective_items?: number | null;
+  self_report_remembered?: number | null; self_report_total?: number | null;
 };
 
 export async function startQuiz(userId: string, quizType: "daily" | "weekly" = "daily"): Promise<QuizStart> {

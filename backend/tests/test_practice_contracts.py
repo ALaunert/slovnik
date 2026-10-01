@@ -168,6 +168,7 @@ def test_practice_enum_wire_values_match_sql01_and_event01() -> None:
         "partial",
         "incorrect",
         "unknown",
+        "unresolved",
     ]
 
 
@@ -429,6 +430,12 @@ def test_response_submission_and_evaluation_are_bounded_event_values() -> None:
         "truncated": False,
     }
     assert evaluation.partial_score is None
+    unresolved = Evaluation(
+        source=EvaluationSource.DETERMINISTIC,
+        outcome=EvaluationOutcome.UNRESOLVED,
+        error_tags=("unlisted_variant",),
+    )
+    assert unresolved.outcome.value == "unresolved"
     with pytest.raises(ValueError, match="2000"):
         ResponseSnapshot(kind=ResponseKind.TEXT, value="x" * 2001)
     with pytest.raises(ValueError, match="partial_score"):

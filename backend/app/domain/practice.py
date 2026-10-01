@@ -184,6 +184,7 @@ class EvaluationOutcome(str, Enum):
     PARTIAL = "partial"
     INCORRECT = "incorrect"
     UNKNOWN = "unknown"
+    UNRESOLVED = "unresolved"
 
 
 class LearningEventType(str, Enum):

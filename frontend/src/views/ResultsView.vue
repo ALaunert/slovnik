@@ -17,9 +17,14 @@ const results = computed<QuizCompletion & { quizType?: string }>(() => {
   }
 });
 const copy = computed(() => messages[sessionStore.uiLanguage.value]);
+const breakdownStatus = computed(() => results.value.first_attempt_status ?? (
+  results.value.breakdown_status === "available"
+    ? results.value.first_attempt_eligible === 0 ? "not_measured" : "available"
+    : "unavailable"
+));
 const hasBreakdown = computed(() =>
   results.value.result_version === 2 &&
-  (results.value.first_attempt_status === "available" || results.value.first_attempt_status === "not_measured") &&
+  (breakdownStatus.value === "available" || breakdownStatus.value === "not_measured") &&
   typeof results.value.first_attempt_correct === "number" &&
   typeof results.value.first_attempt_eligible === "number" &&
   typeof results.value.recovered_objective_items === "number" &&
@@ -49,11 +54,12 @@ function questionTypeLabel(questionType: string) {
     <p class="muted">{{ copy.practiceScoreNote }}</p>
     <section class="panel stack" aria-label="evidence-breakdown">
       <h2>{{ copy.resultBreakdown }}</h2>
+      <p v-if="results.answer_key_status === 'legacy'">{{ copy.legacyKeyNote }}</p>
       <p v-if="!hasBreakdown">{{ copy.breakdownUnavailable }}</p>
       <template v-else>
         <p>
           {{ copy.firstUnaided }}:
-          <span v-if="results.first_attempt_status === 'not_measured'">{{ copy.notMeasured }}</span>
+          <span v-if="breakdownStatus === 'not_measured'">{{ copy.notMeasured }}</span>
           <span v-else>{{ results.first_attempt_correct }} / {{ results.first_attempt_eligible }}</span>
         </p>
         <p>{{ copy.recoveredAfterError }}: {{ results.recovered_objective_items }}</p>

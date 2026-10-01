@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import health, learning, profiles, quizzes, vocabulary
+from app.routers import health, learning, practice, profiles, quizzes, vocabulary
 
 app = FastAPI(title="Serbian Vocabulary Trainer")
 app.add_middleware(
@@ -17,3 +17,4 @@ app.include_router(profiles.router)
 app.include_router(vocabulary.router)
 app.include_router(learning.router)
 app.include_router(quizzes.router)
+app.include_router(practice.router)

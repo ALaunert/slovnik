@@ -1584,6 +1584,40 @@ def test_upgrade_from_existing_ai_fill_revision_adds_reservations(
         engine.dispose()
 
 
+@pytest.mark.parametrize("existing_head", ["20260925_0006", "20261001_0006"])
+def test_upgrade_from_either_publication_or_timezone_branch(tmp_path, monkeypatch, existing_head):
+    database_url = f"sqlite:///{tmp_path / 'branch-upgrade.db'}"
+    config = build_alembic_config(database_url, monkeypatch)
+    command.upgrade(config, existing_head)
+    engine = create_engine(database_url)
+    try:
+        seed_legacy_vocabulary(engine)
+        seed_legacy_progress(engine)
+        if existing_head == "20261001_0006":
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "UPDATE user_profiles SET timezone='Europe/Belgrade' WHERE user_id=:user_id"
+                ), {"user_id": LEGACY_USER_ID})
+        engine.dispose()
+        command.upgrade(config, "head")
+        assert "publication_request_fingerprint" in {
+            column["name"] for column in inspect(engine).get_columns("curriculum_versions")
+        }
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == [
+                "20261001_0007"
+            ]
+            assert connection.execute(text(
+                "SELECT timezone FROM user_profiles WHERE user_id=:user_id"
+            ), {"user_id": LEGACY_USER_ID}).scalar_one() == (
+                "Europe/Belgrade" if existing_head == "20261001_0006" else "UTC"
+            )
+        assert read_legacy_stress_marker(engine) == LEGACY_STRESS_MARKER
+        assert read_legacy_progress(engine, include_schedule=True)["correct_count"] == 3
+    finally:
+        engine.dispose()
+
+
 def test_downgrade_removes_active_recall_schedule(migration_database):
     config, engine = migration_database
 
@@ -1646,7 +1680,13 @@ def test_postgresql_migration_round_trip(postgresql_migration_database):
         "review_interval_days": 0,
         "review_streak": 0,
     }
-    assert read_seeded_legacy_snapshot(engine) == legacy_snapshot
+    upgraded_snapshot = read_seeded_legacy_snapshot(engine)
+    upgraded_profile = upgraded_snapshot["profile"]
+    assert upgraded_profile.pop("timezone") == "UTC"
+    assert upgraded_profile.pop("previous_timezone") == "UTC"
+    assert upgraded_profile.pop("timezone_change_at") is None
+    assert upgraded_profile.pop("timezone_window_start") is None
+    assert upgraded_snapshot == legacy_snapshot
 
     engine.dispose()
     command.downgrade(config, "20260725_0004")

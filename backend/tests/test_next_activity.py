@@ -203,6 +203,33 @@ def _service(
     )
 
 
+def test_versioned_selector_falls_back_from_invalid_due_to_new_without_changing_v1():
+    from app.domain.practice import LearningIntent
+    from app.domain.selection_policy import CuratedActivityCandidateProvider, DecisionCode
+    due = _curriculum_target()
+    new = _curriculum_target(_target(target_id="33333333-3333-4333-8333-333333333333"))
+
+    class NewOnly:
+        def candidates_for(self, target):
+            return CuratedActivityCandidateProvider().candidates_for(target) if target == new else ()
+
+    service = _service((due, new), {due.target_spec.target_key: _native_state(due.target_spec, due_at=NOW)},
+                       candidate_provider=NewOnly())
+    assert service.select_next(learner_id="learner-1", now=NOW).decision_code is DecisionCode.NO_VALID_CANDIDATE
+    decision = service.select_next(learner_id="learner-1", now=NOW, fallback_invalid_intents=True)
+    assert decision.target_key == new.target_spec.target_key
+    assert decision.intent is LearningIntent.ACQUIRE
+
+
+def test_versioned_selector_reserves_new_opportunity_despite_old_due_backlog():
+    from app.domain.practice import LearningIntent
+    due = _curriculum_target()
+    new = _curriculum_target(_target(target_id="33333333-3333-4333-8333-333333333333"))
+    service = _service((due, new), {due.target_spec.target_key: _native_state(due.target_spec, due_at=NOW-timedelta(days=90))})
+    assert service.select_next(learner_id="learner-1", now=NOW).intent is LearningIntent.REVIEW
+    assert service.select_next(learner_id="learner-1", now=NOW, prefer_acquire=True).intent is LearningIntent.ACQUIRE
+
+
 def test_curated_provider_builds_four_bounded_deterministic_activity_shapes() -> None:
     from app.domain.practice import (
         ActivityKind,

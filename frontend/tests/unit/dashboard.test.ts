@@ -43,13 +43,23 @@ describe("DashboardView", () => {
     await wrapper.get('select[name="preferred_level"]').setValue("A2");
     await wrapper.get('input[name="daily_new_word_count"]').setValue(7);
     await wrapper.get('select[name="ui_language"]').setValue("sr");
+    await wrapper.get('input[name="timezone"]').setValue("Europe/Belgrade");
     await wrapper.get("form").trigger("submit.prevent");
 
     expect(updateProfile).toHaveBeenCalledWith("learner-1", {
       preferred_level: "A2",
       daily_new_word_count: 7,
       ui_language: "sr",
+      timezone: "Europe/Belgrade",
     });
+  });
+
+  it("discloses the UTC fallback instead of silently detecting a timezone", async () => {
+    const wrapper = mount(DashboardView, { global: { stubs: { RouterLink: RouterLinkStub } } });
+    await flushPromises();
+    expect(wrapper.get('input[name="timezone"]').element).toHaveProperty("value", "UTC");
+    expect(wrapper.text()).toContain("Действующая зона: UTC");
+    expect(wrapper.text()).toContain("Лимит не сбрасывается");
   });
 
   it("renders Serbian route copy after the saved profile selects Serbian", async () => {

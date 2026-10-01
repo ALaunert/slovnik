@@ -54,3 +54,7 @@ Run the future route test suite against the matrix with two authenticated princi
 P2-01a remains `blocked_external` until the product owner records the five choices above and the ADR is reviewed against the selected provider and deployment. P2-01b then implements and passes the matrix, migration and frontend tests. Production trusted-identity readiness must remain false until that evidence exists; the independent lifecycle gate must also pass. This ADR does not authorize changing `LANGUAGE_ASSISTANT_SHADOW_TRUSTED_IDENTITY_READY`, exposing direct practice routes, or remote enrollment.
 
 Design verification on 2026-09-24: `python3 docs/testing/identity/check_matrix.py` passed against all 20 current FastAPI routes and seven synthetic claim scenarios; `git diff --check` passed. These checks validate inventory and artifact syntax, not access control.
+
+## Current disposition (2026-10-01)
+
+The owner deferred authorization on 2026-09-30; see [the later scope decision](ADR-production-identity-2026-09-30.md). The current design inventory covers 27 routes, including seven actual-loopback local practice routes. Their ownership cases remain specifications for a future remote implementation. The local launcher gate is not authentication, and remote enrollment remains unavailable. The seven synthetic claim scenarios remain unchanged.

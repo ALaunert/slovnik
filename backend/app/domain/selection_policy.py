@@ -183,25 +183,28 @@ class NextActivityDecision:
             raise ValueError("Selection rank components must match activity presence")
         if has_activity != (self.activity_fingerprint is not None):
             raise ValueError("Selection fingerprint must match activity presence")
-        if self.policy_version != SELECTION_POLICY_VERSION:
-            raise ValueError("Selection decision policy version must be selector-v1")
+        if self.policy_version not in {SELECTION_POLICY_VERSION, "selector-local-v2"}:
+            raise ValueError("Unknown selection decision policy version")
         if not isinstance(self.reason_metadata, Mapping):
             raise ValueError("Selection reason_metadata must be an object")
         if has_activity:
-            if set(self.reason_metadata) != {"difficulty_features"}:
+            allowed = {"difficulty_features"}
+            if self.policy_version == "selector-local-v2":
+                allowed.add("invalid_intents")
+            if "difficulty_features" not in self.reason_metadata or set(self.reason_metadata) - allowed:
                 raise ValueError(
                     "Activity reason_metadata requires difficulty_features"
                 )
             difficulty_features = self.reason_metadata["difficulty_features"]
             if not isinstance(difficulty_features, Mapping):
                 raise ValueError("difficulty_features must be an object")
-            frozen_metadata = MappingProxyType(
-                {
-                    "difficulty_features": freeze_difficulty_features(
-                        difficulty_features
-                    )
-                }
-            )
+            metadata = {"difficulty_features": freeze_difficulty_features(difficulty_features)}
+            if "invalid_intents" in self.reason_metadata:
+                values = tuple(self.reason_metadata["invalid_intents"])
+                if len(values) > 4 or any(value not in {intent.value for intent in LearningIntent} for value in values):
+                    raise ValueError("Invalid fallback intent diagnostics")
+                metadata["invalid_intents"] = values
+            frozen_metadata = MappingProxyType(metadata)
         else:
             if self.reason_metadata:
                 raise ValueError("No-activity reason_metadata must be empty")
@@ -230,13 +233,14 @@ class NextActivityDecision:
         }
 
     @classmethod
-    def no_activity(cls, decision_code: DecisionCode) -> NextActivityDecision:
+    def no_activity(cls, decision_code: DecisionCode, *, policy_version=SELECTION_POLICY_VERSION) -> NextActivityDecision:
         return cls(
             activity_spec=None,
             intent=None,
             target_key=None,
             reason_codes=(),
             decision_code=decision_code,
+            policy_version=policy_version,
         )
 
 

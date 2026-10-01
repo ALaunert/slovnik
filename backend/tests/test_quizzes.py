@@ -804,3 +804,231 @@ def test_shadow_flag_off_keeps_quiz_paths_free_of_domain_work(
     )
     assert completed.status_code == 200
     assert completed.json()["total_questions"] == len(body["questions"])
+
+
+def test_new_quiz_keys_are_private_and_survive_vocabulary_edit(client, db_session, started_quiz):
+    attempt_id = started_quiz["attempt_id"]
+    attempt = db_session.get(QuizAttempt, attempt_id)
+    plan = json.loads(attempt.question_plan)
+    assert all(item["answer_key_version"] == 1 and item["answer_key"] for item in plan)
+    assert all("answer_key" not in item and "answer" not in item for item in started_quiz["questions"])
+    from app.services.quiz_service import start_quiz
+
+    service_result = start_quiz(db_session, "learner-1", "daily")
+    assert all("answer_key" not in item and "answer" not in item
+               for item in service_result["questions"])
+    typing = next(item for item in plan if item["question_type"] == "ru_to_sr_typing")
+    self_check = next(item for item in plan if item["question_type"] == "remembered_forgot_self_check")
+    original_latin = typing["answer_key"]["serbian_latin"]
+    original_cyrillic = typing["answer_key"]["serbian_cyrillic"]
+    original_reveal = self_check["answer_key"]["russian_translation"]
+    word = db_session.get(VocabularyItem, typing["word_id"])
+    word.serbian_latin = "izmenjeno"
+    word.serbian_cyrillic = "измењено"
+    db_session.get(VocabularyItem, self_check["word_id"]).russian_translation = "новый перевод"
+    db_session.commit()
+    reveal = client.get(
+        f"/api/quizzes/learner-1/{attempt_id}/questions/{self_check['word_id']}/remembered_forgot_self_check/answer"
+    )
+    assert reveal.json() == {"answer": original_reveal}
+    response = client.post(f"/api/quizzes/learner-1/{attempt_id}/answers", json={
+        "word_id": typing["word_id"], "question_type": "ru_to_sr_typing", "answer": original_latin,
+    })
+    assert response.json()["is_correct"] is True
+    response = client.post(f"/api/quizzes/learner-1/{service_result['attempt_id']}/answers", json={
+        "word_id": typing["word_id"], "question_type": "ru_to_sr_typing", "answer": original_cyrillic,
+    })
+    assert response.json()["is_correct"] is True
+    assert original_cyrillic != "измењено"
+
+
+def test_frozen_choice_and_correction_use_issued_key(client, db_session, started_quiz):
+    attempt_id = started_quiz["attempt_id"]
+    plan = json.loads(db_session.get(QuizAttempt, attempt_id).question_plan)
+    choice = next(item for item in plan if item["question_type"] == "sr_to_ru_choice")
+    original = choice["answer_key"]["russian_translation"]
+    second = client.post("/api/quizzes/learner-1/start", json={"quiz_type": "daily"}).json()
+    db_session.get(VocabularyItem, choice["word_id"]).russian_translation = "новое значение"
+    db_session.commit()
+    frozen_correct = client.post(f"/api/quizzes/learner-1/{second['attempt_id']}/answers", json={
+        "word_id": choice["word_id"], "question_type": "sr_to_ru_choice", "answer": original,
+    })
+    assert frozen_correct.json()["is_correct"] is True
+    answer_url = f"/api/quizzes/learner-1/{attempt_id}/answers"
+    assert client.post(answer_url, json={"word_id": choice["word_id"],
+        "question_type": "sr_to_ru_choice", "answer": "wrong"}).json()["is_correct"] is False
+    for question in plan:
+        if question is choice:
+            continue
+        key = question["answer_key"]
+        answer = (key["serbian_latin"] if question["question_type"] == "ru_to_sr_typing"
+                  else "remembered" if question["question_type"] == "remembered_forgot_self_check"
+                  else key["russian_translation"])
+        submitted = client.post(answer_url, json={"word_id": question["word_id"],
+            "question_type": question["question_type"], "answer": answer})
+        assert submitted.status_code == 200 and submitted.json()["is_correct"] is True, (question, submitted.json())
+    assert client.post(answer_url, json={"word_id": choice["word_id"],
+        "question_type": "sr_to_ru_choice", "answer": "wrong"}).status_code == 200
+    result = client.post(f"/api/quizzes/learner-1/{attempt_id}/complete").json()
+    assert result.get("answer_key_status") == "frozen", result
+    assert all(item["correct_answer"] == original for item in result["mistakes"])
+
+
+def test_old_plan_remains_legacy_and_unknown_version_is_rejected(client, db_session, started_quiz):
+    attempt = db_session.get(QuizAttempt, started_quiz["attempt_id"])
+    plan = json.loads(attempt.question_plan)
+    question = plan[0]
+    question["answer_key_version"] = 999
+    attempt.question_plan = json.dumps(plan)
+    db_session.commit()
+    payload = {"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"}
+    assert client.post(f"/api/quizzes/learner-1/{attempt.id}/answers", json=payload).status_code == 400
+    question.pop("answer_key_version")
+    question.pop("answer_key")
+    attempt.question_plan = json.dumps(plan)
+    db_session.commit()
+    word = db_session.get(VocabularyItem, question["word_id"])
+    word.russian_translation = "новое значение"
+    db_session.commit()
+    response = client.post(f"/api/quizzes/learner-1/{attempt.id}/answers", json={**payload, "answer": word.russian_translation})
+    assert response.status_code == 200
+    assert response.json()["is_correct"] is True
+
+
+def test_old_active_plan_completes_with_unavailable_breakdown(client, db_session, started_quiz):
+    attempt = db_session.get(QuizAttempt, started_quiz["attempt_id"])
+    plan = json.loads(attempt.question_plan)
+    for question in plan:
+        key = question.pop("answer_key")
+        question.pop("answer_key_version")
+        if question["question_type"] == "remembered_forgot_self_check":
+            question["answer"] = key["russian_translation"]
+    attempt.question_plan = json.dumps(plan)
+    db_session.commit()
+    for question in plan:
+        word = db_session.get(VocabularyItem, question["word_id"])
+        answer = (word.serbian_latin if question["question_type"] == "ru_to_sr_typing"
+                  else "remembered" if question["question_type"] == "remembered_forgot_self_check"
+                  else word.russian_translation)
+        submitted = client.post(f"/api/quizzes/learner-1/{attempt.id}/answers", json={
+            "word_id": question["word_id"], "question_type": question["question_type"],
+            "answer": answer,
+        })
+        assert submitted.status_code == 200 and submitted.json()["is_correct"] is True
+    result = client.post(f"/api/quizzes/learner-1/{attempt.id}/complete").json()
+    assert result["score"] == len(plan)
+    assert result["answer_key_status"] == "legacy"
+    assert result["breakdown_status"] == "unavailable"
+    assert result["first_attempt_correct"] == 0
+
+
+def test_empty_quiz_has_not_measured_breakdown(client):
+    started = client.post("/api/quizzes/empty-learner/start", json={"quiz_type": "daily"}).json()
+    assert started["questions"] == []
+    result = client.post(f"/api/quizzes/empty-learner/{started['attempt_id']}/complete").json()
+    assert result["score"] == 0 and result["total_questions"] == 0
+    assert result["first_attempt_eligible"] == 0
+
+
+def test_correct_retry_changes_recovery_but_not_first_answer_count(client, db_session, started_quiz):
+    plan = json.loads(db_session.get(QuizAttempt, started_quiz["attempt_id"]).question_plan)
+    target = next(question for question in plan if question["question_type"] != "remembered_forgot_self_check")
+    url = f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/answers"
+    for question in plan:
+        key = question["answer_key"]
+        answer = (key["serbian_latin"] if question["question_type"] == "ru_to_sr_typing"
+                  else "remembered" if question["question_type"] == "remembered_forgot_self_check"
+                  else key["russian_translation"])
+        if question is target:
+            assert client.post(url, json={"word_id": question["word_id"],
+                "question_type": question["question_type"], "answer": "wrong"}).json()["repeat_word"] is True
+        assert client.post(url, json={"word_id": question["word_id"],
+            "question_type": question["question_type"], "answer": answer}).json()["is_correct"] is True
+    result = client.post(f"/api/quizzes/learner-1/{started_quiz['attempt_id']}/complete").json()
+    assert result["score"] == result["total_questions"]
+    assert result["recovered_objective_items"] == 1
+    assert result["first_attempt_correct"] == result["first_attempt_eligible"] - 1
+
+
+def test_choice_labels_deduplicate_after_normalization(db_session):
+    from app.services.quiz_service import _distractors
+
+    words = [VocabularyItem(serbian_cyrillic=f"реч {index}", serbian_latin=f"reč {index}",
+                            russian_translation=translation, cefr_level="A1", theme="x")
+             for index, translation in enumerate(("Вода", " вода  ", "ВОДА", "хлеб", "сок"))]
+    db_session.add_all(words)
+    db_session.commit()
+    choices = _distractors(db_session, words[0])
+    assert len(choices) == 3
+    assert len({" ".join(label.split()).casefold() for label in choices}) == 3
+
+
+def test_single_word_pool_keeps_typing_and_self_check_without_choice(client, db_session):
+    from app.models import UserProfile
+
+    word = VocabularyItem(serbian_cyrillic="вода", serbian_latin="voda",
+                          russian_translation="вода", cefr_level="A1", theme="x")
+    db_session.add_all([UserProfile(user_id="solo"), word])
+    db_session.commit()
+    db_session.add(UserWordProgress(user_id="solo", word_id=word.id, status="seen",
+                                    first_seen_at=datetime.now(timezone.utc)))
+    db_session.commit()
+    started = client.post("/api/quizzes/solo/start", json={"quiz_type": "daily"}).json()
+    assert {question["question_type"] for question in started["questions"]} == {
+        "ru_to_sr_typing", "remembered_forgot_self_check"
+    }
+    for question in started["questions"]:
+        answer = "voda" if question["question_type"] == "ru_to_sr_typing" else "remembered"
+        assert client.post(f"/api/quizzes/solo/{started['attempt_id']}/answers", json={
+            "word_id": word.id, "question_type": question["question_type"], "answer": answer,
+        }).json()["is_correct"] is True
+    result = client.post(f"/api/quizzes/solo/{started['attempt_id']}/complete").json()
+    assert result["total_questions"] == 2 and result["score"] == 2
+
+
+def test_local_version_two_plan_remains_frozen_after_integration(client, db_session, started_quiz):
+    """Read issued local plans without rewriting keys into the shipped format."""
+    attempt = db_session.get(QuizAttempt, started_quiz["attempt_id"])
+    plan = json.loads(attempt.question_plan)
+    expected = {}
+    for question in plan:
+        key = question["answer_key"]
+        question.pop("answer_key_version")
+        question["plan_version"] = 2
+        kind = question["question_type"]
+        if kind == "ru_to_sr_typing":
+            question["answer_key"] = {"latin": key["serbian_latin"], "cyrillic": key["serbian_cyrillic"]}
+            correct = f"{key['serbian_latin']} / {key['serbian_cyrillic']}"
+        elif kind == "sr_to_ru_choice":
+            question["answer_key"] = {"correct": key["russian_translation"]}
+            correct = key["russian_translation"]
+        else:
+            question["answer_key"] = {"reveal": key["russian_translation"], "correct": "remembered"}
+            correct = key["russian_translation"]
+        expected[(question["word_id"], kind)] = correct
+        word = db_session.get(VocabularyItem, question["word_id"])
+        word.russian_translation = "changed"
+        word.serbian_latin = "changed"
+        word.serbian_cyrillic = "changed"
+    attempt.question_plan = json.dumps(plan)
+    db_session.commit()
+    original_plan = attempt.question_plan
+    for question in plan:
+        if question["question_type"] == "remembered_forgot_self_check":
+            reveal = client.get(f"/api/quizzes/learner-1/{attempt.id}/questions/{question['word_id']}/remembered_forgot_self_check/answer")
+            assert reveal.json()["answer"] == question["answer_key"]["reveal"]
+        payload = {"word_id": question["word_id"], "question_type": question["question_type"], "answer": "wrong"}
+        url = f"/api/quizzes/learner-1/{attempt.id}/answers"
+        assert client.post(url, json=payload).json()["is_correct"] is False
+        key = question["answer_key"]
+        payload["answer"] = key.get("latin", key.get("correct"))
+        assert client.post(url, json=payload).json()["is_correct"] is True
+    result = client.post(f"/api/quizzes/learner-1/{attempt.id}/complete").json()
+    assert result["answer_key_status"] == "frozen"
+    assert result["first_attempt_status"] == "available"
+    assert result["first_attempt_correct"] == 0
+    assert result["recovered_objective_items"] == result["first_attempt_eligible"]
+    assert all(item["correct_answer"] == expected[(item["word_id"], item["question_type"])]
+               for item in result["mistakes"])
+    db_session.refresh(attempt)
+    assert attempt.question_plan == original_plan
