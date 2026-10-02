@@ -1,6 +1,6 @@
 # Slovnik Product State
 
-Last audited: 2026-10-01 (grammar textbook, practice entry and learner-local days; Compose setup verified: 2026-09-24; core runtime audit: 2026-08-27)
+Last audited: 2026-10-02 (expanded grammar textbook; practice entry and learner-local days: 2026-10-01; Compose setup verified: 2026-09-24; core runtime audit: 2026-08-27)
 
 ## Product Summary
 
@@ -318,14 +318,23 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 ## Implemented User-Facing Capabilities
 
-- The grammar textbook at `/textbook` has 20 chapters in four groups (basics, nouns/cases,
-  verbs, sentence), form tables, 40 original translated examples and 20 reveal-only self-checks.
-  Topic search includes Russian/Serbian explanations and examples and tolerates missing Latin
-  diacritics. Direct chapter links, related topics and previous/next navigation work without
+- The version 2 grammar textbook at `/textbook` has 79 chapters in ten groups (writing,
+  nouns/cases, adjectives, pronouns, numerals, verbs, function words, simple sentences,
+  complex sentences and text), 70 tables, 347 original translated examples and 242
+  reveal-only self-checks. All 20 original chapter IDs are preserved and their content deepened.
+  Coverage now includes core singular/plural paradigms in all seven cases, irregular stems,
+  adjective forms, pronoun/numeral classes, futur II, literary/nonfinite forms with recognition
+  limits, clause types, reported speech and polite Vi agreement.
+  Topic search includes explanations, table headers/cells, examples/notes and self-checks;
+  it accepts Russian queries and Serbian in either script, including omitted diacritics. This lossy
+  matching is not a spelling transliterator. Group and chapter contents anchors account for
+  the sticky header; wide tables scroll locally. Direct chapter links, related topics and previous/next navigation work without
   a profile or backend. Navigation, entry and dashboard expose the book. Explanations remain
   Russian when controls use Serbian; reading does not score answers or write history/progress.
-  The [internal editorial journal](learning/textbook-review.md) records primary source pages,
-  original layer authorship, delegated local-display decisions, source errors excluded and limits.
+  The [coverage map](learning/textbook-coverage.md) lists actual chapter scope and specific
+  remaining gaps. The [internal editorial journal](learning/textbook-review.md) and domain
+  appendices record 40 source entries, directly read locators, original model authorship,
+  source disagreements, translation/form checks and limitations of internal review.
   Research drafts and the reserved pilot assessment situations were not republished.
 - Direct written-practice entry distinguishes a missing browser profile from a disabled
   local pilot. It offers profile selection and returns to practice after successful entry;
@@ -406,6 +415,9 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 - `frontend/src/content/serbian-textbook.json` is the versioned, bundled read-only book.
   `textbook.ts` provides its typed contract and topic search; `TextbookView.vue` renders the
   grouped directory and `TextbookChapterView.vue` renders explanations, tables and sample answers.
+  Textbook views/data load with lazy routes to keep the initial application bundle smaller.
+  Explicit answer-language metadata covers Russian or mixed explanations and Serbian forms;
+  legacy answers default to Serbian. No automatic language detection affects learner text.
   It has no catalog/curriculum database publication, learner identity or practice API dependency.
 - API calls are centralized in `frontend/src/api/client.ts`.
 - Browser session state is centralized in `frontend/src/stores/session.ts`.
@@ -487,6 +499,16 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 ## Verification and Test Coverage
 
+- Expanded textbook on 2026-10-02: all frontend unit tests passed (`130 passed`, 15 files),
+  `vue-tsc -b` and production Vite build passed, and all Chromium e2e passed (`17 passed`).
+  Textbook e2e blocks every `/api/` request and uses no saved profile; it covers directory/search,
+  original direct routes, language controls, answer reveal, missing chapters, related/next links,
+  anchored contents/reload and local keyboard table scrolling at 1280/390px. Visual review also
+  covered 320px with no page overflow. Structural checks confirmed original IDs, unique records,
+  valid references, rectangular tables, NFC and explicit answer languages. Internal content/code
+  review fixes are recorded in the editorial journal. The book loads in a separate route chunk
+  (about 366 kB, 146 kB gzip); the initial application chunk is about 177 kB, 62 kB gzip.
+  Backend and pilot assessment behavior were not changed; backend tests were not rerun.
 - Final merge integration on 2026-10-01 preserves PR #6's canonical publication service,
   request fingerprint and database/catalog guards on published lexical parents and children.
   The reviewed written-bank publisher has a separate module and fingerprint discriminator;
@@ -685,12 +707,14 @@ reveal-first active recall, built on the MVP delivered in PR #1, "Serbian vocabu
 
 ## Known Limitations / Deferred Scope
 
-- The textbook is a basic written edition of selected grammar topics, not exhaustive A1–B1
-  coverage. Case tables mainly cover singular forms; vocative, full plural paradigms, futur II,
-  relative/indirect speech and audio remain outside this edition. Original prose/examples have
-  internal source review, not independent teacher or corpus validation. Self-check sample answers
-  are not exhaustive grading keys. The four-context practice pack is not expanded by reading
-  textbook chapters, and the book does not claim learning efficacy or attained CEFR level.
+- The textbook is an expanded written grammar reference, not exhaustive coverage or an
+  attained CEFR level. The [coverage map](learning/textbook-coverage.md) explicitly leaves
+  full lexical/accent dictionaries, special decimal/percentage constructions, advanced
+  agreement/relative punctuation and discourse variants, and exhaustive rare-form usage
+  outside the verified scope. No audio, pronunciation, teacher or corpus validation is claimed.
+  Original prose/examples have internal model/source review; free sample answers are not
+  exhaustive grading keys. The four-context practice pack is not expanded by reading chapters,
+  and no learning efficacy claim follows from the book.
 - Quiz practice scores still count successful retries and self-checks alongside objectively
   scored responses; the new breakdown is limited to frozen-key attempts and does not establish
   mastery. Old plans retain vocabulary-dependent grading and cannot acquire historical keys.

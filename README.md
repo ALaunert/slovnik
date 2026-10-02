@@ -6,11 +6,19 @@ Postgres persistence, and a Vue 3 frontend.
 ## Grammar textbook
 
 Open `http://localhost:5173/textbook` or **Учебник** in the navigation. The bundled book
-has 20 grammar topics in four groups, Russian explanations, form tables, 40 Serbian
-examples with translations and 20 self-checks with expandable sample answers. Reading
+has 79 chapters in ten groups, Russian explanations, 70 form tables, 347 original Serbian
+examples with translations and 242 self-checks with expandable sample answers. Reading
 works without a profile or backend; it does not write progress or automatically grade answers.
-This is a basic written edition, not an exhaustive A1–B1 course. Source locators, original
-authorship and internal review limits are in [the textbook review](docs/learning/textbook-review.md).
+The original 20 chapter addresses are preserved. Search accepts Russian and Serbian,
+with either Serbian script and optional Serbian diacritics; section and chapter contents links
+help navigate longer material. Wide tables scroll within the chapter.
+
+The book covers writing, full core case paradigms, pronouns and numerals, verb forms,
+simple and complex sentences, and connected text. Rare literary forms are marked for
+recognition. It is not an exhaustive grammar or a claim of CEFR attainment. Exact remaining
+gaps are in [the coverage map](docs/learning/textbook-coverage.md); the 40 source records,
+locators, original model authorship and internal review limits are documented in
+[the editorial journal](docs/learning/textbook-review.md).
 
 ## Local Development
 
