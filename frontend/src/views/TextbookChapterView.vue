@@ -36,7 +36,16 @@ const sources = computed(() => (chapter.value?.source_refs ?? []).flatMap((ref) 
         <h2>{{ copy.textbookObjectives }}</h2>
         <ul><li v-for="objective in chapter.objectives" :key="objective">{{ objective }}</li></ul>
       </section>
-      <section v-for="section in chapter.sections" :key="section.title" class="lesson-section">
+      <nav class="panel lesson-contents" :aria-label="copy.textbookContents">
+        <h2>{{ copy.textbookContents }}</h2>
+        <ul>
+          <li v-for="(section, sectionIndex) in chapter.sections" :key="sectionIndex"><RouterLink :to="{ hash: `#section-${sectionIndex + 1}` }">{{ section.title }}</RouterLink></li>
+          <li><RouterLink to="#examples">{{ copy.textbookExamples }}</RouterLink></li>
+          <li><RouterLink to="#self-check">{{ copy.textbookSelfCheck }}</RouterLink></li>
+          <li><RouterLink to="#sources">{{ copy.textbookSources }}</RouterLink></li>
+        </ul>
+      </nav>
+      <section v-for="(section, sectionIndex) in chapter.sections" :id="`section-${sectionIndex + 1}`" :key="section.title" class="lesson-section">
         <h2>{{ section.title }}</h2>
         <p v-for="paragraph in section.paragraphs" :key="paragraph">{{ paragraph }}</p>
         <div v-if="section.table" class="table-scroll" role="region" :aria-label="section.title" tabindex="0">
@@ -47,7 +56,7 @@ const sources = computed(() => (chapter.value?.source_refs ?? []).flatMap((ref) 
           </table>
         </div>
       </section>
-      <section class="lesson-section">
+      <section id="examples" class="lesson-section">
         <h2>{{ copy.textbookExamples }}</h2>
         <div v-for="example in chapter.examples" :key="example.serbian" class="lesson-example panel">
           <p lang="sr" class="serbian-example">{{ example.serbian }}</p>
@@ -59,14 +68,14 @@ const sources = computed(() => (chapter.value?.source_refs ?? []).flatMap((ref) 
         <h2>{{ copy.textbookPitfalls }}</h2>
         <ul><li v-for="pitfall in chapter.pitfalls" :key="pitfall">{{ pitfall }}</li></ul>
       </aside>
-      <section class="lesson-section">
+      <section id="self-check" class="lesson-section">
         <h2>{{ copy.textbookSelfCheck }}</h2>
         <p>{{ copy.textbookSelfCheckHint }}</p>
         <div v-for="(exercise, exerciseIndex) in chapter.practice" :key="exerciseIndex" class="lesson-exercise panel">
           <p>{{ exercise.prompt }}</p>
           <details>
             <summary>{{ copy.textbookShowAnswer }}</summary>
-            <p lang="sr" class="serbian-example">{{ exercise.answer }}</p>
+            <p :lang="exercise.answer_language ?? 'sr'" class="serbian-example">{{ exercise.answer }}</p>
             <p>{{ exercise.explanation }}</p>
           </details>
         </div>
@@ -75,7 +84,7 @@ const sources = computed(() => (chapter.value?.source_refs ?? []).flatMap((ref) 
         <h2>{{ copy.textbookRelated }}</h2>
         <ul><li v-for="topic in related" :key="topic.id"><RouterLink :to="`/textbook/${topic.id}`">{{ topic.title }}</RouterLink></li></ul>
       </section>
-      <section class="lesson-sources lesson-section">
+      <section id="sources" class="lesson-sources lesson-section">
         <h2>{{ copy.textbookSources }}</h2>
         <ul><li v-for="source in sources" :key="source.id + source.locator"><a :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.title }}</a> — {{ source.locator }}</li></ul>
         <p class="muted">{{ copy.textbookSourceNote }}</p>
@@ -94,7 +103,10 @@ const sources = computed(() => (chapter.value?.source_refs ?? []).flatMap((ref) 
 .lesson-header h1 { margin: 4px 0 12px; }
 .lesson-header p, .lesson-section p, li { line-height: 1.7; }
 .lesson-objectives { margin: 24px 0 32px; }
-.lesson-section { margin: 32px 0; }
+.lesson-section { margin: 32px 0; scroll-margin-top: 150px; }
+.lesson-contents { margin: 24px 0; }
+.lesson-contents h2 { margin-top: 0; font-size: 1.1rem; }
+.lesson-contents ul { margin-bottom: 0; }
 .lesson-section h2 { font-size: 1.35rem; }
 .table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid #d8dfdc; border-radius: 8px; }
 table { width: 100%; border-collapse: collapse; background: white; }

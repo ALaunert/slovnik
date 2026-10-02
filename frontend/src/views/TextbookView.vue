@@ -30,11 +30,15 @@ const count = computed(() => groups.value.reduce((total, group) => total + group
       <button v-if="query" class="secondary-button" data-test="clear-search" type="button" @click="query = ''">{{ copy.textbookClear }}</button>
       <p role="status" aria-live="polite">{{ copy.textbookTopicCount }} {{ count }} / {{ textbook.chapters.length }}</p>
     </div>
+    <nav v-if="count" class="book-contents panel" :aria-label="copy.textbookSections">
+      <h2>{{ copy.textbookSections }}</h2>
+      <ul><li v-for="group in groups" :key="group.id"><RouterLink :to="{ hash: `#group-${group.id}` }">{{ group.title }} ({{ group.chapters.length }})</RouterLink></li></ul>
+    </nav>
     <section v-if="!count" class="empty-state" role="status">
       <h2>{{ copy.textbookNoResults }}</h2>
       <p>{{ copy.textbookTrySearch }}</p>
     </section>
-    <section v-for="group in groups" :key="group.id" class="book-group" lang="ru">
+    <section v-for="group in groups" :id="`group-${group.id}`" :key="group.id" class="book-group" lang="ru">
       <h2>{{ group.title }}</h2>
       <p>{{ group.description }}</p>
       <div class="chapter-grid">
@@ -53,7 +57,9 @@ const count = computed(() => groups.value.reduce((total, group) => total + group
 .book-description { max-width: 75ch; line-height: 1.6; }
 .book-search { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin: 24px 0; }
 .book-search label, .book-search p { grid-column: 1 / -1; margin: 0; }
-.book-group { margin: 32px 0; }
+.book-group { margin: 32px 0; scroll-margin-top: 150px; }
+.book-contents h2 { margin-top: 0; font-size: 1.1rem; }
+.book-contents ul { margin-bottom: 0; line-height: 1.7; }
 .book-group h2 { margin-bottom: 8px; }
 .chapter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .chapter-card { display: flex; flex-direction: column; text-decoration: none; color: inherit; }
